@@ -106,7 +106,7 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   (* make the function *)
   let exec_func = Cil.emptyFunction "execute_task" in
   (* make an int argument called "taskid" *)
-  let arg1 = Cil.makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [])) in
+  let arg1 = Cil.makeFormalVar exec_func "ex_task" Cil.intType (*(TPtr((find_type f "queue_entry_t"), []))*) in
   (* make an int argument called "taskid" *)
   let arg2 = Cil.makeFormalVar exec_func "task_info" Cil.intType in
   (*let arg2 = Cil.makeFormalVar exec_func "y" Cil.intType, false, [] in*)
@@ -164,6 +164,7 @@ let feature : featureDescr =
 
       (* copy all code from file f to file_ppc *)
       ppc_glist := f.globals;
+      (* FIXME: change that text input to merger*)
       spu_glist := GText( "#include <stdio.h>\n"
             ^"#include <spu_intrinsics.h>\n"
             ^"#include <spu_mfcio.h>\n"
@@ -179,7 +180,7 @@ let feature : featureDescr =
         !spu_tasks
       in
       spu_glist := (make_exec_func f tasks) :: !spu_glist;
-      print_endline (L.hd(S.split (S.regexp ".c") f.fileName));
+(*       print_endline (L.hd(S.split (S.regexp ".c") f.fileName)); *)
       writeFile f "foofafa1.c" !ppc_glist;
       writeFile f "foofafa2.c" !spu_glist;
       );
