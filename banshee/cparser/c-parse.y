@@ -1113,7 +1113,7 @@ tag:
 
 structsp:
 	  STRUCT tag '{'
-		{ $$ = start_struct($1.location, kind_struct_ref, $2);
+		{ $<u.telement>$ = start_struct($1.location, kind_struct_ref, $2);
 		  /* Start scope of tag before parsing components.  */
 		}
 	  component_decl_list '}' maybe_attribute 
@@ -1125,7 +1125,7 @@ structsp:
 	| STRUCT tag
 		{ $$ = xref_tag($1.location, kind_struct_ref, $2); }
 	| UNION tag '{'
-		{ $$ = start_struct ($1.location, kind_union_ref, $2); }
+		{ $<u.telement>$ = start_struct ($1.location, kind_union_ref, $2); }
 	  component_decl_list '}' maybe_attribute
 		{ $$ = finish_struct($<u.telement>4, $5, $7); }
 	| UNION '{' component_decl_list '}' maybe_attribute
@@ -1135,11 +1135,11 @@ structsp:
 	| UNION tag
 		{ $$ = xref_tag($1.location, kind_union_ref, $2); }
 	| ENUM tag '{'
-		{ $$ = start_enum($1.location, $2); }
+		{ $<u.telement>$ = start_enum($1.location, $2); }
 	  enumlist maybecomma_warn '}' maybe_attribute
 		{ $$ = finish_enum($<u.telement>4, $5, $8); }
 	| ENUM '{'
-		{ $$ = start_enum($1.location, NULL); }
+		{ $<u.telement>$ = start_enum($1.location, NULL); }
 	  enumlist maybecomma_warn '}' maybe_attribute
 		{ $$ = finish_enum($<u.telement>3, $4, $7); }
 	| ENUM tag
