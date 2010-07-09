@@ -54,7 +54,7 @@ let print_version () =
 
 let feature : featureDescr = {
   fd_name = "locksmith";
-  fd_enabled = ref true;
+  fd_enabled = ref false;
   fd_description = "Locksmith";
 
   fd_extraopt =
