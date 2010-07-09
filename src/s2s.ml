@@ -81,7 +81,6 @@ exception Found_type of typ
 let find_type (f: file) (name: string) : typ =
   let findit = function
     | GType(ti, _) when ti.tname = name -> raise (Found_type (TNamed(ti, [])))
-    | GType(ti, _) -> print_endline (ti.tname); ()
     | _ -> ()
   in
   try
@@ -122,9 +121,9 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   (* make the function *)
   let exec_func = Cil.emptyFunction "execute_task" in
   (* make an int argument called "taskid" *)
-  let arg1 = Cil.makeFormalVar exec_func "ex_task" (*Cil.intType*) (TPtr((find_type f "queue_entry_t"), [])) in
+  let arg1 = Cil.makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
   (* make an int argument called "taskid" *)
-  let arg2 = Cil.makeFormalVar exec_func "task_info" Cil.intType in
+  let arg2 = Cil.makeFormalVar exec_func "task_info" (find_type f "tpc_spe_task_state_t") in
   (*let arg2 = Cil.makeFormalVar exec_func "y" Cil.intType, false, [] in*)
   (* make an int variable for the return value *)
   let lexit = Cil.makeLocalVar exec_func "exit" Cil.intType in
@@ -160,8 +159,20 @@ let writeFile f fname globals = begin
     globals = globals;
   } in
   let oc = open_out fname in
+  Rmtmps.removeUnusedTemps file;
   dumpFile defaultCilPrinter oc fname file;
   close_out oc
+end
+
+(* Preprocess the header file <header> and merges it with f.  The
+ * given header should be in the gcc include path.  Modifies f
+ *) (* copied from lockpick.ml *)
+let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
+  (* FIXME: what if we move arround the executable? *)
+  Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");
+  let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
+  let f' = Mergecil.merge [add_h; f] "stdout" in
+  f.globals <- f'.globals;
 end
 
 let feature : featureDescr = 
@@ -179,14 +190,17 @@ let feature : featureDescr =
       let ppc_glist, spu_glist = ref [], ref [] in
 
       (* copy all code from file f to file_ppc *)
+      preprocessAndMergeWithHeader f "ppu_intrinsics.h";
+      preprocessAndMergeWithHeader f "include/tpc_common.h";
+      preprocessAndMergeWithHeader f "include/tpc_spe.h";
       ppc_glist := f.globals;
-      (* FIXME: change that text input to merger*)
-      spu_glist := GText( "#include <stdio.h>\n"
-            ^"#include <spu_intrinsics.h>\n"
-            ^"#include <spu_mfcio.h>\n"
-            ^"#include \"include/tpc_common.h\"\n"
-            ^"#include \"include/tpc_spe.h\"\n\n")
-	::f.globals;
+      (* copy all code from file f to file_spe plus the needed headers*)
+      preprocessAndMergeWithHeader f "spu_intrinsics.h";
+      preprocessAndMergeWithHeader f "spu_mfcio.h";
+      preprocessAndMergeWithHeader f "include/tpc_common.h";
+      preprocessAndMergeWithHeader f "include/tpc_spe.h";
+      spu_glist := f.globals;
+
       let tasks : fundec list = List.map
         (fun (name, _) ->
           let task = find_function_fundec f name in
@@ -196,7 +210,6 @@ let feature : featureDescr =
         !spu_tasks
       in
       spu_glist := (make_exec_func f tasks) :: !spu_glist;
-(*       print_endline (L.hd(S.split (S.regexp ".c") f.fileName)); *)
       writeFile f (!out_name^".c") !ppc_glist;
       writeFile f (!out_name^"_func.c") !spu_glist;
       );

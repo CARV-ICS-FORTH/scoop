@@ -2,6 +2,7 @@
 	#define __VEC__
 	#define __ALTIVEC__
 	#define vector __attribute__((vector_size(8)))
+	#define __vector __attribute__((vector_size(8)))
 	#define TBR 79800000.0
 #endif
 

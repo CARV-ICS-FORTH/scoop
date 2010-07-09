@@ -1,15 +1,13 @@
 #include <stdio.h>
-#include <ppu_intrinsics.h>
+// #include <ppu_intrinsics.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
 
-#include "tpc_s2s.h"
-
-#include "include/tpc_common.h"
-#include "include/tpc_ppe.h"
+// #include "include/tpc_common.h"
+// #include "include/tpc_ppe.h"
 
 #define TIMEBASE (TBR/1000)
 #define CORE_CYCLES ( (uint32_t) (3200000/TIMEBASE) )
@@ -19,8 +17,6 @@
 #define DEFAULT_ARGFLAG     TPC_IN_ARG
 #define DEFAULT_COMPCLASS   0
 #define DEFAULT_TOTALTPCS   100000
-
-typedef int myint;
 
 int computation_func0(int *class1, int *class2, int *class3, int *class4)
 {
