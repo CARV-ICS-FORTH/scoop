@@ -1,3 +1,3 @@
 #!/bin/bash
 
-ROOT/cil/bin/cilly --dontlocksmith --dolockpick -lpthread $*
+ROOT/cil/bin/cilly --dolockpick -lpthread $*
