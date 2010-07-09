@@ -4,3 +4,12 @@ ocaml
 caml4
 flex
 bison
+
+INSTALL:
+
+./configure && make
+
+RUN:
+
+cd test
+./cil.sh <file>
