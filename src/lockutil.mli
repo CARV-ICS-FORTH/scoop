@@ -77,3 +77,10 @@ val change_var : Cil.file -> Cil.varinfo -> Cil.varinfo -> unit
  * with the first.  Merging modifies the first argument.
  *) 
 val preprocessAndMergeWith : Cil.file -> string -> unit
+
+(* Take a cil file, and a string with the name of a header file,
+ * preprocess it and merge with the first.  Merging modifies the first
+ * argument.  If the header filename is not an absolute path, we use
+ * the gcc include path.
+ *) 
+val preprocessAndMergeWithHeader : Cil.file -> string -> unit
