@@ -1,0 +1,3 @@
+RUN:
+
+./cil.sh input_files
