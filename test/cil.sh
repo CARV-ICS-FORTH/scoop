@@ -1,1 +1,1 @@
-../cil/bin/cilly -I./include/ppu -I./include/spu $*
+../cil/bin/cilly --bytecode -I./include/ppu -I./include/spu $*
