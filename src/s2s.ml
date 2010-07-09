@@ -41,7 +41,7 @@ module S = Str
 module L = List
 
 let debug = ref false
-let spu_filename = ref "spu-task-code.c"
+let out_name = ref "final"
 
 let options =
   [
@@ -49,9 +49,9 @@ let options =
       Arg.Set(debug),
       " Print debugging information.";
 
-    "--out-spu",
-      Arg.String(fun s -> spu_filename := s),
-      " Specify where the spu code should go. (default: spu-task-code.c)";
+    "--out-name",
+      Arg.String(fun s -> out_name := s),
+      " Specify the output files' prefix. (default: final) will produce final.c and final_func.c";
   ]
 
 
@@ -196,8 +196,8 @@ let feature : featureDescr =
       in
       spu_glist := (make_exec_func f tasks) :: !spu_glist;
 (*       print_endline (L.hd(S.split (S.regexp ".c") f.fileName)); *)
-      writeFile f "foofafa1.c" !ppc_glist;
-      writeFile f "foofafa2.c" !spu_glist;
+      writeFile f (!out_name^".c") !ppc_glist;
+      writeFile f (!out_name^"_func.c") !spu_glist;
       );
     fd_post_check = true;
   } 
