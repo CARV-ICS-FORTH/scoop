@@ -40,6 +40,21 @@ module H = Hashtbl
 module S = Str
 module L = List
 
+let debug = ref false
+let spu_filename = ref "spu-task-code.c"
+
+let options =
+  [
+    "--debug-tpctool",
+      Arg.Set(debug),
+      " Print debugging information.";
+
+    "--out-spu",
+      Arg.String(fun s -> spu_filename := s),
+      " Specify where the spu code should go. (default: spu-task-code.c)";
+  ]
+
+
 type spu_task =
   string * arg list
 and arg =

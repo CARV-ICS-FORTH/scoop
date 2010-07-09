@@ -164,7 +164,7 @@ end
  * given header should be in the gcc include path.  Modifies f
  *)
 let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
-  Sys.command ("echo | gcc -E -include "^(add)^" - >/tmp/_cil_rewritten_tmp.h");
+  Sys.command ("echo | gcc -E -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
