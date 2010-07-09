@@ -81,6 +81,7 @@ exception Found_type of typ
 let find_type (f: file) (name: string) : typ =
   let findit = function
     | GType(ti, _) when ti.tname = name -> raise (Found_type (TNamed(ti, [])))
+    | GType(ti, _) -> print_endline (ti.tname); ()
     | _ -> ()
   in
   try
@@ -121,7 +122,7 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   (* make the function *)
   let exec_func = Cil.emptyFunction "execute_task" in
   (* make an int argument called "taskid" *)
-  let arg1 = Cil.makeFormalVar exec_func "ex_task" Cil.intType (*(TPtr((find_type f "queue_entry_t"), []))*) in
+  let arg1 = Cil.makeFormalVar exec_func "ex_task" (*Cil.intType*) (TPtr((find_type f "queue_entry_t"), [])) in
   (* make an int argument called "taskid" *)
   let arg2 = Cil.makeFormalVar exec_func "task_info" Cil.intType in
   (*let arg2 = Cil.makeFormalVar exec_func "y" Cil.intType, false, [] in*)
