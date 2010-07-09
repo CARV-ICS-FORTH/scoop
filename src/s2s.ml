@@ -140,12 +140,17 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
     )
     tasks
   in
-  (* TODO: fix default statement to abort *)
   let cases = List.map List.hd switchcases in
+  (* let one = 1*)
+  let one = Const(CInt64(Int64.one, IInt, None)) in
+  (* exit=0; *)
+  let assignment = Cil.mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
+  assignment.labels <- [Default(locUnknown)];
+  let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
   let exit0 = Cil.mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
   let retstmt = Cil.mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
   let switchstmt = Cil.mkStmt (
-    Switch (Lval (var arg1), Cil.mkBlock (List.flatten switchcases), cases, locUnknown)
+    Switch (Lval (var arg1), Cil.mkBlock switchcases2, cases, locUnknown)
   ) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
   exec_func.sbody <- mkBlock [exit0; switchstmt; retstmt];
@@ -209,7 +214,7 @@ let feature : featureDescr =
         )
         !spu_tasks
       in
-      spu_glist := (make_exec_func f tasks) :: !spu_glist;
+      spu_glist := List.append !spu_glist [(make_exec_func f tasks)];
       writeFile f (!out_name^".c") !ppc_glist;
       writeFile f (!out_name^"_func.c") !spu_glist;
       );
