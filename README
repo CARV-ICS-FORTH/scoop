@@ -2,3 +2,5 @@ Dependencies:
 
 ocaml
 caml4
+flex
+bison
