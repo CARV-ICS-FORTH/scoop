@@ -92,21 +92,25 @@ let find_type (f: file) (name: string) : typ =
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
-  method vglob (g: global) : global list visitAction = 
-    match g with 
-      GPragma(Attr("tpc", [ACons(funname, args)]), loc) -> begin
-        let args' =
-        List.map (fun arg -> match arg with
-            AStr("in") -> In
-          | AStr("out") -> Out
-          | AStr("inout") -> InOut
-          | _ -> ignore(E.error "impossible"); assert false
-        ) args in
-        spu_tasks := (funname, args')::!spu_tasks;
-        SkipChildren
+  method vstmt (s: stmt) : stmt visitAction = 
+    match (s.pragmas) with
+      ([]) -> print_endline "No pragmas here"; SkipChildren
+      | _ -> begin print_endline "Pragmas here";
+	match (List.hd s.pragmas) with 
+	  (Attr("tpc", [ACons(funname, args)]), _) -> begin
+	    let args' =
+	    List.map (fun arg -> match arg with
+		AStr("in") -> In
+	      | AStr("out") -> Out
+	      | AStr("inout") -> InOut
+	      | _ -> ignore(E.error "impossible"); assert false
+	    ) args in
+	    print_endline ("Found task \""^funname^"\"");
+	    spu_tasks := (funname, args')::!spu_tasks;
+	    SkipChildren
+	  end      
+	| _ -> SkipChildren
       end
-
-    | _ -> SkipChildren
 end
 
 (* make a tpc_ version of the function (for use on the ppc side) *)
@@ -151,10 +155,12 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
   (* make stmt exit=0; *)
   let exit0 = Cil.mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
+  (* make return exit; *)
   let retstmt = Cil.mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
+  (* the case expression of the switch statement (switch(expr)) *)
+  let expr = Lval (Lockutil.mkPtrFieldAccess (var arg1) "funcid") in
   let switchstmt = Cil.mkStmt (
-    (* FIXME: arg1->funcid *)
-    Switch ( (Lval(Lockutil.mkPtrFieldAccess (var arg1) "funcid")) , Cil.mkBlock switchcases2, cases, locUnknown)
+    Switch ( expr , Cil.mkBlock switchcases2, cases, locUnknown)
   ) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
   exec_func.sbody <- mkBlock [exit0; switchstmt; retstmt];
