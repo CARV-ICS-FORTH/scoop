@@ -882,7 +882,7 @@ statement:
                                      floor, since unused labels are usually
                                      removed anyways by Rmtmps. *)
                                   LABEL (fst $1, $4, (snd $1))}
-|   pragma statement { print_endline "point1"; SPRAGMA(fst $1, $2, snd $1) }
+|   pragma statement       { SPRAGMA(fst $1, $2, snd $1) }
 |   CASE expression COLON statement
 	                         {CASE (fst $2, $4, (*handleLoc*) $1)}
 |   CASE expression ELLIPSIS expression COLON statement
