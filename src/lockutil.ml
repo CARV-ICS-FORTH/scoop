@@ -154,7 +154,7 @@ let rec isNotLocal (v: varinfo) slocals =
 
 (* Preprocess the file "add" and add to the ast of f.  Modifies f *)
 let preprocessAndMergeWith (f: file) (add: string) : unit = begin
-  Sys.command ("gcc -E "^(add)^">/tmp/_cil_rewritten_tmp.h");
+  ignore(Sys.command ("gcc -E "^(add)^">/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -164,8 +164,24 @@ end
  * given header should be in the gcc include path.  Modifies f
  *)
 let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
-  Sys.command ("echo | gcc -E -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");
+  ignore(Sys.command ("echo | gcc -E -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
 end
+
+let isCompType = function
+    TComp _ -> true
+  | _ -> false
+
+let getCompinfo = function
+  (* unwrap the struct *)
+    TComp (ci, _) -> ci
+  (* if it's not a struct, die. too bad. *)
+  | _ -> assert false
+
+let mkFieldAccess lv fieldname =
+  let lvt = Cil.typeOfLval lv in
+  let ci = getCompinfo (unrollType lvt) in
+  let field = getCompField ci fieldname in
+  addOffsetLval (Field (field, NoOffset)) lv

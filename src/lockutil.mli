@@ -56,6 +56,16 @@ val get_return_type : Cil.typ -> Cil.typ
 (* find the (first) typedef for type "name" in file f *)
 val find_type : Cil.file -> string -> Cil.typ
 
+(* check whether the type is a struct/union type *)
+val isCompType : Cil.typ -> bool
+
+(* get the compinfo from a struct/union type *)
+val getCompinfo : Cil.typ -> Cil.compinfo
+
+(* create a field access from an lval and a field name.  The lval
+ * should have the correct struct type *)
+val mkFieldAccess : Cil.lval -> string -> Cil.lval
+
 (* find the (first) declaration of variable "name" in file f *)
 val find_function_var : Cil.file -> string -> Cil.varinfo
 
