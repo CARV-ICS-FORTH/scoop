@@ -66,6 +66,10 @@ val getCompinfo : Cil.typ -> Cil.compinfo
  * should have the correct struct type *)
 val mkFieldAccess : Cil.lval -> string -> Cil.lval
 
+(* create a field access from an lval and a field name.  The lval
+ * should have the correct pointer to struct type *)
+val mkPtrFieldAccess : Cil.lval -> string -> Cil.lval
+
 (* find the (first) declaration of variable "name" in file f *)
 val find_function_var : Cil.file -> string -> Cil.varinfo
 

@@ -1,7 +1,8 @@
 (*
  *
  * Copyright (c) 2010, 
- * polyvios@ics.forth.gr
+ *  Polyvios Pratikakis <polyvios@ics.forth.gr>
+ *  Foivos Zakkak	<zakkak@ics.forth.gr>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -120,11 +121,10 @@ end
 let make_exec_func (f: file) (tasks: fundec list) : global = begin
   (* make the function *)
   let exec_func = Cil.emptyFunction "execute_task" in
-  (* make an int argument called "taskid" *)
+  (* make "queue_entry_t * volatile  ex_task" *)
   let arg1 = Cil.makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
-  (* make an int argument called "taskid" *)
+  (* make "tpc_spe_task_state_t task_info" *)
   let arg2 = Cil.makeFormalVar exec_func "task_info" (find_type f "tpc_spe_task_state_t") in
-  (*let arg2 = Cil.makeFormalVar exec_func "y" Cil.intType, false, [] in*)
   (* make an int variable for the return value *)
   let lexit = Cil.makeLocalVar exec_func "exit" Cil.intType in
   (* make a switch statement with one case per task starting from zero *)
@@ -143,14 +143,18 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   let cases = List.map List.hd switchcases in
   (* let one = 1*)
   let one = Const(CInt64(Int64.one, IInt, None)) in
-  (* exit=0; *)
+  (* make stmt exit=1; *)
   let assignment = Cil.mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
+  (* set it's label to default *)
   assignment.labels <- [Default(locUnknown)];
+  (* append the new stmt to the switch *)
   let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
+  (* make stmt exit=0; *)
   let exit0 = Cil.mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
   let retstmt = Cil.mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
   let switchstmt = Cil.mkStmt (
-    Switch (Lval (var arg1), Cil.mkBlock switchcases2, cases, locUnknown)
+    (* FIXME: arg1->funcid *)
+    Switch ( (Lval(Lockutil.mkPtrFieldAccess (var arg1) "funcid")) , Cil.mkBlock switchcases2, cases, locUnknown)
   ) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
   exec_func.sbody <- mkBlock [exit0; switchstmt; retstmt];
@@ -171,7 +175,7 @@ end
 
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
- *) (* copied from lockpick.ml *)
+ *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
   (* FIXME: what if we move arround the executable? *)
   Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");

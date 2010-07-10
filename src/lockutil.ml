@@ -180,8 +180,23 @@ let getCompinfo = function
   (* if it's not a struct, die. too bad. *)
   | _ -> assert false
 
+(* TODO: merge mkFieldAccess and mkPtrFieldAccess in one function *)
+
 let mkFieldAccess lv fieldname =
   let lvt = Cil.typeOfLval lv in
   let ci = getCompinfo (unrollType lvt) in
   let field = getCompField ci fieldname in
   addOffsetLval (Field (field, NoOffset)) lv
+
+let mkPtrFieldAccess lv fieldname =
+  let lvt = Cil.typeOfLval lv in
+  (* get the type *)
+  let lvtf = match lvt with
+    | TPtr(ty, _) -> ty
+    | _ -> assert false
+  in
+  let ci = getCompinfo (unrollType lvtf) in
+  let field = getCompField ci fieldname in
+  addOffsetLval (Field (field, NoOffset)) (mkMem (Lval lv) NoOffset)
+  
+
