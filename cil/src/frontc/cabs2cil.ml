@@ -965,6 +965,12 @@ module BlockChunk =
       H.add labelStmt l labstmt;
       if c.stmts == stmts' then c else {c with stmts = stmts'}
 
+    let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
+      let st, stmts' = getFirstInChunk c in
+      (* Add the pragma attr *)
+      st.pragmas <- (a, loc)::st.pragmas;
+      if c.stmts == stmts' then c else {c with stmts = stmts'}
+
     let s2c (s:stmt) : chunk = 
       { stmts = [ s ];
         postins = [];
@@ -6321,6 +6327,20 @@ and doStatement (s : A.statement) : chunk =
         (* Lookup the label because it might have been locally defined *)
         consLabel (lookupLabel l) (doStatement s) loc' true
                      
+    | A.SPRAGMA (expr, s, loc) -> begin
+        currentLoc := convLoc(loc);
+        match doAttr ("dummy", [expr]) with
+          [Attr("dummy", [a'])] ->
+            let a'' =
+              match a' with
+              | ACons (s, args) -> Attr (s, args)
+              | _ -> E.s (error "Unexpected attribute in #pragma")
+            in
+            consPragma a'' (doStatement s) !currentLoc
+
+        | _ -> E.s (error "Too many attributes in pragma")
+      end
+
     | A.GOTO (l, loc) -> 
         let loc' = convLoc loc in
         currentLoc := loc';

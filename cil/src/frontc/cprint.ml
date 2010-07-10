@@ -658,6 +658,17 @@ and print_statement stat =
       printl [name;":"];
       space ();
       print_substatement stat
+  | SPRAGMA (expr, stat, loc) ->
+      setLoc(loc);
+      force_new_line ();
+      print "#pragma ";
+      let oldwidth = !width in
+      width := 1000000;  (* Do not wrap pragmas *)
+      print_expression expr;
+      width := oldwidth;
+      force_new_line ();
+      space ();
+      print_substatement stat
   | GOTO (name, loc) ->
       setLoc(loc);
       printl ["goto";name;";"];

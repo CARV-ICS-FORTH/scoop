@@ -688,6 +688,10 @@ and block =
     The statement is the structural unit in the control flow graph. Use mkStmt 
     to make a statement and then fill in the fields. *)
 and stmt = {
+    mutable pragmas: (attribute * location) list;
+                                       (** Whether the statement is preceded by
+                                           #pragma directives *)
+
     mutable labels: label list;        (** Whether the statement starts with 
                                            some labels, case statements or 
                                            default statement *)
@@ -1288,7 +1292,7 @@ let isSigned = function
 
 let mkStmt (sk: stmtkind) : stmt = 
   { skind = sk;
-    labels = [];
+    labels = []; pragmas = [];
     sid = -1; succs = []; preds = [] }
 
 let mkBlock (slst: stmt list) : block = 

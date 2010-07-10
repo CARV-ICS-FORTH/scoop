@@ -214,6 +214,7 @@ and statement =
  | CASERANGE of expression * expression * statement * cabsloc
  | DEFAULT of statement * cabsloc
  | LABEL of string * statement * cabsloc
+ | SPRAGMA of expression * statement * cabsloc
  | GOTO of string * cabsloc
  | COMPGOTO of expression * cabsloc (* GCC's "goto *exp" *)
  | DEFINITION of definition (*definition or declaration of a variable or type*)

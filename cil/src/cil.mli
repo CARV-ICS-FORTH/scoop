@@ -890,6 +890,9 @@ default. Instead you must explicitly use the functions
 *)
 (** Statements. *)
 and stmt = {
+    mutable pragmas: (attribute * location) list;
+    (** Whether the statement is preceded by #pragma directives *)
+
     mutable labels: label list;        
     (** Whether the statement starts with some labels, case statements or 
      * default statements. *)

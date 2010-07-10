@@ -416,7 +416,7 @@ global:
                                         { LINKAGE (fst $2, (*handleLoc*) (snd $2), $4)  }
 | ASM LPAREN string_constant RPAREN SEMICOLON
                                         { GLOBASM (fst $3, (*handleLoc*) $1) }
-| pragma                                { $1 }
+| pragma                                { PRAGMA(fst $1, snd $1) }
 /* (* Old-style function prototype. This should be somewhere else, like in
     * "declaration". For now we keep it at global scope only because in local
     * scope it looks too much like a function call  *) */
@@ -845,7 +845,6 @@ block_element_list:
 /*(* GCC accepts a label at the end of a block *)*/
 |   IDENT COLON	                         { [ LABEL (fst $1, NOP (snd $1), 
                                                     snd $1)] }
-|   pragma block_element_list            { $2 }
 ;
 
 local_labels:
@@ -883,6 +882,7 @@ statement:
                                      floor, since unused labels are usually
                                      removed anyways by Rmtmps. *)
                                   LABEL (fst $1, $4, (snd $1))}
+|   pragma statement { print_endline "point1"; SPRAGMA(fst $1, $2, snd $1) }
 |   CASE expression COLON statement
 	                         {CASE (fst $2, $4, (*handleLoc*) $1)}
 |   CASE expression ELLIPSIS expression COLON statement
@@ -1345,10 +1345,9 @@ just_attributes:
 
 /** (* PRAGMAS and ATTRIBUTES *) ***/
 pragma: 
-| PRAGMA attr PRAGMA_EOL		{ PRAGMA ($2, $1) }
-| PRAGMA attr SEMICOLON PRAGMA_EOL	{ PRAGMA ($2, $1) }
-| PRAGMA_LINE                           { PRAGMA (VARIABLE (fst $1), 
-                                                  snd $1) }
+| PRAGMA attr PRAGMA_EOL		        { ($2, $1) }
+| PRAGMA attr SEMICOLON PRAGMA_EOL	{ ($2, $1) }
+| PRAGMA_LINE                       { (VARIABLE (fst $1), snd $1) }
 ;
 
 /* (* We want to allow certain strange things that occur in pragmas, so we 

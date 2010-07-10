@@ -426,6 +426,12 @@ and childrenStatement vis s =
   | LABEL (n, s1, l) ->
       let s1' = vs l s1 in
       if s1' != s1 then LABEL (n, s1', l) else s
+  | SPRAGMA (e, s1, l) ->
+      let e' = visitCabsExpression vis e in
+      let s1' = vs l s1 in
+      if s1' != s1 || e' != e then
+        SPRAGMA(e', s1', l)
+      else s
   | COMPGOTO (e, l) -> 
       let e' = ve e in
       if e' != e then COMPGOTO (e', l) else s

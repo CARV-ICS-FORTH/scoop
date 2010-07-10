@@ -78,6 +78,7 @@ begin
   | CASERANGE(_,_,_,loc) -> loc
   | DEFAULT(_,loc) -> loc
   | LABEL(_,_,loc) -> loc
+  | SPRAGMA (_,_,loc) -> loc
   | GOTO(_,loc) -> loc
   | COMPGOTO (_, loc) -> loc
   | DEFINITION d -> get_definitionloc d
