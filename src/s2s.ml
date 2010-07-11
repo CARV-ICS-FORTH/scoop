@@ -92,13 +92,13 @@ let find_type (f: file) (name: string) : typ =
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
-  method vstmt (s: stmt) : stmt visitAction = 
-    match (s.pragmas) with
-      ([]) -> print_endline "No pragmas here"; SkipChildren
-      | _ -> begin print_endline "Pragmas here";
-	match (List.hd s.pragmas) with 
-	  (Attr("tpc", [ACons(funname, args)]), _) -> begin
-	    let args' =
+  method vstmt (s: stmt) : stmt visitAction =
+    let prags = s.pragmas in
+    if (prags != []) then begin
+      print_endline "We 've got pragmas here";
+      match (List.hd prags) with 
+	(Attr("tpc", [ACons(funname, args)]), _) -> begin
+	  let args' =
 	    List.map (fun arg -> match arg with
 		AStr("in") -> In
 	      | AStr("out") -> Out
@@ -109,8 +109,9 @@ class findSPUDeclVisitor = object
 	    spu_tasks := (funname, args')::!spu_tasks;
 	    SkipChildren
 	  end      
-	| _ -> SkipChildren
-      end
+	| _ -> print_endline "Unrecognized pragma"; SkipChildren
+    end else
+      DoChildren
 end
 
 (* make a tpc_ version of the function (for use on the ppc side) *)
@@ -190,6 +191,12 @@ let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
   f.globals <- f'.globals;
 end
 
+(* Checks if <g> is *not* the function declaration of "main"  *)
+let isNotMain (g: global) : bool = match g with
+    GFun({svar = vi}, _) when (vi.vname = "main") -> false
+  | _ -> true
+
+
 let feature : featureDescr = 
   { fd_name = "findspucode";
     fd_enabled = ref true;
@@ -214,7 +221,8 @@ let feature : featureDescr =
       preprocessAndMergeWithHeader f "spu_mfcio.h";
       preprocessAndMergeWithHeader f "include/tpc_common.h";
       preprocessAndMergeWithHeader f "include/tpc_spe.h";
-      spu_glist := f.globals;
+      (* copy all globals except the function declaration of "main" *)
+      spu_glist := List.filter isNotMain f.globals;
 
       let tasks : fundec list = List.map
         (fun (name, _) ->
