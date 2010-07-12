@@ -91,12 +91,74 @@ let find_type (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
+let find_tcomp (f: file) (name: string) : typ =
+  let findit = function
+    | GCompTag(ci, _) when ci.cname = name -> raise (Found_type (TComp(ci, [])))
+    | _ -> ()
+  in
+  try
+    Cil.iterGlobals f findit;
+    raise Not_found
+  with Found_type t -> t
+
 (* make a tpc_ version of the function (for use on the ppc side) *)
 let make_tpc_func (f: fundec) : global = begin
   print_endline ("Creating tpc_function_" ^ f.svar.vname);
   let f_new = Cil.emptyFunction ("tpc_function_" ^ f.svar.vname) in
   Cil.setFunctionTypeMakeFormals f_new f.svar.vtype;
-  (* TODO: add function call *)
+  (* TODO: push the size variables as args *)
+  (*** Declare the local variables ***)
+  (* unsigned int total_bytes *)
+  let total_bytes = Cil.makeLocalVar f_new "total_bytes" Cil.uintType in
+  (* volatile queue_entry_t *remote_entry *)
+  let remote_entry = Cil.makeLocalVar f_new "remote_entry" (TPtr((find_type !in_file "queue_entry_t"), [Attr("volatile", [])])) in
+  (* volatile queue_entry_t *avail_task *)
+  let avail_task = Cil.makeLocalVar f_new "avail_task" (TPtr((find_type !in_file "queue_entry_t"), [Attr("volatile", [])])) in
+  (* TODO: add the #ifdef
+    #ifdef STATISTICS
+      uint64_t tmptime1, tmptime2, tmptime3;
+      int arg_bytes;
+    #endif
+  *)
+  (* unsigned int *task_id_qs *)
+  let task_id_qs = Cil.makeLocalVar f_new "task_id_qs" (TPtr(Cil.uintType, [])) in
+  (* unsigned int task_id *)
+  let task_id = Cil.makeLocalVar f_new "task_id" Cil.uintType in
+  (* if (f_new.sformals <> []) then begin *)
+    (* void *arg_addr64 *)
+    let arg_addr64 = Cil.makeLocalVar f_new "arg_addr64" voidPtrType in
+    (* unsigned int arg_size *)
+    let arg_size = Cil.makeLocalVar f_new "arg_size" Cil.uintType in
+    (* unsigned int arg_flag *)
+    let arg_flag = Cil.makeLocalVar f_new "arg_flag" Cil.uintType in
+    (* unsigned int arg_stride *)
+    let arg_stride = Cil.makeLocalVar f_new "arg_stride" Cil.uintType in
+    (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
+    let tmpvec = Cil.makeLocalVar f_new "tmpvec" (TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])])) in
+    (* struct tpc_arg_element local_arg *)
+    let local_arg = Cil.makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element") in
+  (* end *)
+
+  (*** Initialize local variables ***)
+  let stmts = ref [] in
+  (* remote_entry=NULL *)
+  stmts := Cil.mkStmtOneInstr (Set (var remote_entry, CastE(voidPtrType ,zero), locUnknown))::!stmts;
+  (* avail_task=NULL *)
+  stmts := Cil.mkStmtOneInstr (Set (var avail_task, CastE(voidPtrType ,zero), locUnknown))::!stmts;
+  (* arg_addr64=NULL *)
+  stmts := Cil.mkStmtOneInstr (Set (var arg_addr64, CastE(voidPtrType ,zero), locUnknown))::!stmts;
+  (* arg_size=0 *)
+  stmts := Cil.mkStmtOneInstr (Set (var arg_size, zero, locUnknown))::!stmts;
+  (* arg_flag=0 *)
+  stmts := Cil.mkStmtOneInstr (Set (var arg_flag, zero, locUnknown))::!stmts;
+  (* arg_stride=0 *)
+  stmts := Cil.mkStmtOneInstr (Set (var arg_stride, zero, locUnknown))::!stmts;
+
+  (* TODO: complete code *)
+
+  (* return task_id; *)
+  stmts := Cil.mkStmt (Return (Some (Lval (var task_id)), locUnknown))::!stmts;
+  f_new.sbody <- mkBlock !stmts;
   GFun (f_new, locUnknown)
 end
 
