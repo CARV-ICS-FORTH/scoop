@@ -764,7 +764,7 @@ class canDropStmtClass pRes = object
   inherit nopCilVisitor
         
   method vstmt s = 
-    if s.labels != [] then 
+    if s.labels != [] || s.pragmas != [] then 
       (pRes := false; SkipChildren)
     else 
       if !pRes then DoChildren else SkipChildren
@@ -815,7 +815,7 @@ module BlockChunk =
       if c.postins = [] then c.stmts
       else
         let rec toLast = function
-            [{skind=Instr il} as s] as stmts -> 
+            [{skind=Instr il} as s] as stmts when s.pragmas == [] -> 
               s.skind <- Instr (il @ (List.rev c.postins));
               stmts
 
@@ -966,6 +966,7 @@ module BlockChunk =
       if c.stmts == stmts' then c else {c with stmts = stmts'}
 
     let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
+      let c = { c with stmts = pushPostIns c; postins = []; } in
       let st, stmts' = getFirstInChunk c in
       (* Add the pragma attr *)
       st.pragmas <- (a, loc)::st.pragmas;

@@ -1320,14 +1320,14 @@ let compactStmts (b: stmt list) : stmt list =
     in
     match body with 
       [] -> finishLast []
-    | ({skind=Instr il} as s) :: rest ->
+    | ({skind=Instr il} as s) :: rest when s.pragmas = [] ->
         let ils = Clist.fromList il in
         if lastinstrstmt != dummyStmt && s.labels == [] then
           compress lastinstrstmt (Clist.append lastinstrs ils) rest
         else
           finishLast (compress s ils rest)
 
-    | {skind=Block b;labels = []} :: rest when b.battrs = [] ->
+    | {skind=Block b;labels = [];pragmas=[]} :: rest when b.battrs = [] ->
         compress lastinstrstmt lastinstrs (b.bstmts@rest)
     | s :: rest -> 
         let res = s :: compress dummyStmt Clist.empty rest in

@@ -106,7 +106,7 @@ let new_line () = ()
 let space () = ()
 let indent () = ()
 let unindent () = ()
-let force_new_line () = ()
+let force_new_line () = (print "\n")
 let flush () = ()
 let commit () = ()
 
