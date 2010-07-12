@@ -52,7 +52,7 @@ let doOneRet = ref false (* make a functions have at most one 'return' *)
 let doStackGuard = ref false (* instrument function calls and returns to
 maintain a separate stack for return addresses *)
 let doHeapify = ref false (* move stack-allocated arrays to the heap *)
-let makeCFG = ref true (* LOCKSMITH *) (* turn the input CIL file into something more like
+let makeCFG = ref false  (* turn the input CIL file into something more like
                           * a CFG *)
 let printStats = ref false
 
