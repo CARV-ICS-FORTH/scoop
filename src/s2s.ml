@@ -228,7 +228,7 @@ let feature : featureDescr =
   { fd_name = "findspucode";
     fd_enabled = ref true;
     fd_description = "find all pragmas declaring spu tasks";
-    fd_extraopt = [];
+    fd_extraopt = options;
     fd_doit = 
     (function (f: file) -> 
       (* get the input file for global use *)
