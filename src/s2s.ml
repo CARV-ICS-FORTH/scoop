@@ -63,7 +63,9 @@ and arg =
   | Out
   | InOut
 
-let spu_tasks = ref [];
+(* FIXME: in_file should refer to a file not a list*)
+(* create 2 lists (the ppc output file and the tasks list) and create a ref to the input file*)
+let spu_tasks, ppc_glist, in_file, func_id = ref [], ref [], ref [], ref 0;
 
 (* find the function definition of variable "name" in file f *)
 exception Found_fundec of fundec
@@ -87,11 +89,21 @@ let find_type (f: file) (name: string) : typ =
   try
     Cil.iterGlobals f findit;
     raise Not_found
-  with Found_type t -> t 
+  with Found_type t -> t
+
+(* make a tpc_ version of the function (for use on the ppc side) *)
+let make_tpc_func (f: fundec) : global = begin
+  print_endline ("tpc_func_" ^ f.svar.vname);
+  let f_new = Cil.emptyFunction ("tpc_func_" ^ f.svar.vname) in
+  (* TODO: add function call *)
+  GFun (f_new, locUnknown)
+end
 
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
+  (* visits all stmts and checks for pragma directives *)
+  (* FIXME: Should check only calls and maybe blocks *)
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
     if (prags != []) then begin
@@ -106,19 +118,33 @@ class findSPUDeclVisitor = object
 	      | _ -> ignore(E.error "impossible"); assert false
 	    ) args in
 	    print_endline ("Found task \""^funname^"\"");
-	    spu_tasks := (funname, args')::!spu_tasks;
-	    SkipChildren
+	    try
+	      (* check if we have seen this function before *)
+	      let ( _, new_fd) = List.assoc funname !spu_tasks in
+	      let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+	      let call = Cil.mkStmtOneInstr instr in
+	      ChangeTo(call)
+	    with Not_found -> begin
+	      let task = find_function_fundec (List.hd !in_file) funname in
+	      let new_tpc = make_tpc_func task in
+	      (* FIXME: Warning P: this pattern-matching is not exhaustive. *)
+	      let GFun(new_fd, _) = new_tpc in
+	      ppc_glist := new_tpc::(!ppc_glist);
+	      spu_tasks := (funname, (args', new_fd))::!spu_tasks;
+	      let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+	      let call = Cil.mkStmtOneInstr instr in
+	      ChangeTo(call)
+	      (* FIXME: Should replace the statement with a call to the new function *)
+	      (*let instr = Call (None, Lval (var task.svar), [], locUnknown) in
+	      let new_s = mkStmtOneInstr instr in
+	      ChangeTo(new_s)
+	      *)
+	      (*SkipChildren*)
+	    end
 	  end      
 	| _ -> print_endline "Unrecognized pragma"; SkipChildren
     end else
       DoChildren
-end
-
-(* make a tpc_ version of the function (for use on the ppc side) *)
-let make_tpc_func (f: fundec) : global = begin
-  let f_new = Cil.emptyFunction ("tpc_func_" ^ f.svar.vname) in
-  (* TODO: add function call *)
-  GFun (f_new, locUnknown)
 end
 
 (* Make the execute_func function that branches on the task id and
@@ -129,15 +155,15 @@ let make_exec_func (f: file) (tasks: fundec list) : global = begin
   (* make "queue_entry_t * volatile  ex_task" *)
   let arg1 = Cil.makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
   (* make "tpc_spe_task_state_t task_info" *)
-  let arg2 = Cil.makeFormalVar exec_func "task_info" (find_type f "tpc_spe_task_state_t") in
+  (* FIXME: Warning S: this expression should have type unit. *)
+  (Cil.makeFormalVar exec_func "task_info" (find_type f "tpc_spe_task_state_t"));
   (* make an int variable for the return value *)
   let lexit = Cil.makeLocalVar exec_func "exit" Cil.intType in
   (* make a switch statement with one case per task starting from zero *)
-  let i = ref 0 in
   let switchcases = List.map
     (fun task ->
-      let c = Case (integer !i, locUnknown) in
-      incr i;
+      let c = Case (integer !func_id, locUnknown) in
+      incr func_id;
       let instr = Call (None, Lval (var task.svar), [], locUnknown) in
       let call = Cil.mkStmtOneInstr instr in
       call.labels <- [c];
@@ -185,6 +211,7 @@ end
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
   (* FIXME: what if we move arround the executable? *)
+  (* FIXME: Warning S: this expression should have type unit. *)
   Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
@@ -204,18 +231,20 @@ let feature : featureDescr =
     fd_extraopt = [];
     fd_doit = 
     (function (f: file) -> 
+      (* get the input file for global use *)
+      in_file := [f];
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
-      visitCilFileSameGlobals fspuVisitor f;
 
-      (* create 2 global lists (the 2 output files) *)
-      let ppc_glist, spu_glist = ref [], ref [] in
+      (* create a global list (the spu output file) *)
+      let spu_glist = ref [] in
 
       (* copy all code from file f to file_ppc *)
       preprocessAndMergeWithHeader f "ppu_intrinsics.h";
       preprocessAndMergeWithHeader f "include/tpc_common.h";
       preprocessAndMergeWithHeader f "include/tpc_spe.h";
       ppc_glist := f.globals;
+      visitCilFileSameGlobals fspuVisitor f;
       (* copy all code from file f to file_spe plus the needed headers*)
       preprocessAndMergeWithHeader f "spu_intrinsics.h";
       preprocessAndMergeWithHeader f "spu_mfcio.h";
@@ -225,11 +254,7 @@ let feature : featureDescr =
       spu_glist := List.filter isNotMain f.globals;
 
       let tasks : fundec list = List.map
-        (fun (name, _) ->
-          let task = find_function_fundec f name in
-          ppc_glist := (make_tpc_func task)::(!ppc_glist);
-          task
-        )
+        (fun (name, _) -> find_function_fundec f name)
         !spu_tasks
       in
       spu_glist := List.append !spu_glist [(make_exec_func f tasks)];
