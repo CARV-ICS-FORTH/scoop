@@ -145,6 +145,14 @@ int main(int argc, char **argv)
     //tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
 
+	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
+	computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+	
+	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
+	{
+	  computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+	}
+	
   tpc_wait_all();
 
   if (arg_size) {

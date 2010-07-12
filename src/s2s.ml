@@ -142,7 +142,7 @@ class findSPUDeclVisitor = object
 		ChangeTo(call)
 	      end
 	    end
-	    | Block(b) -> print_endline "Ignoring block pragma"; SkipChildren
+	    | Block(b) -> print_endline "Ignoring block pragma"; DoChildren
 	    | _ -> print_endline "Ignoring pragma"; DoChildren
 	end
 	| _ -> print_endline "Unrecognized pragma"; DoChildren
