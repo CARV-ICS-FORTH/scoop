@@ -65,7 +65,7 @@ and arg =
 
 (* FIXME: in_file should refer to a file not a list*)
 (* create 2 lists (the ppc output file and the tasks list) and create a ref to the input file*)
-let spu_tasks, ppc_glist, in_file, func_id = ref [], ref [], ref [], ref 0;
+let spu_tasks, ppc_glist, in_file, func_id = ref [], ref [], ref Cil.dummyFile , ref 0;
 
 (* find the function definition of variable "name" in file f *)
 exception Found_fundec of fundec
@@ -93,8 +93,9 @@ let find_type (f: file) (name: string) : typ =
 
 (* make a tpc_ version of the function (for use on the ppc side) *)
 let make_tpc_func (f: fundec) : global = begin
-  print_endline ("tpc_func_" ^ f.svar.vname);
-  let f_new = Cil.emptyFunction ("tpc_func_" ^ f.svar.vname) in
+  print_endline ("Creating tpc_function_" ^ f.svar.vname);
+  let f_new = Cil.emptyFunction ("tpc_function_" ^ f.svar.vname) in
+  Cil.setFunctionTypeMakeFormals f_new f.svar.vtype;
   (* TODO: add function call *)
   GFun (f_new, locUnknown)
 end
@@ -103,46 +104,48 @@ end
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
   (* visits all stmts and checks for pragma directives *)
-  (* FIXME: Should check only calls and maybe blocks *)
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
-    if (prags != []) then begin
+    if (prags <> []) then begin
       print_endline "We 've got pragmas here";
       match (List.hd prags) with 
-	(Attr("tpc", [ACons(funname, args)]), _) -> begin
+	(Attr("tpc", args), _) -> begin
 	  let args' =
 	    List.map (fun arg -> match arg with
-		AStr("in") -> In
-	      | AStr("out") -> Out
-	      | AStr("inout") -> InOut
+		ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> In
+	      | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> Out
+	      | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> InOut
 	      | _ -> ignore(E.error "impossible"); assert false
 	    ) args in
-	    print_endline ("Found task \""^funname^"\"");
-	    try
-	      (* check if we have seen this function before *)
-	      let ( _, new_fd) = List.assoc funname !spu_tasks in
-	      let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
-	      let call = Cil.mkStmtOneInstr instr in
-	      ChangeTo(call)
-	    with Not_found -> begin
-	      let task = find_function_fundec (List.hd !in_file) funname in
-	      let new_tpc = make_tpc_func task in
-	      (* FIXME: Warning P: this pattern-matching is not exhaustive. *)
-	      let GFun(new_fd, _) = new_tpc in
-	      ppc_glist := new_tpc::(!ppc_glist);
-	      spu_tasks := (funname, (args', new_fd))::!spu_tasks;
-	      let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
-	      let call = Cil.mkStmtOneInstr instr in
-	      ChangeTo(call)
-	      (* FIXME: Should replace the statement with a call to the new function *)
-	      (*let instr = Call (None, Lval (var task.svar), [], locUnknown) in
-	      let new_s = mkStmtOneInstr instr in
-	      ChangeTo(new_s)
-	      *)
-	      (*SkipChildren*)
+	  match s.skind with 
+	    Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+	      print_endline "CALL";
+	      let funname = vi.vname in
+	      print_endline ("Found task \""^funname^"\"");
+	      try
+		(* check if we have seen this function before *)
+		let ( _, new_fd) = List.assoc funname !spu_tasks in
+		(* TODO: add arguments to the call *)
+		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+		let call = Cil.mkStmtOneInstr instr in
+		ChangeTo(call)
+	      with Not_found -> begin
+		let task = find_function_fundec (!in_file) funname in
+		let new_tpc = make_tpc_func task in
+		(* FIXME: Warning P: this pattern-matching is not exhaustive. *)
+		let GFun(new_fd, _) = new_tpc in
+		ppc_glist := new_tpc::(!ppc_glist);
+		spu_tasks := (funname, (args', new_fd))::!spu_tasks;
+		(* TODO: add arguments to the call *)
+		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+		let call = Cil.mkStmtOneInstr instr in
+		ChangeTo(call)
+	      end
 	    end
-	  end      
-	| _ -> print_endline "Unrecognized pragma"; SkipChildren
+	    | Block(b) -> print_endline "Ignoring block pragma"; SkipChildren
+	    | _ -> print_endline "Ignoring pragma"; DoChildren
+	end
+	| _ -> print_endline "Unrecognized pragma"; DoChildren
     end else
       DoChildren
 end
@@ -232,7 +235,7 @@ let feature : featureDescr =
     fd_doit = 
     (function (f: file) -> 
       (* get the input file for global use *)
-      in_file := [f];
+      in_file := f;
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
 
