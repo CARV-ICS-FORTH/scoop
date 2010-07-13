@@ -42,6 +42,8 @@ module S = Str
 module L = List
 
 let debug = ref false
+let stats = ref false
+let thread = ref false
 let out_name = ref "final"
 
 let options =
@@ -52,20 +54,31 @@ let options =
 
     "--out-name",
       Arg.String(fun s -> out_name := s),
-      " Specify the output files' prefix. (default: final) will produce final.c and final_func.c";
+      " Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
+
+    "--with-stats",
+      Arg.Set(stats),
+      " Enable code for statistics, for use with -DSTATISTICS";
+
+    "--threaded",
+      Arg.Set(thread),
+      " Generate thread safe code, for use with -DTPC_MULTITHREADED";
   ]
 
 
 type spu_task =
-  string * arg list
-and arg =
+  string * (string * arg_t * string) list
+and arg_t =
     In
   | Out
   | InOut
 
-(* FIXME: in_file should refer to a file not a list*)
-(* create 2 lists (the ppc output file and the tasks list) and create a ref to the input file*)
-let spu_tasks, ppc_glist, in_file, func_id = ref [], ref [], ref dummyFile , ref 0
+(* create 2 lists (the ppc output file and the tasks list) *)
+let spu_tasks, ppc_glist = ref [], ref []
+(* create a ref to the input file *)
+let in_file = ref dummyFile
+(* keeps the current funcid for the new tpc_function *)
+let func_id = ref 0
 
 (* find the function definition of variable "name" in file f *)
 exception Found_fundec of fundec
@@ -102,6 +115,7 @@ let find_type (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
+(* find the struct or union named struct/union <name> *)
 let find_tcomp (f: file) (name: string) : typ =
   let findit = function
     | GCompTag(ci, _) when ci.cname = name -> raise (Found_type (TComp(ci, [])))
@@ -122,6 +136,7 @@ let find_var (f: file) (name: string) : varinfo =
   in
   try
     iterGlobals f findit;
+    print_endline ("\""^name^"\" is not globally defined in "^f.fileName);
     raise Not_found
   with Found_var v -> v
 
@@ -313,9 +328,9 @@ class findSPUDeclVisitor = object
 	(Attr("tpc", args), _) -> begin
 	  let args' =
 	    List.map (fun arg -> match arg with
-		ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> In
-	      | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> Out
-	      | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> InOut
+		ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
+	      | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> (varname, Out, varsize)
+	      | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> (varname, InOut, varsize)
 	      | _ -> ignore(E.error "impossible"); assert false
 	    ) args in
 	  match s.skind with 
@@ -325,7 +340,7 @@ class findSPUDeclVisitor = object
 	      print_endline ("Found task \""^funname^"\"");
 	      try
 		(* check if we have seen this function before *)
-		let ( _, new_fd) = List.assoc funname !spu_tasks in
+		let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
 		(* TODO: add arguments to the call *)
 		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
 		let call = mkStmtOneInstr instr in
@@ -336,7 +351,7 @@ class findSPUDeclVisitor = object
 		(* FIXME: Warning P: this pattern-matching is not exhaustive. *)
 		let GFun(new_fd, _) = new_tpc in
 		ppc_glist := new_tpc::(!ppc_glist);
-		spu_tasks := (funname, (args', new_fd))::!spu_tasks;
+		spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
 		(* TODO: add arguments to the call *)
 		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
 		let call = mkStmtOneInstr instr in
@@ -363,7 +378,7 @@ end
 
 (* Make the execute_func function that branches on the task id and
  * calls the actual task function on the spe *)
-let make_exec_func (f: file) (tasks: (fundec * fundec) list) : global = begin
+let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string) list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   (* make "queue_entry_t * volatile  ex_task" *)
@@ -376,12 +391,16 @@ let make_exec_func (f: file) (tasks: (fundec * fundec) list) : global = begin
   (* make a switch statement with one case per task starting from zero *)
   let id = ref 0 in
   let switchcases = List.map
-    (fun (tpc_call, task) ->
+    (fun (tpc_call, task, fargs) ->
       let c = Case (integer !id, locUnknown) in
       incr id;
-      (* add the arguments' declarations and *)
+      (* add the arguments' declarations *)
       let args = get_tpc_added_formals tpc_call task in
-      
+      let sizes = [] in
+(*      List.iter
+	(fun (_, var_type, varsize) -> (find_var !in_file varsize)::sizes; ())
+	fargs;
+      args@(List.rev sizes);*)
       (* push them to the call *)
       let args' = List.map
 	(fun arg -> Lval(var arg))
@@ -482,9 +501,9 @@ let feature : featureDescr =
       (* copy all globals except the function declaration of "main" *)
       spu_glist := List.filter isNotMain f.globals;
 
-      (* tasks  (new_tpc * old_original) *)
-      let tasks : (fundec * fundec) list = List.map
-        (fun (name, _) -> (find_function_fundec_g !ppc_glist ("tpc_function_"^name), find_function_fundec f name))
+      (* tasks  (new_tpc * old_original * args) *)
+      let tasks : (fundec * fundec * (string * arg_t * string) list) list = List.map
+        (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
         (List.rev !spu_tasks)
       in
       spu_glist := List.append !spu_glist [(make_exec_func f tasks)];

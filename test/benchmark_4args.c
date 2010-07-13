@@ -23,6 +23,11 @@ int computation_func0(int *class1, int *class2, int *class3, int *class4)
   return 0;
 }
 
+int computation_func13(int *class1, int *class2)
+{
+  return 0;
+}
+
 int main(int argc, char **argv)
 {
   int c, tmp;
@@ -145,12 +150,12 @@ int main(int argc, char **argv)
     //tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
 
-	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
-	computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size))
+	computation_func13(tpc_buf[0], tpc_buf[1]);
 	
-	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
+	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size))
 	{
-	  computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+	  computation_func13(tpc_buf[0], tpc_buf[1]);
 	}
 	
   tpc_wait_all();
