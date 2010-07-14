@@ -36,6 +36,7 @@
 
 open Pretty
 open Cil
+open Lockutil
 module E = Errormsg
 module H = Hashtbl
 module S = Str
@@ -155,7 +156,7 @@ let find_enum (f: file) (name: string) : enuminfo =
   with Found_enum ei -> ei
 
 (* make a tpc_ version of the function (for use on the ppc side) *)
-let make_tpc_func (f: fundec) : global = begin
+let make_tpc_func (f: fundec) : fundec = begin
   print_endline ("Creating tpc_function_" ^ f.svar.vname);
   let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
   setFunctionTypeMakeFormals f_new f.svar.vtype;
@@ -240,7 +241,7 @@ let make_tpc_func (f: fundec) : global = begin
   let big_offset = Index(Lval(var s_available_spe), Index(Lval((Var(task_queue_tail) , Index(Lval(var s_available_spe), NoOffset))), NoOffset)) in
   (* st = &compl_queue[s_available_spe][task_queue_tail[s_available_spe]] *)
   w_body := mkStmtOneInstr (Set (var st, AddrOf((Var compl_queue, big_offset)) , locUnknown))::!w_body;
-  let st_status = Lockutil.mkPtrFieldAccess (var st) "status" in
+  let st_status = mkPtrFieldAccess (var st) "status" in
   (* st->status = WAITING; break; *)
   let bthen = mkBlock [ mkStmtOneInstr (Set (st_status, Const(CEnum(zero, "WAITING", compl_status_enum)), locUnknown) ); mkStmt (Break locUnknown) ] in
   (* s_available_spe = (s_available_spe+1) % G_max_spes; *)
@@ -279,16 +280,16 @@ let make_tpc_func (f: fundec) : global = begin
   (* avail_task = &task_queue[s_available_spe][task_queue_tail[s_available_spe]]; *)
   stmts := mkStmtOneInstr(Set (var avail_task, AddrOf((Var task_queue, big_offset)) , locUnknown))::!stmts;
   (* avail_task->funcid = (uint8_t)funcid; *)
-  stmts := mkStmtOneInstr(Set (Lockutil.mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
+  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  stmts := mkStmtOneInstr(Set (Lockutil.mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
+  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
   (* total_bytes=0; *)
   stmts := mkStmtOneInstr(Set (var total_bytes, zero, locUnknown))::!stmts;
 
   (* TODO: complete code depending on arguments *)
 
   (* avail_task->active = ACTIVE *)
-  stmts := mkStmtOneInstr(Set (Lockutil.mkPtrFieldAccess (var avail_task) "active", Const(CEnum(one, "ACTIVE", entry_status_enum)), locUnknown))::!stmts;
+  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "active", Const(CEnum(one, "ACTIVE", entry_status_enum)), locUnknown))::!stmts;
   (* TODO:
     READ_TIME_REG(tmptime3);
     #ifdef STATISTICS
@@ -315,7 +316,7 @@ let make_tpc_func (f: fundec) : global = begin
   (* reverse the stmt list and put it in the body *)
   f_new.sbody <- mkBlock (List.rev !stmts);
   incr func_id;
-  GFun (f_new, locUnknown)
+  f_new
 end
 
 (* populates the global list of spu tasks [spu_tasks] *)
@@ -349,9 +350,7 @@ class findSPUDeclVisitor = object
                 ChangeTo(call)
               with Not_found -> begin
                 let task = find_function_fundec (!in_file) funname in
-                let new_tpc = make_tpc_func task in
-                (* FIXME: Warning P: this pattern-matching is not exhaustive. *)
-                let GFun(new_fd, _) = new_tpc in
+                let new_fd = make_tpc_func task in
                 Lockutil.add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
                 (* TODO: add arguments to the call *)
@@ -378,16 +377,66 @@ let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
     new_f.sformals
 end
 
+let make_case execfun (f_task: fundec) (task_info: varinfo)
+              (ex_task: varinfo) (executed: exp) : stmt = begin
+  let res = ref [] in
+  assert(isFunctionType f_task.svar.vtype);
+  let ret, arglopt, hasvararg, _ = splitFunctionType f_task.svar.vtype in
+  assert(not hasvararg);
+  let argl = match arglopt with None -> [] | Some l -> l in
+  let argaddr = makeTempVar execfun voidPtrType in
+  res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
+  let nextaddr n =
+    let lv = mkPtrFieldAccess (var ex_task) "arguments" in
+    let t = typeOfLval lv in
+    assert(isArrayType t);
+    let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
+    let szlv = mkFieldAccess idxlv "size" in
+    let plus = (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType)) in
+    Set(var argaddr, plus, locUnknown);
+  in
+  let i = ref 0 in
+  let carry = ref dummyInstr in
+  let arglist = List.map
+    (fun (_, argt, _) ->
+      let argvar = makeTempVar execfun argt in
+      let castexp = CastE(TPtr(argt, []), Lval(var argaddr)) in
+      let castinstr = Set(var argvar, castexp, locUnknown) in
+      let advptrinstr = nextaddr !i in
+      incr i;
+      res := castinstr :: !res;
+      if !carry <> dummyInstr then res := !carry::!res;
+      carry := advptrinstr;
+      Lval(var argvar)
+    )
+    argl
+  in
+  res := Call (None, Lval (var f_task.svar), arglist, locUnknown)::!res;
+  res := Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)::!res;
+  mkStmt (Instr (List.rev !res))
+end
+(*
+    case 0:
+      //printf("SPU: Dispatch (%p) (%d,%d,%p)\n", task_info->ls_addr,
+//          task_info->state, task_info->dmatag, task_info->dmalist);
+      arg1 = (float * )task_info->ls_addr;
+      arg2 = (float * )((void * )arg1 + ex_task->arguments[0].size);
+      arg3 = (int * )((void * )arg2 + ex_task->arguments[1].size);
+      matrix_add_row(arg1, arg2, arg3);
+      task_info->state = EXECUTED;
+      break;
+*)
+
 (* Make the execute_func function that branches on the task id and
  * calls the actual task function on the spe *)
 let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string) list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   (* make "queue_entry_t * volatile  ex_task" *)
-  let arg1 = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
+  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
   (* make "tpc_spe_task_state_t task_info" *)
   (* FIXME: Warning S: this expression should have type unit. *)
-  let arg2 = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
+  let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
   (* make an int variable for the return value *)
   let lexit = makeLocalVar exec_func "exit" intType in
   (* make a switch statement with one case per task starting from zero *)
@@ -396,51 +445,29 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
     (fun (tpc_call, task, fargs) ->
       let c = Case (integer !id, locUnknown) in
       incr id;
+      let task_state_enum = find_enum !in_file "task_state" in
+      let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
+      let executed = find_executed task_state_enum.eitems in
+      let body = make_case exec_func task task_info ex_task executed in
       (* add the arguments' declarations *)
-      let args = get_tpc_added_formals tpc_call task in
-      let sizes = [] in
-(*      List.iter
-        (fun (_, var_type, varsize) -> (find_var !in_file varsize)::sizes; ())
-        fargs;
-      args@(List.rev sizes);*)
-      (* push them to the call *)
-      let args' = List.map
-        (fun arg -> Lval(var arg))
-        args
-      in
-      let instr = Call (None, Lval (var task.svar), args', locUnknown) in
-      let call = mkStmtOneInstr instr in
-      call.labels <- [c];
-      let stmt_list = [call; mkStmt (Break locUnknown)] in
+      body.labels <- [c];
+      let stmt_list = [body; mkStmt (Break locUnknown)] in
       stmt_list
     )
     tasks
   in
   let cases = List.map List.hd switchcases in
-  (* let one = 1*)
-  let one = Const(CInt64(Int64.one, IInt, None)) in
-  (* make stmt exit=1; *)
   let assignment = mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
-  (* set it's label to default *)
   assignment.labels <- [Default(locUnknown)];
-  (* append the new stmt to the switch *)
   let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
-  (* make stmt exit=0; *)
   let exit0 = mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
-  (* make return exit; *)
   let retstmt = mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
+
   (* the case expression of the switch statement (switch(expr)) *)
-  let expr = Lval (Lockutil.mkPtrFieldAccess (var arg1) "funcid") in
-  let switchstmt = mkStmt (
-    Switch ( expr , mkBlock switchcases2, cases, locUnknown)
-  ) in
-  (* get the task_state enuminfo *)
-  let task_state_enum = find_enum !in_file "task_state" in
-  let three = Const(CInt64(Int64.of_int 3, IInt, None)) in
-  (* task_info->state = EXECUTED *)
-  let exec_s = mkStmtOneInstr(Set (Lockutil.mkPtrFieldAccess (var arg2) "state", Const(CEnum(three, "EXECUTED", task_state_enum)), locUnknown)) in
+  let expr = Lval (mkPtrFieldAccess (var ex_task) "funcid") in
+  let switchstmt = mkStmt(Switch (expr , mkBlock switchcases2, cases, locUnknown)) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
-  exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
+  exec_func.sbody <- mkBlock [exit0; switchstmt; retstmt];
   GFun (exec_func, locUnknown)
 end
 
@@ -469,8 +496,7 @@ end
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
   (* FIXME: what if we move arround the executable? *)
-  (* FIXME: Warning S: this expression should have type unit. *)
-  Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h");
+  ignore (Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
