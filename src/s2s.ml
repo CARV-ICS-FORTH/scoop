@@ -73,10 +73,12 @@ and arg_t =
   | Out
   | InOut
 
-(* create 2 lists (the ppc output file and the tasks list) *)
-let spu_tasks, ppc_glist = ref [], ref []
+(* create 1 global list (the spe output file) *)
+let spu_tasks = ref []
 (* create a ref to the input file *)
 let in_file = ref dummyFile
+(* create a ref to the new ppe file *)
+let ppc_file = ref dummyFile
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
@@ -350,7 +352,7 @@ class findSPUDeclVisitor = object
                 let new_tpc = make_tpc_func task in
                 (* FIXME: Warning P: this pattern-matching is not exhaustive. *)
                 let GFun(new_fd, _) = new_tpc in
-                ppc_glist := new_tpc::(!ppc_glist);
+                Lockutil.add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
                 (* TODO: add arguments to the call *)
                 let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
@@ -443,7 +445,7 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
 end
 
 (* write an AST (list of globals) into a file *)
-let writeFile f fname globals = begin
+let writeNewFile f fname globals = begin
   let file = { f with
     fileName = fname;
     globals = globals;
@@ -451,6 +453,14 @@ let writeFile f fname globals = begin
   let oc = open_out fname in
   Rmtmps.removeUnusedTemps file;
   dumpFile defaultCilPrinter oc fname file;
+  close_out oc
+end
+
+(* write an AST (list of globals) into a file *)
+let writeFile f = begin
+  let oc = open_out f.fileName in
+  Rmtmps.removeUnusedTemps f;
+  dumpFile defaultCilPrinter oc f.fileName f;
   close_out oc
 end
 
@@ -481,6 +491,7 @@ let feature : featureDescr =
     (function (f: file) -> 
       (* get the input file for global use *)
       in_file := f;
+      ppc_file := { f with fileName = (!out_name^".c");};
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
 
@@ -488,11 +499,10 @@ let feature : featureDescr =
       let spu_glist = ref [] in
 
       (* copy all code from file f to file_ppc *)
-      preprocessAndMergeWithHeader f "ppu_intrinsics.h";
-      preprocessAndMergeWithHeader f "include/tpc_common.h";
-      preprocessAndMergeWithHeader f "include/tpc_spe.h";
-      ppc_glist := f.globals;
-      visitCilFileSameGlobals fspuVisitor f;
+      preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h";
+      preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h";
+      preprocessAndMergeWithHeader !ppc_file "include/tpc_spe.h";
+      visitCilFileSameGlobals fspuVisitor !ppc_file;
       (* copy all code from file f to file_spe plus the needed headers*)
       preprocessAndMergeWithHeader f "spu_intrinsics.h";
       preprocessAndMergeWithHeader f "spu_mfcio.h";
@@ -507,8 +517,8 @@ let feature : featureDescr =
         (List.rev !spu_tasks)
       in
       spu_glist := List.append !spu_glist [(make_exec_func f tasks)];
-      writeFile f (!out_name^".c") !ppc_glist;
-      writeFile f (!out_name^"_func.c") !spu_glist;
+      writeFile !ppc_file;
+      writeNewFile f (!out_name^"_func.c") !spu_glist;
       );
     fd_post_check = true;
   } 
