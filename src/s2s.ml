@@ -2,7 +2,7 @@
  *
  * Copyright (c) 2010, 
  *  Polyvios Pratikakis <polyvios@ics.forth.gr>
- *  Foivos Zakkak	<zakkak@ics.forth.gr>
+ *  Foivos Zakkak        <zakkak@ics.forth.gr>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -325,43 +325,43 @@ class findSPUDeclVisitor = object
     if (prags <> []) then begin
       print_endline "We 've got pragmas here";
       match (List.hd prags) with 
-	(Attr("tpc", args), _) -> begin
-	  let args' =
-	    List.map (fun arg -> match arg with
-		ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
-	      | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> (varname, Out, varsize)
-	      | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> (varname, InOut, varsize)
-	      | _ -> ignore(E.error "impossible"); assert false
-	    ) args in
-	  match s.skind with 
-	    Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
-	      print_endline "CALL";
-	      let funname = vi.vname in
-	      print_endline ("Found task \""^funname^"\"");
-	      try
-		(* check if we have seen this function before *)
-		let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
-		(* TODO: add arguments to the call *)
-		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
-		let call = mkStmtOneInstr instr in
-		ChangeTo(call)
-	      with Not_found -> begin
-		let task = find_function_fundec (!in_file) funname in
-		let new_tpc = make_tpc_func task in
-		(* FIXME: Warning P: this pattern-matching is not exhaustive. *)
-		let GFun(new_fd, _) = new_tpc in
-		ppc_glist := new_tpc::(!ppc_glist);
-		spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
-		(* TODO: add arguments to the call *)
-		let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
-		let call = mkStmtOneInstr instr in
-		ChangeTo(call)
-	      end
-	    end
-	    | Block(b) -> print_endline "Ignoring block pragma"; DoChildren
-	    | _ -> print_endline "Ignoring pragma"; DoChildren
-	end
-	| _ -> print_endline "Unrecognized pragma"; DoChildren
+        (Attr("tpc", args), _) -> begin
+          let args' =
+            List.map (fun arg -> match arg with
+                ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
+              | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> (varname, Out, varsize)
+              | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> (varname, InOut, varsize)
+              | _ -> ignore(E.error "impossible"); assert false
+            ) args in
+          match s.skind with 
+            Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+              print_endline "CALL";
+              let funname = vi.vname in
+              print_endline ("Found task \""^funname^"\"");
+              try
+                (* check if we have seen this function before *)
+                let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
+                (* TODO: add arguments to the call *)
+                let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+                let call = mkStmtOneInstr instr in
+                ChangeTo(call)
+              with Not_found -> begin
+                let task = find_function_fundec (!in_file) funname in
+                let new_tpc = make_tpc_func task in
+                (* FIXME: Warning P: this pattern-matching is not exhaustive. *)
+                let GFun(new_fd, _) = new_tpc in
+                ppc_glist := new_tpc::(!ppc_glist);
+                spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
+                (* TODO: add arguments to the call *)
+                let instr = Call (None, Lval (var new_fd.svar), [], locUnknown) in
+                let call = mkStmtOneInstr instr in
+                ChangeTo(call)
+              end
+            end
+            | Block(b) -> print_endline "Ignoring block pragma"; DoChildren
+            | _ -> print_endline "Ignoring pragma"; DoChildren
+        end
+        | _ -> print_endline "Unrecognized pragma"; DoChildren
     end else
       DoChildren
 end
@@ -369,9 +369,9 @@ end
 let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
   List.filter 
     (fun formal -> 
-	List.exists 
-	  (fun formal2 -> formal <> formal2 )
-	  old_f.sformals
+        List.exists 
+          (fun formal2 -> formal <> formal2 )
+          old_f.sformals
     )
     new_f.sformals
 end
@@ -398,13 +398,13 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
       let args = get_tpc_added_formals tpc_call task in
       let sizes = [] in
 (*      List.iter
-	(fun (_, var_type, varsize) -> (find_var !in_file varsize)::sizes; ())
-	fargs;
+        (fun (_, var_type, varsize) -> (find_var !in_file varsize)::sizes; ())
+        fargs;
       args@(List.rev sizes);*)
       (* push them to the call *)
       let args' = List.map
-	(fun arg -> Lval(var arg))
-	args
+        (fun arg -> Lval(var arg))
+        args
       in
       let instr = Call (None, Lval (var task.svar), args', locUnknown) in
       let call = mkStmtOneInstr instr in
