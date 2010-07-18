@@ -51,19 +51,19 @@ let options =
   [
     "--debug-tpctool",
       Arg.Set(debug),
-      " Print debugging information.";
+      " S2S: Print debugging information.";
 
     "--out-name",
       Arg.String(fun s -> out_name := s),
-      " Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
+      " S2S: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
 
     "--with-stats",
       Arg.Set(stats),
-      " Enable code for statistics, for use with -DSTATISTICS";
+      " S2S: Enable code for statistics, for use with -DSTATISTICS";
 
     "--threaded",
       Arg.Set(thread),
-      " Generate thread safe code, for use with -DTPC_MULTITHREADED";
+      " S2S: Generate thread safe code, for use with -DTPC_MULTITHREADED";
   ]
 
 
@@ -171,20 +171,28 @@ let findLocal (fd: fundec) (name: string) : varinfo =
   avail_task->active = ACTIVE; stmt *)
 let rec get_head = function
  [] -> raise Not_found
- | (_, _,Instr(Set (_, Const(CEnum(one, "ACTIVE", _)), _)::_), _, _, _)::tail -> []
- | hd::tl -> hd::(get_head tl)
+ | s::tl -> match s.skind with 
+    Instr(Set (_, Const(CEnum(_, "ACTIVE", _)), _)::_) -> []
+    | Instr(_) -> print_endline "INSTR"; s::(get_head tl)
+    | Block(_) -> print_endline "BLOCK"; s::(get_head tl)
+    | _ -> print_endline "LALALA"; s::(get_head tl)
 
 (* takes a stmt list and returns avail_task->active = ACTIVE; stmt
   with all the stmts after it *)
 let rec get_tail = function
  [] -> raise Not_found
- | (_, _,Instr(Set (_, Const(CEnum(one, "ACTIVE", _)), _)::_), _, _, _)::tail -> tail
- | hd::tl -> hd::(get_tail tl)
+ | s::tl -> match s.skind with
+    Instr(Set (_, Const(CEnum(one, "ACTIVE", _)), _)::_) -> tl
+    | _ -> (get_tail tl)
+
+(*let doArgument (arg: (string * arg_t * string)) : stmt list = begin
+
+end*)
 
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (f: fundec) : fundec = begin
+let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = begin
   print_endline ("Creating tpc_function_" ^ f.svar.vname);
   let skeleton = find_function_fundec (!in_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ f.svar.vname) in
@@ -192,7 +200,8 @@ let make_tpc_func (f: fundec) : fundec = begin
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new f.svar.vtype;
   (* set sallstmts for f_new *)
-(*   computeCFGInfo f_new true; *)
+  (*prepareCFG f_new;
+  computeCFGInfo f_new true;*)
   let avail_task = findLocal f_new "avail_task" in
   let stmts = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
@@ -201,15 +210,27 @@ let make_tpc_func (f: fundec) : fundec = begin
   stmts := mkStmtOneInstr(Set (Lockutil.mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
   
   (* if we have arguments *)
-(*   if (f_new.sformals <> []) then begin *)
-    (* push the arguments in the task descriptor*)
-(*   end *)
+(*  if (f_new.sformals <> []) then begin
+    (*(* void *arg_addr64 *)
+    let arg_addr64 = makeLocalVar f_new "arg_addr64" voidPtrType in
+    (* unsigned int arg_size *)
+    let arg_size = makeLocalVar f_new "arg_size" uintType in
+    (* unsigned int arg_flag *)
+    let arg_flag = makeLocalVar f_new "arg_flag" uintType in
+    (* unsigned int arg_stride *)
+    let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
+    (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
+    let tmpvec = makeLocalVar f_new "tmpvec" (TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])])) in
+    (* struct tpc_arg_element local_arg *)
+    let local_arg = makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element") in
+    ();
+  end*)
   (* TODO: complete code depending on arguments *)
 
   (* insert stmts before avail_task->active = ACTIVE; *)
-(*  let head = get_head f_new.sbody.bstmts in
+  let head = get_head f_new.sbody.bstmts in
   let tail = get_tail f_new.sbody.bstmts in
-  f_new.sbody.bstmts <- head@(List.rev stmts)@tail;*)
+  f_new.sbody.bstmts <- head@(List.rev !stmts)@tail;
 
   (*let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
   setFunctionTypeMakeFormals f_new f.svar.vtype;
@@ -403,7 +424,7 @@ class findSPUDeclVisitor = object
                 ChangeTo(call)
               with Not_found -> begin
                 let task = find_function_fundec (!in_file) funname in
-                let new_fd = make_tpc_func task in
+                let new_fd = make_tpc_func task args' in
                 Lockutil.add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
                 (* TODO: add arguments to the call *)

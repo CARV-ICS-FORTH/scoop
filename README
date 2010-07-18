@@ -1,9 +1,12 @@
 Dependencies:
 
 ocaml
-caml4
+camlp4
 flex
 bison
+indent
+ncurses-devel
+emacs
 
 INSTALL:
 
@@ -12,4 +15,4 @@ INSTALL:
 RUN:
 
 cd test
-./cil.sh <file>
+./cil.sh <file> [file2 ...]
