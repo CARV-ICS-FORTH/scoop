@@ -273,8 +273,8 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new f.svar.vtype;
   (* create the arg_size* formals *)
-  let args_num = List.length f_new.sformals in
-  for i = 1 to args_num do
+  let args_num = (List.length f_new.sformals)-1 in
+  for i = 0 to args_num do
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType)
   done;
   let avail_task = findLocal f_new "avail_task" in
@@ -296,12 +296,14 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     let arg_flag = makeLocalVar f_new "arg_flag" uintType in
     (* unsigned int arg_stride *)
     let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
-    (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
-    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])]) in
+    (* vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+    (*FIXME:??? produces __attribute__((__altivec__(vector__))) *)
+    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("altivec", [AStr("vector__")])]) in
     let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
-    for i = 1 to args_num do
+    for i = 0 to args_num do
+      print_endline ((string_of_int i)^" of "^(string_of_int args_num));
       (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
       let (av_task_arg, _) = mkPtrFieldAccess (var avail_task) "arguments" in
       let av_task_arg_idx = (av_task_arg, Index(integer i,NoOffset)) in
@@ -317,7 +319,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* insert instrs before avail_task->active = ACTIVE;
      we place a Foo_32412312231() call just above avail_task->active = ACTIVE
      to achieve that *)
-  f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s "Foo_32412312231" !instrs) f_new.sbody.bstmts;
+  f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s "Foo_32412312231" (List.rev !instrs)) f_new.sbody.bstmts;
 
   (*let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
   setFunctionTypeMakeFormals f_new f.svar.vtype;
@@ -507,12 +509,12 @@ class findSPUDeclVisitor = object
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
                 (* add arguments to the call *)
                 let call_args = ref [] in
-                let args_num = ((List.length new_fd.sformals)/2) in
-                for i = 1 to args_num do
+                let args_num = ((List.length new_fd.sformals)/2)-1 in
+                for i = 0 to args_num do
                   let (vname, _, _) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
                 done;
-                for i = 1 to args_num do
+                for i = 0 to args_num do
                   let (_, _, vsize) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
                 done;
@@ -526,12 +528,12 @@ class findSPUDeclVisitor = object
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
                 (* add arguments to the call *)
                 let call_args = ref [] in
-                let args_num = ((List.length new_fd.sformals)/2) in
-                for i = 1 to args_num do
+                let args_num = ((List.length new_fd.sformals)/2)-1 in
+                for i = 0 to args_num do
                   let (vname, _, _) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
                 done;
-                for i = 1 to args_num do
+                for i = 0 to args_num do
                   let (_, _, vsize) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
                 done;
