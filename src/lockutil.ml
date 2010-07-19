@@ -115,6 +115,19 @@ let find_function_fundec (f: file) (name: string) : fundec =
   with Found_fundec v -> v
 
 
+class changeInstrVisitor (s: string) (il: instr list) : cilVisitor =
+  object (self)
+    inherit nopCilVisitor
+    method vinst = function
+      Call(_, Lval(Var v, NoOffset), _, _) when v.vname = s -> ChangeTo il
+    | _ -> SkipChildren
+  end
+
+let replace_fake_call (s: stmt) (fake: string) (il: instr list) =
+  let v = new changeInstrVisitor fake il in
+  visitCilStmt v s
+
+
 class addFunVisitor (f_old: string) (f_new: fundec) : cilVisitor = object (self)
   inherit nopCilVisitor
   method vglob glob =

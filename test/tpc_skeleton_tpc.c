@@ -89,7 +89,8 @@ int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int
 //     local_arg.stride = arg_stride;
 //     *tmpvec = *((volatile vector unsigned char *)&local_arg);
 //   }
-  
+  Foo_32412312231();
+
   avail_task->active = ACTIVE;
 
   READ_TIME_REG(tmptime3);

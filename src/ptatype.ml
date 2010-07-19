@@ -86,7 +86,6 @@ let do_void_conflate = ref false
 let do_void_single = ref false
 let do_uniq = ref true
 let do_existentials = ref true
-let do_down = ref true
 let do_ignore_casts = ref true
 let do_compact_structs = ref false
 let do_one_effect = ref true
@@ -127,10 +126,6 @@ let options = [
   "--no-existentials",
     Arg.Unit(fun () -> do_existentials := false; do_compact_structs := true),
     " Don't use existential types";
-
-  "--no-down",
-    Arg.Clear(do_down),
-    " Don't apply [down] (loop bodies for alloc effects, and forks for cont. effects)";
 
   "--no-ignore-casts",
     Arg.Clear(do_ignore_casts),
@@ -1095,6 +1090,7 @@ let env_del_unpack_ei (e: env) (name: string) : env =
   { e with unpacked_map = Strmap.remove name e.unpacked_map; }
 
 let global_env : env ref = ref (fresh_env())
+let global_fun_envs : (fundec * env) list ref = ref []
 
 let env_lookup (varname: string) (e: env) : (tau * rho) =
   try
@@ -2443,7 +2439,7 @@ let handle_exit (_: exp list)
                 : gamma =
   (input_env, CF.empty_phi, LF.make_effect "exit-effect" false)
 
-let empty_handler _ _ _ e p ef lef = (e, p, ef)
+let empty_handler _ _ _ e p ef = (e, p, ef)
 
 let handle_fork (_: exp list)
                 (_: lval option)
@@ -2495,7 +2491,7 @@ let handle_fork (_: exp list)
 
       add_fork input_effect eff_after eff_forked
         phi_before phi_after phi_forked 
-        (function () -> let (_,rs) = find_free_vars input_env in rs);
+        (function () -> find_free_vars input_env);
 
       (* log *)
       if !debug then
@@ -2503,7 +2499,7 @@ let handle_fork (_: exp list)
           CF.d_phi phi_before
           CF.d_phi phi_after
           CF.d_phi phi_forked);
-      (input_env, phi_after, eff_after), fi.fd_epsilon
+      (input_env, phi_after, eff_after)
   | _ ->
       ignore(error "calling fork with bad arguments");
       raise TypingBug 
@@ -2530,7 +2526,7 @@ let handle_memcpy (_: exp list)
                   (input_env: env)
                   (input_phi: phi)
                   (input_effect: effect)
-                  : gamma * S.epsilon =
+                  : gamma =
   match args with
     ({t=(ITPtr(s1,r1))},u1)::({t=(ITPtr(s2,r2))},u2)::_ ->
       sub_tau !s2 !s1;
@@ -2538,7 +2534,7 @@ let handle_memcpy (_: exp list)
       read_rho r2 input_phi input_effect u2;
       visit_concrete_tau (fun r -> write_rho r input_phi input_effect u1) !s1;
       visit_concrete_tau (fun r -> read_rho r input_phi input_effect u2) !s2;
-      (input_env, input_phi, input_effect), S.empty_epsilon
+      (input_env, input_phi, input_effect)
   | _ ->
       ignore(error "calling memcpy with bad arguments");
       raise TypingBug
@@ -2549,14 +2545,14 @@ let handle_va_start (el: exp list)
                     (input_env: env)
                     (input_phi: phi)
                     (input_effect: effect)
-                    : gamma * S.epsilon =
+                    : gamma =
 (* polyvios: we don't really need a va_start handler, i think.
  * it does not dereference its second argument either.  It just
  * gets its address and computes the address of the argumetn that
  * follows it.
  * So, i'm commenting out the body of the handler, it's a no-op from now on
  *)
- (input_env, input_phi, input_effect), S.empty_epsilon
+ (input_env, input_phi, input_effect)
 (*match el with
     _::Lval(Var(vi), NoOffset)::_
   | _::CastE(_,Lval(Var(vi), NoOffset))::_ ->
@@ -2578,7 +2574,7 @@ let handle_va_arg (_: exp list)
                   (input_env: env)
                   (input_phi: phi)
                   (input_effect: effect)
-                  : gamma * S.epsilon =
+                  : gamma =
   match lvo with
     None ->
         ignore(error "calling va_arg without assigning the result");
@@ -2589,7 +2585,7 @@ let handle_va_arg (_: exp list)
       match args with
         ({t = ITBuiltin_va_list vi},_)::_ ->
           add_type_to_vinfo lv_type (U.deref vi);
-          (lv_env, lv_phi, lv_effect), S.empty_epsilon
+          (lv_env, lv_phi, lv_effect)
       | _ ->
           ignore(error "calling va_arg without a va_list arg");
           raise TypingBug
@@ -2601,15 +2597,15 @@ let handle_strcmp (_: exp list)
                   (input_env: env)
                   (input_phi: phi)
                   (input_effect: effect)
-                  : gamma * S.epsilon =
+                  : gamma =
   match args with
     ({t=(ITPtr(s1,r1))},u1)::({t=(ITPtr(s2,r2))},u2)::_ ->
       read_rho r1 input_phi input_effect u1;
       read_rho r2 input_phi input_effect u2;
-      (input_env, input_phi, input_effect), S.empty_epsilon
+      (input_env, input_phi, input_effect)
   | _ ->
       ignore(warn "Calling strcmp with bad arguments.");
-      (input_env, input_phi, input_effect), S.empty_epsilon
+      (input_env, input_phi, input_effect)
 
 let handle_start_unpack (el: exp list)
                         (lv: lval option)
@@ -2617,7 +2613,7 @@ let handle_start_unpack (el: exp list)
                         (input_env: env)
                         (input_phi: phi)
                         (input_effect: effect)
-                        : gamma * S.epsilon =
+                        : gamma =
   if !do_existentials then begin
     let err () =
       ignore(error "start_unpack() argument should be a local variable, \
@@ -2650,11 +2646,11 @@ let handle_start_unpack (el: exp list)
             effect_flows eff ei.exist_effect;
             effect_flows eff input_effect;
             let e2 = env_add_unpack_ei input_env vi.vname ei (newt, var_rho) in
-            (e2, input_phi, eff), S.empty_epsilon
+            (e2, input_phi, eff)
         | _ -> err ()
       end
     | _ -> err ()
-  end else (input_env, input_phi, input_effect), S.empty_epsilon
+  end else (input_env, input_phi, input_effect)
 
 let handle_end_unpack (el: exp list)
                       (lv: lval option)
@@ -2662,7 +2658,7 @@ let handle_end_unpack (el: exp list)
                       (input_env: env)
                       (input_phi: phi)
                       (input_effect: effect)
-                      : gamma * S.epsilon =
+                      : gamma =
   if !do_existentials then begin
     let err () = 
       ignore(error "end_unpack() argument should be a local variable, \
@@ -2688,11 +2684,11 @@ let handle_end_unpack (el: exp list)
             let newt = make_tau (ITPtr(ref et, var_rho)) (STPtr ets) in
             let e1 = env_add_var input_env vi.vname (newt, var_rho) in
             let e2 = env_del_unpack_ei e1 vi.vname in
-            (e2, input_phi, input_effect), S.empty_epsilon
+            (e2, input_phi, input_effect)
         | _ -> err ()
       end
     | _ -> err ()
-  end else (input_env, input_phi, input_effect), S.empty_epsilon
+  end else (input_env, input_phi, input_effect)
 
 (* pack(x) happens here.  x has to be a variable (not path),
  * pointer to a struct.  An ITExists type is created and returned.
@@ -2703,7 +2699,7 @@ let handle_pack (el: exp list) (* arguments to pack, should be singleton list *)
                 (input_env: env)
                 (input_phi: phi)
                 (input_effect: effect)
-                : gamma * S.epsilon =
+                : gamma =
   if !do_existentials then begin
     let err () =
       ignore(error "pack() should have a single argument, pointer to a struct\n\
@@ -2743,7 +2739,7 @@ let handle_pack (el: exp list) (* arguments to pack, should be singleton list *)
             let ((lv_type, _, _), lv_env, lv_phi, lv_effect) =
               type_lval lv input_env input_phi input_effect in
             sub_tau texistsptr lv_type;
-            (lv_env, lv_phi, lv_effect), S.empty_epsilon
+            (lv_env, lv_phi, lv_effect)
         | None -> err ()
       end
     | _ -> err ()
@@ -2760,7 +2756,7 @@ let handle_pack (el: exp list) (* arguments to pack, should be singleton list *)
               type_lval lv input_env input_phi input_effect
         in
         sub_tau t t';
-        (env, phi, eff), S.empty_epsilon
+        (env, phi, eff)
       end
     | _ ->
         ignore(error "pack called with wrong number of arguments");
@@ -2773,12 +2769,12 @@ let handle_alloc (_: exp list)
                  (input_env: env)
                  (input_phi: phi)
                  (input_effect: effect)
-                 : gamma * S.epsilon =
+                 : gamma =
   let alloc_rho = make_rho (LN.Const "alloc") true in
   match lvo with
     None ->
       ignore(warn "Calling alloc without assigning the result.");
-      (input_env, input_phi, input_effect), S.empty_epsilon
+      (input_env, input_phi, input_effect)
   | Some(lv) ->
       let ((lv_type, _, _), lv_env, lv_phi, lv_effect) =
         type_lval lv input_env input_phi input_effect in
@@ -2792,7 +2788,7 @@ let handle_alloc (_: exp list)
           ignore (warn "alloc result assigned to a non-pointer: %a"
                  d_tau lv_type);
       );
-      (lv_env, lv_phi, lv_effect), S.empty_epsilon
+      (lv_env, lv_phi, lv_effect)
 
 let handle_free (el: exp list)
                 (_: lval option)
@@ -2800,12 +2796,12 @@ let handle_free (el: exp list)
                 (input_env: env)
                 (input_phi: phi)
                 (input_effect: effect)
-                : gamma * S.epsilon =
+                : gamma =
   match args with
     ({t=(ITPtr(s,r))},u)::_ ->
       write_rho r input_phi input_effect u;
       visit_concrete_tau (fun r -> write_rho r input_phi input_effect u) !s;
-      (input_env, input_phi, input_effect), S.empty_epsilon
+      (input_env, input_phi, input_effect)
   | _ ->
     ignore(error "calling free with bad arguments: %a" (d_list "\n" d_exp) el);
     raise TypingBug
@@ -2832,8 +2828,7 @@ let get_special (k: Conf.handler) : special_function_t =
     
 
 (*****************************************************************************)
-let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
-                   instr =
+let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
   if !debug then ignore(E.log "typing instruction %a\n" d_instr instr);
   if !do_uniq then
     begin
@@ -2867,7 +2862,7 @@ let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
       (* ignore(E.log "lval |%a| is %s\n" d_lval lv (uniq2str u)); *)
       sub_tau s1 s2;
       write_rho r lval_phi lval_effect u;
-      (lval_env, lval_phi, lval_effect), input_epsilon
+      (lval_env, lval_phi, lval_effect)
   | Call(lvo, e, el, loc) -> begin
       currentLoc := loc;
       let (args, arg_env, arg_phi, arg_effect) =
@@ -2901,10 +2896,14 @@ let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
           let callargts = List.map (fun (s,_) -> s.ts) args in
           let callts = STFun(callrett.ts,callargts) in
           let ret_phi =
-            make_phi "ret" (CF.PhiSplitReturn(call_inphi))
+            make_phi "ret" CF.PhiVar
           in
           let call_phi =
+            make_phi "call" CF.PhiVar
+          (*
+            make_phi "ret" (CF.PhiSplitReturn(call_inphi))
             make_phi "call" (CF.PhiSplitCall(ret_phi))
+            *)
           in
           let out_phi = make_phi "out" CF.PhiVar in
           CF.phi_flows call_inphi call_phi;
@@ -2916,7 +2915,6 @@ let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
             fd_output_tau = callrett;
             fd_output_phi = ret_phi;
             fd_output_effect = fi.fd_output_effect;
-            fd_epsilon = S.make_var_epsilon ();
             fd_chi = !current_chi;
           }) callts in
           sub_tau e_type callt;
@@ -2935,8 +2933,7 @@ let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
             chi_in_effect fi.fd_chi call_ineff;
             effect_flows fi.fd_output_effect call_ineff;
           end;
-          (call_env, out_phi, fi.fd_output_effect),
-           S.uplus input_epsilon fi.fd_epsilon
+          (call_env, out_phi, fi.fd_output_effect)
         end
       | _ ->
         ignore (error "calling non-function type");
@@ -2972,20 +2969,20 @@ let rec type_instr ((input_env, input_phi, input_effect), input_epsilon)
       add_to_read_chi rasm !current_chi;
       add_to_write_effect rasm eff;
       add_to_write_chi rasm !current_chi;*)
-      (env, phi, eff), input_epsilon
-    ) else (input_env, input_phi, input_effect), input_epsilon
+      (env, phi, eff)
+    ) else (input_env, input_phi, input_effect)
 
 
 (*****************************************************************************)
 
-and type_stmt_list g stmts : gamma * S.epsilon =
-  let f (g,e) s =
-    let g',e' = type_stmt g s in
-    g', S.uplus e e'
+and type_stmt_list g stmts : gamma =
+  let f g s =
+    let g' = type_stmt g s in
+    g'
   in
-  List.fold_left f (g, S.empty_epsilon) stmts
+  List.fold_left f g stmts
 
-and type_stmt (env, phi, eff) stmt : gamma * S.epsilon =
+and type_stmt (env, phi, eff) stmt : gamma =
   if !debug then ignore(E.log "typing statement %a\n" d_stmt stmt);
   if !do_uniq then current_uniqueness := Uniq.get_stmt_state stmt;
   set_goto_target env phi eff stmt;
@@ -2993,7 +2990,7 @@ and type_stmt (env, phi, eff) stmt : gamma * S.epsilon =
   match stmt.skind with
     Instr(il) ->
       List.fold_left
-        (type_instr ) ((env, phi, eff), S.empty_epsilon) il
+        (type_instr ) (env, phi, eff) il
   | Return(e, loc) ->
       currentLoc := loc;
       let ((sret,_), env, phi, eff) =
@@ -3009,8 +3006,7 @@ and type_stmt (env, phi, eff) stmt : gamma * S.epsilon =
                 CF.phi_flows phi fi.fd_output_phi;
                 sub_tau sret fi.fd_output_tau;
                 effect_flows fi.fd_output_effect eff;
-                (env, CF.empty_phi, make_effect "after-return" false),
-                 S.empty_epsilon
+                (env, CF.empty_phi, make_effect "after-return" false)
             | _ ->
                 ignore(error "type of current_function must be an \
                               abstracted ITFun");
@@ -3022,37 +3018,30 @@ and type_stmt (env, phi, eff) stmt : gamma * S.epsilon =
       end
   | Goto(stmt_ref, loc) ->
       currentLoc := loc;
-      (*let x = S.make_var_epsilon () in*)
       set_goto_target env phi eff !stmt_ref;
-      (env, CF.empty_phi, make_effect "goto-effect" false), S.empty_epsilon
+      (env, CF.empty_phi, make_effect "goto-effect" false)
   | If(cond_exp, block1, block2, loc) ->
       currentLoc := loc;
       let ((cond_type,_), env, phi, eff) =
         type_exp cond_exp env phi eff in
       let true_phi,false_phi = phi, phi
       in
-      let (g1,e1) =
-        type_stmt_list (env, true_phi, eff) block1.bstmts
-      in
-      let (g2,e2) =
-        type_stmt_list (env, phi, eff) block2.bstmts
-      in
-      let x =  join_gamma g1 g2 in x, S.union e1 e2
+      let g1 = type_stmt_list (env, true_phi, eff) block1.bstmts in
+      let g2 = type_stmt_list (env, phi, eff) block2.bstmts in
+      join_gamma g1 g2
   | Loop(b, loc, Some(_), Some(_)) ->
       currentLoc := loc;
       let begin_phi = make_phi "beginloop" CF.PhiVar in
       CF.phi_flows phi begin_phi;
-      let (env2,p2,ef2),e =
-        type_stmt_list (env, begin_phi, eff) b.bstmts
-      in
+      let (env2,p2,ef2) = type_stmt_list (env, begin_phi, eff) b.bstmts in
       CF.phi_flows p2 begin_phi;
       effect_flows eff ef2;
       effect_flows ef2 eff;
       env_flows env2 env;
-      let live_vars = LV.getLiveSet stmt.sid in
-      down e env (getSome live_vars) S.empty_epsilon;
-      (*S.epsilon_flow e S.empty_epsilon;*)
-      (env2, p2, ef2), S.empty_epsilon
+      (*let live_vars = LV.getLiveSet stmt.sid in
+      down e env (getSome live_vars);
+      *)
+      (env2, p2, ef2)
   | Block(b) ->
       type_stmt_list (env, phi, eff) b.bstmts
   | Loop(_,_,None,_)
@@ -3133,7 +3122,6 @@ let addfun (fd: fundec) : unit = begin
         CF.starting_phis := in_phi::!CF.starting_phis;
       let in_eff = make_effect (fd.svar.vname^"-input") false in
       let start_env = fresh_env () in
-      let epsilon = S.make_var_epsilon () in
       let (arg_types, arg_env) = addvars fd.sformals start_env in
       let arg_types = 
         if b then 
@@ -3162,7 +3150,6 @@ let addfun (fd: fundec) : unit = begin
         fd_output_tau = ret_type;
         fd_output_phi = out_phi;
         fd_output_effect = out_eff;
-        fd_epsilon = epsilon;
         fd_chi = !current_chi;
       }) fun_ts in
       let fun_abs_type = make_tau (ITAbs (ref fun_type)) (STAbs fun_ts) in
@@ -3182,13 +3169,16 @@ let addfun (fd: fundec) : unit = begin
         env_add_var locals_env fd.svar.vname (fun_abs_type, const_rho)
       in
       (* using this Gamma, type the function body *)
-      let (_, phi_stmt, eff_stmt), e =
-        type_stmt_list (final_env, in_phi, in_eff) 
-                       fd.sbody.bstmts in
+      let (_, phi_stmt, eff_stmt) =
+        type_stmt_list (final_env, in_phi, in_eff) fd.sbody.bstmts in
       (* flow the output phi, eff, to the formal output phi, eff *)
       effect_flows out_eff eff_stmt;
       CF.phi_flows phi_stmt out_phi;
-      S.epsilon_flow e epsilon;
+
+      (* remember the typing environment for this function *)
+      global_fun_envs := (fd, final_env):: !global_fun_envs;
+
+      (* clear state *)
       current_function := Cil.dummyFunDec;
       if !debug then ignore (E.log "function %s: %a\n" fd.svar.vname d_tau fun_abs_type);
   | _ -> assert false
@@ -3576,7 +3566,7 @@ class constraintVisitor = object
         if !debug then ignore(E.log "%s : %a\n" vi.vname d_tau var_type);
         match ii.init with
         | Some(i) -> begin
-            let (init_type,env) = type_init i !global_env name in
+            let (init_type, env) = type_init i !global_env name in
             sub_tau init_type var_type;
             if !global_env != env then assert false;
             global_env := env

@@ -98,3 +98,8 @@ val preprocessAndMergeWith : Cil.file -> string -> unit
  * the gcc include path.
  *) 
 val preprocessAndMergeWithHeader : Cil.file -> string -> unit
+
+(* Given a fake function name e.g. "foo-12345" replace all invocations
+ * in a stmt with the given instr list
+ *)
+val replace_fake_call : Cil.stmt -> string -> Cil.instr list -> Cil.stmt

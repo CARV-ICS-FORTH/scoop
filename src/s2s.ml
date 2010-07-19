@@ -46,6 +46,7 @@ let debug = ref false
 let stats = ref false
 let thread = ref false
 let out_name = ref "final"
+let currentFunction = ref dummyFunDec
 
 let options =
   [
@@ -192,13 +193,14 @@ let findLocal (fd: fundec) (name: string) : varinfo =
     raise Not_found
   with Found_var v -> v
 
+
 (* takes a stmt list and returns everything before the
   avail_task->active = ACTIVE; stmt *)
 let rec get_head = function
  [] -> raise Not_found
  | s::tl -> match s.skind with 
     Instr(Set (_, Const(CEnum(_, "ACTIVE", _)), _)::_) -> []
-    | Instr(_) -> print_endline "INSTR"; s::(get_head tl)
+    | Instr(_) -> ignore(E.log "instr: %a\n" d_stmt s); s::(get_head tl)
     | Block(_) -> print_endline "BLOCK"; s::(get_head tl)
     | _ -> print_endline "LALALA"; s::(get_head tl)
 
@@ -249,11 +251,13 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (*prepareCFG f_new;
   computeCFGInfo f_new true;*)
   let avail_task = findLocal f_new "avail_task" in
-  let stmts = ref [] in
+  let instrs : instr list ref = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
+  instrs := Set (mkPtrFieldAccess (var avail_task) "funcid",
+  CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
+  instrs := Set (mkPtrFieldAccess (var avail_task) "total_arguments",
+  CastE(find_type !in_file "uint8_t", integer (List.length f_new.sformals)), locUnknown)::!instrs;
   
   (* if we have arguments *)
 (*  if (f_new.sformals <> []) then begin
@@ -280,9 +284,12 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* TODO: complete code depending on arguments *)
 
   (* insert stmts before avail_task->active = ACTIVE; *)
+  (*
   let head = get_head f_new.sbody.bstmts in
   let tail = get_tail f_new.sbody.bstmts in
-  f_new.sbody.bstmts <- head@(List.rev !stmts)@tail;
+  f_new.sbody.bstmts <- head@(List.rev !stmts)@tail;*)
+  f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s
+  "Foo_32412312231" !instrs) f_new.sbody.bstmts;
 
   (*let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
   setFunctionTypeMakeFormals f_new f.svar.vtype;
@@ -680,7 +687,14 @@ let feature : featureDescr =
       preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h";
       preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h";
       preprocessAndMergeWithHeader !ppc_file "include/tpc_spe.h";
-      visitCilFileSameGlobals fspuVisitor !ppc_file;
+      Cil.iterGlobals !ppc_file 
+        (function
+          GFun(fd,_) ->
+            currentFunction := fd;
+            ignore(visitCilFunction fspuVisitor fd);
+        | _ -> ()
+        )
+      ;
       (* copy all code from file f to file_spe plus the needed headers*)
       preprocessAndMergeWithHeader f "spu_intrinsics.h";
       preprocessAndMergeWithHeader f "spu_mfcio.h";

@@ -20,6 +20,7 @@ LOCKSMITH_MODULES = \
 	semiunification \
 	locktype \
 	lockalloc \
+  ptatype \
 #	lockpick \
 #	locksmith \
 #	stmizer
