@@ -130,10 +130,9 @@ let find_tcomp (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
-(* find the variable named <name> in file <f> 
-  returns globals first *)
+(* find the variable named <name> in file <f> *)
 exception Found_var of varinfo
-let find_var (f: file) (name: string) : varinfo =
+let find_global_var (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_var vi)
     | GVar(vi, _, _) when vi.vname = name -> raise (Found_var vi)
@@ -146,7 +145,7 @@ let find_var (f: file) (name: string) : varinfo =
   with Found_var v -> v
 
 (* find the variable named <name> in the formals of <fd> *)
-let find_formal (fd: fundec) (name: string) : varinfo =
+let find_formal_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
     | _ -> ()
@@ -158,7 +157,7 @@ let find_formal (fd: fundec) (name: string) : varinfo =
   with Found_var v -> v
 
 (* find the variable named <name> in the locals of <fd> *)
-let find_local (fd: fundec) (name: string) : varinfo =
+let find_local_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
     | _ -> ()
@@ -168,6 +167,26 @@ let find_local (fd: fundec) (name: string) : varinfo =
     print_endline ("\""^name^"\" is not a local of "^fd.svar.vname);
     raise Not_found
   with Found_var v -> v
+
+(* find the variable named <name> in fundec <fd>
+   else look if it's a global of file <f> *)
+let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
+  try
+    find_local_var fd name
+  with Found_var v -> v
+    | Not_found -> 
+      ( try
+        find_formal_var fd name
+      with Found_var v -> v
+        | Not_found -> 
+          ( try
+            find_global_var f name
+          with Found_var v -> v
+            | Not_found -> (
+              print_endline ("\""^name^"\" is not accessible from "^fd.svar.vname);
+              raise Not_found)
+          )
+      )
 
 (* find the enum named <name> in file f *)
 exception Found_enum of enuminfo
@@ -193,7 +212,7 @@ let findLocal (fd: fundec) (name: string) : varinfo =
     raise Not_found
   with Found_var v -> v
 
-
+(*
 (* takes a stmt list and returns everything before the
   avail_task->active = ACTIVE; stmt *)
 let rec get_head = function
@@ -210,11 +229,14 @@ let rec get_tail = function
  [] -> raise Not_found
  | s::tl -> match s.skind with
     Instr(Set (_, Const(CEnum(one, "ACTIVE", _)), _)::_) -> tl
-    | _ -> (get_tail tl)
+    | _ -> (get_tail tl)*)
 
-(*let doArgument (local_arg: lval) (*(vi: varinfo)*) (arg: (string * arg_t * string)) : stmt list = begin
-  let sl = ref [];
-  (*if !stats then
+let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * string)) : instr list = begin
+  let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
+  let arg_addr = Lval( var (List.nth fd.sformals i)) in
+  let (_, arg_type, _) = arg in
+  let il = ref [] in
+  (*TODO: if !stats then
      if( TPC_IS_STRIDEARG(arg_flag) ) {
        arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size);
      } else {
@@ -224,13 +246,21 @@ let rec get_tail = function
 
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
   let eal = mkFieldAccess local_arg "eal" in
+  il := Set(eal, arg_addr, locUnknown)::!il;
   (* local_arg.size = arg_size; *)
   let size = mkFieldAccess local_arg "size" in
+  il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
   let flag = mkFieldAccess local_arg "flag" in
-  (* local_arg.stride = arg_stride; *)
+  let arg_type_i = ref 0 in
+  (match arg_type with
+    In -> arg_type_i := 1;
+    | Out -> arg_type_i := 2;
+    | InOut -> arg_type_i := 3;);
+  Set(flag, integer !arg_type_i, locUnknown)::!il
+  (*TODO: local_arg.stride = arg_stride; *)
 (*   let stride = mkFieldAccess local_arg "stride" in *)
-end*)
+end
 
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
@@ -245,22 +275,19 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* create the arg_size* formals *)
   let args_num = List.length f_new.sformals in
   for i = 1 to args_num do
-    makeFormalVar f_new ("arg_size"^(string_of_int i)) intType
+    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType)
   done;
-  (* set sallstmts for f_new *)
-  (*prepareCFG f_new;
-  computeCFGInfo f_new true;*)
   let avail_task = findLocal f_new "avail_task" in
   let instrs : instr list ref = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
   instrs := Set (mkPtrFieldAccess (var avail_task) "funcid",
-  CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown):: !instrs;
+  CastE(find_type !in_file "uint8_t", integer !func_id), locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkPtrFieldAccess (var avail_task) "total_arguments",
   CastE(find_type !in_file "uint8_t", integer (List.length f_new.sformals)), locUnknown)::!instrs;
   
   (* if we have arguments *)
-(*  if (f_new.sformals <> []) then begin
+  if (f_new.sformals <> []) then begin
     (*(* void *arg_addr64 *)
     let arg_addr64 = makeLocalVar f_new "arg_addr64" voidPtrType in
     (* unsigned int arg_size *)
@@ -270,26 +297,27 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     (* unsigned int arg_stride *)
     let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
     (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
-    let tmpvec = makeLocalVar f_new "tmpvec" (TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])])) in
+    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])]) in
+    let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
     (* struct tpc_arg_element local_arg *)
-    let local_arg = makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element") in
+    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
     for i = 1 to args_num do
-      let as = find_formal f_new ("arg_size"^(string_of_int i)) in
-      (*TODO: tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
-      stmts:= (doArgument local_arg (List.nth args i) )@!stmts;
-      (*TODO: *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
-    done
-    ();
-  end*)
-  (* TODO: complete code depending on arguments *)
+      (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
+      let (av_task_arg, _) = mkPtrFieldAccess (var avail_task) "arguments" in
+      let av_task_arg_idx = (av_task_arg, Index(integer i,NoOffset)) in
+      instrs := Set(var tmpvec, CastE(vector_uchar_p, AddrOf(av_task_arg_idx)) , locUnknown)::!instrs;
+      (* local_arg <- argument description *)
+      instrs := (doArgument i local_arg f_new (List.nth args i) )@(!instrs);
+      (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
+      let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
+      instrs := Set(mkMem (Lval(var tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!instrs;
+    done;
+  end;
 
-  (* insert stmts before avail_task->active = ACTIVE; *)
-  (*
-  let head = get_head f_new.sbody.bstmts in
-  let tail = get_tail f_new.sbody.bstmts in
-  f_new.sbody.bstmts <- head@(List.rev !stmts)@tail;*)
-  f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s
-  "Foo_32412312231" !instrs) f_new.sbody.bstmts;
+  (* insert instrs before avail_task->active = ACTIVE;
+     we place a Foo_32412312231() call just above avail_task->active = ACTIVE
+     to achieve that *)
+  f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s "Foo_32412312231" !instrs) f_new.sbody.bstmts;
 
   (*let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
   setFunctionTypeMakeFormals f_new f.svar.vtype;
@@ -355,19 +383,19 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* get the entry_status enuminfo *)
   let entry_status_enum = find_enum !in_file "entry_status" in
   (* get the s_available_spe varinfo *)
-  let g_max_spes = find_var !in_file "G_max_spes" in
+  let g_max_spes = find_global_var !in_file "G_max_spes" in
   (* get the s_available_spe varinfo *)
-  let s_available_spe = find_var !in_file "s_available_spe" in
+  let s_available_spe = find_global_var !in_file "s_available_spe" in
   (* get the task_queue_tail varinfo *)
-  let task_queue_tail = find_var !in_file "task_queue_tail" in
+  let task_queue_tail = find_global_var !in_file "task_queue_tail" in
   (* get the task_queue_tail varinfo *)
-  let compl_queue = find_var !in_file "compl_queue" in
+  let compl_queue = find_global_var !in_file "compl_queue" in
   (* get the g_task_current_id varinfo *)
-  let g_task_current_id = find_var !in_file "g_task_current_id" in
+  let g_task_current_id = find_global_var !in_file "g_task_current_id" in
   (* get the g_task_current_id varinfo *)
-  let g_task_id_queue = find_var !in_file "g_task_id_queue" in
+  let g_task_id_queue = find_global_var !in_file "g_task_id_queue" in
   (* get the task_queue varinfo *)
-  let task_queue = find_var !in_file "task_queue" in
+  let task_queue = find_global_var !in_file "task_queue" in
   (* create the while body *)
   let w_body = ref [] in
   (* create the [s_available_spe][task_queue_tail[s_available_spe]] offset *)
@@ -477,16 +505,17 @@ class findSPUDeclVisitor = object
               try
                 (* check if we have seen this function before *)
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
-                (* TODO: add arguments to the call *)
+                (* add arguments to the call *)
                 let call_args = ref [] in
                 let args_num = ((List.length new_fd.sformals)/2) in
-                (* TODO: scoped search for the #pragma arguments *)
-                (*for i = 1 to args_num do
-                  args_num := ()::args_num;
-                done
                 for i = 1 to args_num do
-                  args_num := (find_var )::args_num;
-                done*)
+                  let (vname, _, _) = List.nth args' i in
+                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
+                done;
+                for i = 1 to args_num do
+                  let (_, _, vsize) = List.nth args' i in
+                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
+                done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
                 ChangeTo(call)
@@ -495,16 +524,17 @@ class findSPUDeclVisitor = object
                 let new_fd = make_tpc_func task args' in
                 add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
-                (* TODO: add arguments to the call *)
+                (* add arguments to the call *)
                 let call_args = ref [] in
                 let args_num = ((List.length new_fd.sformals)/2) in
-                (* TODO: scoped search for the #pragma arguments *)
-                (*for i = 1 to args_num do
-                  args_num := ()::args_num;
-                done
                 for i = 1 to args_num do
-                  args_num := (find_var )::args_num;
-                done*)
+                  let (vname, _, _) = List.nth args' i in
+                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
+                done;
+                for i = 1 to args_num do
+                  let (_, _, vsize) = List.nth args' i in
+                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
+                done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
                 ChangeTo(call)
@@ -518,6 +548,7 @@ class findSPUDeclVisitor = object
       DoChildren
 end
 
+(* returns the compiler added variables of the function *)
 let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
   List.filter 
     (fun formal -> 
@@ -586,7 +617,6 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
   (* make "queue_entry_t * volatile  ex_task" *)
   let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
   (* make "tpc_spe_task_state_t task_info" *)
-  (* FIXME: Warning S: this expression should have type unit. *)
   let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
   (* make an int variable for the return value *)
   let lexit = makeLocalVar exec_func "exit" intType in
@@ -596,7 +626,6 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
     (fun (tpc_call, task, fargs) ->
       let c = Case (integer !id, locUnknown) in
       incr id;
-      let task_state_enum = find_enum !in_file "task_state" in
       let body = make_case exec_func task task_info ex_task in
       (* add the arguments' declarations *)
       body.labels <- [c];
@@ -620,13 +649,12 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
   let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
   (* get the task_state enuminfo *)
   let task_state_enum = find_enum !in_file "task_state" in
-  let three = Const(CInt64(Int64.of_int 3, IInt, None)) in
   (* task_info->state = EXECUTED no need for it in every case *)
   let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
   let executed = find_executed task_state_enum.eitems in
   let exec_s = mkStmtOneInstr(Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
-  exec_func.sbody <- mkBlock [exit0; switchstmt; retstmt];
+  exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
   GFun (exec_func, locUnknown)
 end
 
