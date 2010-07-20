@@ -1,12 +1,9 @@
-#include "tpc_s2s.h"
-
-
 /* This skeleton is for the original tpc runtime */
 int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int size, int flag, int stride*/ )
 {
   // Next SPE is selected in round-robin fashion.
-  int found=0, i;
-  int total_bytes, arg_bytes;
+  int found=0;
+//   int total_bytes, arg_bytes;
   volatile queue_entry_t *avail_task=NULL;
   
 #ifdef STATISTICS

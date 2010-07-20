@@ -1,8 +1,8 @@
 #ifdef CIL
-	#define __VEC__
-	#define __ALTIVEC__
-	#define vector __attribute__((altivec(vector__)))
-	#define __vector __attribute__((altivec(vector__)))
+//	#define __VEC__
+//	#define __ALTIVEC__
+// 	#define vector __attribute__((altivec(vector__)))
+// 	#define __vector __attribute__((altivec(vector__)))
 	#define TBR 79800000.0
 #endif
 

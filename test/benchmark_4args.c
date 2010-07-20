@@ -11,6 +11,8 @@
 
 #define TIMEBASE (TBR/1000)
 #define CORE_CYCLES ( (uint32_t) (3200000/TIMEBASE) )
+#define MAX_SPES 6
+#define TBR 79800000.0
 
 #define DEFAULT_SPESNUM     1
 #define DEFAULT_ARGSIZE     16
@@ -36,7 +38,6 @@ int main(int argc, char **argv)
   int spes_num = DEFAULT_SPESNUM;
   int arg_size = DEFAULT_ARGSIZE;
   int args_num = 4;
-  int arg_flag = DEFAULT_ARGFLAG;
   int comp_class = DEFAULT_COMPCLASS;
   int total_tpcs = DEFAULT_TOTALTPCS;
   int funcid=0;
@@ -98,9 +99,6 @@ int main(int argc, char **argv)
 		}
 		break;
 
-      case 'o': arg_flag = TPC_INOUT_ARG;
-	        break;
-
       case 'h': printf("Usage: %s <options>\n\n", argv[0]);
                 printf("options:\n");
                 printf("  -cC : C = computation (0, 1000 and 10000 SPE cycles\n");
@@ -135,7 +133,6 @@ int main(int argc, char **argv)
   printf("%5d : SPEs\n", spes_num);
   printf("%5d : Computation class\n", comp_class);
   printf("%5d : Argument size (%d arguments)\n", arg_size, args_num);
-  printf("%5d : Argument flag\n", arg_flag);
   printf("%5d : Total TPC calls\n", total_tpcs);
   printf("%5d : TPC function id (%s)\n", funcid, funcid==0 ? "Some computation":"No computation");
   printf("\n%p : Buffer address\n", tpc_buf);
@@ -225,9 +222,9 @@ int main(int argc, char **argv)
   unsigned long long totaltime = finishtime-starttime;
   double tpcs_sec = (double)total_tpcs/((double)totaltime/TBR);
   double gb_sec = 0.0;
-  if(arg_flag != TPC_INOUT_ARG) {
+/*  if(arg_flag != TPC_INOUT_ARG) {
     gb_sec = (tpcs_sec*arg_size*args_num)/(1024*1024*1024);
-  } else {
+  } else*/ {
     gb_sec = (tpcs_sec*2*arg_size*args_num)/(1024*1024*1024);
   }
   printf("\n");
