@@ -1,9 +1,15 @@
 #ifdef CIL
-//	#define __VEC__
-//	#define __ALTIVEC__
-// 	#define vector __attribute__((altivec(vector__)))
-// 	#define __vector __attribute__((altivec(vector__)))
+	#define __VEC__
+	#define __ALTIVEC__
 	#define TBR 79800000.0
+#endif
+
+#if defined CIL && PPU
+  #define vector __attribute__((altivec(vector__)))
+  #define __vector __attribute__((altivec(vector__)))
+#elif defined CIL && SPU
+  #define vector __attribute__((spu_vector))
+  #define __vector __attribute__((spu_vector))
 #endif
 
 #include "include/tpc_common.h"

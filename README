@@ -1,7 +1,7 @@
 Dependencies:
 
 ocaml
-camlp4
+camlp4/ocaml-camlp4/ocaml-camlp4-devel
 flex
 bison
 indent

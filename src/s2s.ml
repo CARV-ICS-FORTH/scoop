@@ -173,16 +173,13 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
 let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
   try
     find_local_var fd name
-  with Found_var v -> v
-    | Not_found -> 
+  with Not_found -> 
       ( try
         find_formal_var fd name
-      with Found_var v -> v
-        | Not_found -> 
+      with Not_found -> 
           ( try
             find_global_var f name
-          with Found_var v -> v
-            | Not_found -> (
+          with Not_found -> (
               ignore(E.error "\"%s\" is not accessible from %s" name fd.svar.vname);
               raise Not_found)
           )
@@ -246,7 +243,7 @@ let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * s
 
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
   let eal = mkFieldAccess local_arg "eal" in
-  il := Set(eal, arg_addr, locUnknown)::!il;
+  il := Set(eal, CastE(find_type !in_file "uint32_t", arg_addr), locUnknown)::!il;
   (* local_arg.size = arg_size; *)
   let size = mkFieldAccess local_arg "size" in
   il := Set(size, arg_size, locUnknown)::!il;
@@ -298,14 +295,14 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
     (* vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
     (*FIXME:??? produces __attribute__((__altivec__(vector__))) *)
-    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("altivec", [AStr("vector__")])]) in
+    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("altivec", [ACons("vector__", [])])]) in
     let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
     for i = 0 to args_num do
       (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
-      let (av_task_arg, _) = mkPtrFieldAccess (var avail_task) "arguments" in
-      let av_task_arg_idx = (av_task_arg, Index(integer i,NoOffset)) in
+      let av_task_arg = mkPtrFieldAccess (var avail_task) "arguments" in
+      let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
       instrs := Set(var tmpvec, CastE(vector_uchar_p, AddrOf(av_task_arg_idx)) , locUnknown)::!instrs;
       (* local_arg <- argument description *)
       instrs := (doArgument i local_arg f_new (List.nth args i) )@(!instrs);
@@ -613,8 +610,11 @@ end
 let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string) list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
-  (* make "queue_entry_t * volatile  ex_task" *)
-  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in
+  exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
+(*  (* make "queue_entry_t * volatile  ex_task" *)
+  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in*)
+  (* make "queue_entry_t * ex_task" *)
+  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [])) in
   (* make "tpc_spe_task_state_t task_info" *)
   let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
   (* make an int variable for the return value *)
@@ -680,9 +680,9 @@ end
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
-let preprocessAndMergeWithHeader (f: file) (header: string) : unit = begin
+let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit = begin
   (* FIXME: what if we move arround the executable? *)
-  ignore (Sys.command ("echo | gcc -E -DCIL=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E -DCIL=1 -D"^def^"=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -691,6 +691,11 @@ end
 (* Checks if <g> is *not* the function declaration of "main"  *)
 let isNotMain (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
+  | _ -> true
+
+(* Checks if <g> is *not* the function declaration of "main"  *)
+let isNotSkeleton (g: global) : bool = match g with
+    GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
 
@@ -711,9 +716,19 @@ let feature : featureDescr =
       let spu_glist = ref [] in
 
       (* copy all code from file f to file_ppc *)
-      preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h";
-      preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h";
-      preprocessAndMergeWithHeader !ppc_file "include/tpc_spe.h";
+      preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
+      preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h" "PPU";
+(*       preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h" "PPU"; *)
+      preprocessAndMergeWithHeader !ppc_file "include/tpc_ppe.h" "PPU";
+
+      (* copy all code from file f to file_spe plus the needed headers*)
+(*      preprocessAndMergeWithHeader f "spu_intrinsics.h";
+      preprocessAndMergeWithHeader f "spu_mfcio.h";*)
+      preprocessAndMergeWithHeader f "tpc_skeleton_tpc.c" "SPU";
+      preprocessAndMergeWithHeader f "tpc_s2s.h" "SPU";
+(*       preprocessAndMergeWithHeader f "include/tpc_common.h" "SPU"; *)
+      preprocessAndMergeWithHeader f "include/tpc_spe.h" "SPU";
+
       Cil.iterGlobals !ppc_file 
         (function
           GFun(fd,_) ->
@@ -722,13 +737,10 @@ let feature : featureDescr =
         | _ -> ()
         )
       ;
-      (* copy all code from file f to file_spe plus the needed headers*)
-      preprocessAndMergeWithHeader f "spu_intrinsics.h";
-      preprocessAndMergeWithHeader f "spu_mfcio.h";
-      preprocessAndMergeWithHeader f "include/tpc_common.h";
-      preprocessAndMergeWithHeader f "include/tpc_spe.h";
-      (* copy all globals except the function declaration of "main" *)
-      spu_glist := List.filter isNotMain f.globals;
+      (* copy all globals except the function declaration of
+        "main" and "tpc_call_tpcAD65"*)
+      spu_glist := List.filter (fun g -> (isNotMain g) && (isNotSkeleton g)) f.globals;
+
 
       (* tasks  (new_tpc * old_original * args) *)
       let tasks : (fundec * fundec * (string * arg_t * string) list) list = List.map
@@ -736,6 +748,8 @@ let feature : featureDescr =
         (List.rev !spu_tasks)
       in
       spu_glist := List.append !spu_glist [(make_exec_func f tasks)];
+      (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
+      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
       writeFile !ppc_file;
       writeNewFile f (!out_name^"_func.c") !spu_glist;
       );
