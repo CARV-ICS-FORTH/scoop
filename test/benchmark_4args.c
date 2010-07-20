@@ -142,30 +142,32 @@ int main(int argc, char **argv)
 
 
   tpc_init(spes_num);
+  
+  void* tpc_buf0 = tpc_buf[0]; 
+  void* tpc_buf1 = tpc_buf[1];
+  void* tpc_buf2 = tpc_buf[2];
+  void* tpc_buf3 = tpc_buf[3];
 
   // Warm up - TLB
   for(i=0; i<spes_num; ++i) {
-	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
-	computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+    #pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size), tpc_buf2(in, arg_size), tpc_buf3(in, arg_size))
+	computation_func0(tpc_buf0, tpc_buf1, tpc_buf2, tpc_buf3);
     //tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
 
-	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size))
-	computation_func13(tpc_buf[0], tpc_buf[1]);
+	#pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size))
+	computation_func13(tpc_buf0, tpc_buf1);
 	
-	#pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size))
+	#pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size))
 	{
-	  computation_func13(tpc_buf[0], tpc_buf[1]);
+	  computation_func13(tpc_buf0, tpc_buf1);
 	}
 	
   tpc_wait_all();
 
   if (arg_size) {
-    for(i=0; i<spes_num; ++i) {
-	  __dcbf(tpc_buf[0]);
-	  __dcbf(tpc_buf[1]);
-	  __dcbf(tpc_buf[2]);
-	  __dcbf(tpc_buf[3]);
+    for(i=0; i<args_num; ++i) {
+	  __dcbf(tpc_buf[i]);
 	}
   }
 	
@@ -184,8 +186,8 @@ int main(int argc, char **argv)
 	}
   }else{
 */	for(i=0; i<total_tpcs; ++i) {
-	  #pragma tpc(tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size), tpc_buf(in, arg_size))
-	  computation_func0(tpc_buf[0], tpc_buf[1], tpc_buf[2], tpc_buf[3]);
+	  #pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size), tpc_buf2(in, arg_size), tpc_buf3(in, arg_size))
+	  computation_func0(tpc_buf0, tpc_buf1, tpc_buf2, tpc_buf3);
 	}
 //  }
 

@@ -140,7 +140,7 @@ let find_global_var (f: file) (name: string) : varinfo =
   in
   try
     iterGlobals f findit;
-    print_endline ("\""^name^"\" is not globally defined in "^f.fileName);
+    ignore(E.error  "\"%s\" is not globally defined in %s\n" name f.fileName);
     raise Not_found
   with Found_var v -> v
 
@@ -152,7 +152,7 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.sformals;
-    print_endline ("\""^name^"\" is not a formal of "^fd.svar.vname);
+    ignore(E.error  "\"%s\" is not a formal of %s\n" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
@@ -164,7 +164,7 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.slocals;
-    print_endline ("\""^name^"\" is not a local of "^fd.svar.vname);
+    ignore(E.error "\"%s\" is not a local of %s" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
@@ -183,7 +183,7 @@ let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
             find_global_var f name
           with Found_var v -> v
             | Not_found -> (
-              print_endline ("\""^name^"\" is not accessible from "^fd.svar.vname);
+              ignore(E.error "\"%s\" is not accessible from %s" name fd.svar.vname);
               raise Not_found)
           )
       )
@@ -208,7 +208,7 @@ let findLocal (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.slocals;
-    print_endline ("\""^name^"\" is not a local of "^fd.svar.vname);
+    ignore(E.error "\"%s\" is not a local of %s" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
@@ -284,7 +284,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   CastE(find_type !in_file "uint8_t", integer !func_id), locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkPtrFieldAccess (var avail_task) "total_arguments",
-  CastE(find_type !in_file "uint8_t", integer (List.length f_new.sformals)), locUnknown)::!instrs;
+  CastE(find_type !in_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
   
   (* if we have arguments *)
   if (f_new.sformals <> []) then begin
@@ -303,7 +303,6 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
     for i = 0 to args_num do
-      print_endline ((string_of_int i)^" of "^(string_of_int args_num));
       (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
       let (av_task_arg, _) = mkPtrFieldAccess (var avail_task) "arguments" in
       let av_task_arg_idx = (av_task_arg, Index(integer i,NoOffset)) in
@@ -489,7 +488,6 @@ class findSPUDeclVisitor = object
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
     if (prags <> []) then begin
-      print_endline "We 've got pragmas here";
       match (List.hd prags) with 
         (Attr("tpc", args), _) -> begin
           let args' =
@@ -501,7 +499,6 @@ class findSPUDeclVisitor = object
             ) args in
           match s.skind with 
             Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
-              print_endline "CALL";
               let funname = vi.vname in
               print_endline ("Found task \""^funname^"\"");
               try
@@ -542,10 +539,10 @@ class findSPUDeclVisitor = object
                 ChangeTo(call)
               end
             end
-            | Block(b) -> print_endline "Ignoring block pragma"; DoChildren
-            | _ -> print_endline "Ignoring pragma"; DoChildren
+            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
+            | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
         end
-        | _ -> print_endline "Unrecognized pragma"; DoChildren
+        | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
     end else
       DoChildren
 end
@@ -584,13 +581,13 @@ let make_case execfun (f_task: fundec) (task_info: varinfo)
   let arglist = List.map
     (fun (_, argt, _) ->
       let argvar = makeTempVar execfun argt in
-      let castexp = CastE(TPtr(argt, []), Lval(var argaddr)) in
+      let castexp = CastE(argt, Lval(var argaddr)) in
       let castinstr = Set(var argvar, castexp, locUnknown) in
       let advptrinstr = nextaddr !i in
       incr i;
-      res := castinstr :: !res;
       if !carry <> dummyInstr then res := !carry::!res;
       carry := advptrinstr;
+      res := castinstr :: !res;
       Lval(var argvar)
     )
     argl
