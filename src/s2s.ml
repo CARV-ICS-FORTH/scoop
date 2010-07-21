@@ -46,6 +46,7 @@ let debug = ref false
 let stats = ref false
 let thread = ref false
 let out_name = ref "final"
+let queue_size = ref "16"
 let currentFunction = ref dummyFunDec
 
 let options =
@@ -57,6 +58,10 @@ let options =
     "--out-name",
       Arg.String(fun s -> out_name := s),
       " S2S: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
+
+    "--queue-size",
+      Arg.String(fun s -> queue_size := s),
+      " S2S: Specify the queue size of the spes";
 
     "--with-stats",
       Arg.Set(stats),
@@ -685,7 +690,7 @@ let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit 
   let statistics = ref "" in
   if (!stats) then
     statistics := "-DSTATISTICS=1";
-  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^" "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
