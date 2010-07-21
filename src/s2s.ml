@@ -264,7 +264,7 @@ end
  *)
 let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = begin
   print_endline ("Creating tpc_function_" ^ f.svar.vname);
-  let skeleton = find_function_fundec (!in_file) "tpc_call_tpcAD65" in
+  let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ f.svar.vname) in
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
@@ -682,7 +682,10 @@ end
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit = begin
   (* FIXME: what if we move arround the executable? *)
-  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+  let statistics = ref "" in
+  if (!stats) then
+    statistics := "-DSTATISTICS=1";
+  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -693,7 +696,7 @@ let isNotMain (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
   | _ -> true
 
-(* Checks if <g> is *not* the function declaration of "main"  *)
+(* Checks if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
 let isNotSkeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
@@ -737,9 +740,10 @@ let feature : featureDescr =
         | _ -> ()
         )
       ;
-      (* copy all globals except the function declaration of
-        "main" and "tpc_call_tpcAD65"*)
-      spu_glist := List.filter (fun g -> (isNotMain g) && (isNotSkeleton g)) f.globals;
+      (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
+      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
+      (* copy all globals except the function declaration of "main" *)
+      spu_glist := List.filter isNotMain f.globals;
 
 
       (* tasks  (new_tpc * old_original * args) *)
