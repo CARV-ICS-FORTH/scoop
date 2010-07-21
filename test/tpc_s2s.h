@@ -15,7 +15,7 @@
 #if defined PPU
   #define vector __attribute__((altivec(vector__)))
   #define __vector __attribute__((altivec(vector__)))
-  #include "ppu_intrinsics.h"
+//  #include <ppu_intrinsics.h>
   #include "include/tpc_common.h"
   #include "include/tpc_ppe.h"
 extern int s_available_spe;
@@ -39,7 +39,7 @@ vector signed char __builtin_si_from_ptr(void *);
 vector signed char __builtin_si_from_uint(unsigned int);
 unsigned int __builtin_si_to_uint(vector signed char);
 //TODO: Foivo, continue :-)
-  #include "ppu_intrinsics.h"
+//  #include <spu_intrinsics.h>
   #include "include/tpc_common.h"
   #include "include/tpc_spe.h"
 extern struct tpc_spe_statistics_t *G_spe_stats[MAX_SPES];  // in LS
