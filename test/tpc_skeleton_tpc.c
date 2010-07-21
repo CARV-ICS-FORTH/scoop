@@ -1,8 +1,6 @@
 /* This skeleton is for the original tpc runtime */
-int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int size, int flag, int stride*/ )
+int tpc_call_tpcAD65(/*uint8_t funcid, uint8_t total_arguments, void* addr,  int size, int flag, int stride*/ )
 {
-  // Next SPE is selected in round-robin fashion.
-  int found=0;
 //   int total_bytes, arg_bytes;
   volatile queue_entry_t *avail_task=NULL;
   
@@ -28,20 +26,17 @@ int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int
   pthread_mutex_lock( &tpc_callwait_mutex );
 #endif
 
-  // Choose next SPE in round-robin.
-  s_available_spe = (s_available_spe+1) % G_max_spes;
-
   READ_TIME_REG(tmptime1);
 
   do {
     st = &compl_queue[s_available_spe][task_queue_tail[s_available_spe]];
     if(st->status == COMPLETED) {
-      found = 1;
       st->status = WAITING;
+      break;
     } else {
       s_available_spe = (s_available_spe+1) % G_max_spes;
     }
-  } while(found == 0);
+  } while(1);
 
   task_id = g_task_current_id[s_available_spe]++;
   task_id_qs = &g_task_id_queue[s_available_spe][task_queue_tail[s_available_spe]];
@@ -54,9 +49,6 @@ int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int
 
 //   avail_task->funcid = (uint8_t)funcid;
 //   avail_task->total_arguments = (uint8_t)total_arguments;
-
-  task_queue_tail[s_available_spe] = (task_queue_tail[s_available_spe]+1) % 
-                                                        MAX_QUEUE_ENTRIES;
 
 //   for(i=0; i<total_arguments; ++i) {
 //     arg_addr64 = addr;
@@ -89,6 +81,10 @@ int tpc_call_tpcAD65(uint8_t funcid, uint8_t total_arguments/*, void* addr,  int
   Foo_32412312231();
 
   avail_task->active = ACTIVE;
+  // Increase local tail
+  task_queue_tail[s_available_spe] = (task_queue_tail[s_available_spe]+1) % MAX_QUEUE_ENTRIES;
+  // Choose next SPE in round-robin.
+  s_available_spe = (s_available_spe+1) % G_max_spes;
 
   READ_TIME_REG(tmptime3);
 

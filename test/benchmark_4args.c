@@ -1,12 +1,12 @@
 #include <stdio.h>
-// #include <ppu_intrinsics.h>
+#include "./include/ppu/ppu_intrinsics.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
 
-// #include "include/tpc_common.h"
+//#include "include/tpc_common.h"
 // #include "include/tpc_ppe.h"
 
 #define TIMEBASE (TBR/1000)
@@ -14,6 +14,18 @@
 #define MAX_SPES 6
 #define TBR 79800000.0
 
+#define ceil16(v)   (((v) + 15U) & ~15U)
+#define ceil128(v)   (((v) + 127U) & ~127U)
+#define ceil4096(v)   (((v) + 4095U) & ~4095U)
+/*
+#define __dcbf(base) \
+	  __asm__ volatile ("dcbf %y0" : "=Z" (*(__V4SI*) (base)) : : "memory")
+
+#define __mftb() __extension__                  \
+  ({ unsigned long long result;                 \
+  __asm__ volatile ("mftb %0" : "=r" (result)); \
+  result; })
+  */  															   
 #define DEFAULT_SPESNUM     1
 #define DEFAULT_ARGSIZE     16
 #define DEFAULT_ARGFLAG     TPC_IN_ARG
@@ -25,10 +37,10 @@ int computation_func0(int *class1, int *class2, int *class3, int *class4)
   return 0;
 }
 
-int computation_func13(int *class1, int *class2)
+/*int computation_func13(int *class1, int *class2)
 {
   return 0;
-}
+} */
 
 int main(int argc, char **argv)
 {
@@ -151,7 +163,7 @@ int main(int argc, char **argv)
 	computation_func0(tpc_buf0, tpc_buf1, tpc_buf2, tpc_buf3);
     //tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
-
+    /*
 	#pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size))
 	computation_func13(tpc_buf0, tpc_buf1);
 	
@@ -159,7 +171,7 @@ int main(int argc, char **argv)
 	{
 	  computation_func13(tpc_buf0, tpc_buf1);
 	}
-	
+	  */
   tpc_wait_all();
 
   if (arg_size) {
