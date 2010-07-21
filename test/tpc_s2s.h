@@ -30,6 +30,10 @@ extern struct tpc_ppe_statistics_t  G_ppe_stats;  // in MM
 #elif defined SPU
   #define vector __attribute__((spu_vector))
   #define __vector __attribute__((spu_vector))
+vector signed char __builtin_si_frest(vector signed char);
+vector signed char __builtin_si_fi(vector signed char, vector signed char);
+//TODO: Foivo, continue :-)
+  #include "ppu_intrinsics.h"
   #include "include/tpc_common.h"
   #include "include/tpc_spe.h"
 extern struct tpc_spe_statistics_t *G_spe_stats[MAX_SPES];  // in LS
