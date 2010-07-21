@@ -33,6 +33,11 @@ extern struct tpc_ppe_statistics_t  G_ppe_stats;  // in MM
 vector signed char __builtin_si_frest(vector signed char);
 vector signed char __builtin_si_fi(vector signed char, vector signed char);
 vector signed char __builtin_si_frsqest(vector signed char);
+void __builtin_si_wrch(int, vector signed char);
+vector signed char __builtin_si_rdch(int);
+vector signed char __builtin_si_from_ptr(void *);
+vector signed char __builtin_si_from_uint(unsigned int);
+unsigned int __builtin_si_to_uint(vector signed char);
 //TODO: Foivo, continue :-)
   #include "ppu_intrinsics.h"
   #include "include/tpc_common.h"
