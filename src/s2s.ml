@@ -497,7 +497,7 @@ class findSPUDeclVisitor = object
           match s.skind with 
             Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
               let funname = vi.vname in
-              print_endline ("Found task \""^funname^"\"");
+              ignore(E.log "Found task \"%s\"\n" funname);
               try
                 (* check if we have seen this function before *)
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
@@ -682,7 +682,7 @@ end
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit = begin
   (* FIXME: what if we move arround the executable? *)
-  ignore (Sys.command ("echo | gcc -E -DCIL=1 -D"^def^"=1 -I./include/ppu -I./include/spu -include tpc_s2s.h -include "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -717,17 +717,17 @@ let feature : featureDescr =
 
       (* copy all code from file f to file_ppc *)
       preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
-      preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h" "PPU";
+      (*preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h" "PPU";*)
 (*       preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h" "PPU"; *)
-      preprocessAndMergeWithHeader !ppc_file "include/tpc_ppe.h" "PPU";
+      (*preprocessAndMergeWithHeader !ppc_file "include/tpc_ppe.h" "PPU"; *)
 
       (* copy all code from file f to file_spe plus the needed headers*)
 (*      preprocessAndMergeWithHeader f "spu_intrinsics.h";
       preprocessAndMergeWithHeader f "spu_mfcio.h";*)
-      preprocessAndMergeWithHeader f "tpc_skeleton_tpc.c" "SPU";
+      (*preprocessAndMergeWithHeader f "tpc_skeleton_tpc.c" "SPU";*)
       preprocessAndMergeWithHeader f "tpc_s2s.h" "SPU";
 (*       preprocessAndMergeWithHeader f "include/tpc_common.h" "SPU"; *)
-      preprocessAndMergeWithHeader f "include/tpc_spe.h" "SPU";
+      (*preprocessAndMergeWithHeader f "include/tpc_spe.h" "SPU";*)
 
       Cil.iterGlobals !ppc_file 
         (function
