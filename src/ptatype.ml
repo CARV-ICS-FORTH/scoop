@@ -436,6 +436,7 @@ let get_global_var_rhos () =
   assert !global_vars_computed;
   !global_var_rhos
 
+(** obsolete, used only in locksmith to reclaim some memory *)
 let clear_globals() : unit = begin
   all_vinfo := [];
   all_cinfo := [];
@@ -448,7 +449,7 @@ let clear_globals() : unit = begin
   InstEdgeTbl.clear inst_edges;
   global_var_tau := [];
   global_malloc_addr_tau := [];
-  (* Do not clear global_var_rhos, global_var_locks *)
+  (* Do not clear global_var_rhos *)
   sub_edges := TauPairSet.empty;
   thread_local_rhos := RhoSet.empty;
   current_uniqueness := Uniq.empty_state;
@@ -476,7 +477,7 @@ let get_top_label (t: tau) (e: exp) : label =
     | ITExists _ ->
         ignore(error
           "Invalid expression in the list of existentially quantified variables. \
-          Expression is neither pointer nor lock: %a\n" d_exp e);
+          Expression is not a pointer: %a\n" d_exp e);
         raise TypingBug
     | ITBuiltin_va_list _
     | ITFun _
@@ -695,17 +696,6 @@ and d_taulist () : tau list -> doc = function
     d_tau_r h TauSet.empty ++ text ",\n" ++ d_taulist () tl
   end
 
-(*
-and d_polytype (s: tau)
-               (*z: zeta*)
-               (r: rhoSet)
-               (p: phiSet)
-               (e: effectSet)
-               (known: tau list) : doc =
-  d_tau_r s known ++ dprintf "; %a %a %a %a)" d_lockset l d_rhoset r
-                                              d_phiset p d_effectset e
-  (*dprintf "; %s)" (dotstring_of_zeta z)*)
-*)
 and d_tau_r (t:tau) (known: TauSet.t) : doc =
   if TauSet.mem t known then d_sig () t.ts else
   match t.t with
@@ -966,7 +956,7 @@ end
 let set_globals () : unit = begin
   TauHT.clear known_globals;
   (** Mark self-loops on global variables, and add to global_var_rho
-     and global_var_lock as appropriate **)
+      as appropriate **)
   let max = List.length !global_var_tau in
   let count = ref 0 in
   if !debug then
