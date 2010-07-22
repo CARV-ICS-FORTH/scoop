@@ -1,0 +1,25 @@
+/** This software is part of the dissertation "High Performance, Bayesian-based Phylogenetic Inference Framework" 
+ *  by Xizhou Feng and is still under development. 
+ *  Copyright: 
+ *	Xizhou Feng
+ *      Kirk Cameron
+ *      Virginia Tech IP
+ *  Contact:
+ *	Xizhou Feng
+ *	Department of Computer Science
+ *	Virgnia Tech, Blacksburg, VA 24060 
+ *	Email: fengx@cs.vt.edu
+ *	Phone: (540)231-9245
+ */
+
+/** The TPC version of the software was developed by:
+ *  Supervisor : Angelos Bilas
+ *  TPC Lib Development : George Tzenakis
+ *  PBPI Ported by : Konstantinos Koukos
+ *  Files changed in the TPC version: likelihood.c Makefile
+ *  Files added in the TPC version: tpc.app.c tpc.app.h
+ *  Contact:
+ *  		bilas@ics.forth.gr
+ *  		tzenakis@ics.forth.gr
+ *  		koukos@ics.forth.gr
+ */

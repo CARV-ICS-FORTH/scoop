@@ -1,0 +1,2 @@
+  0:  Distance  1.950000e+02  (13)     Velocity 4.166667e+00  (  2)     Angle 8.787500e+01 ( 18) _  Peak  2.671512e+06
+  1:  Distance  6.900000e+02  (46)     Velocity 1.083333e+01  (  6)     Angle 9.087500e+01 (  6) _  Peak  3.189390e+06

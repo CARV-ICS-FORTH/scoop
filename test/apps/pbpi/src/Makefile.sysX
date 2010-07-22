@@ -1,0 +1,40 @@
+VERSION=a4
+BUILD=b1
+MPI_PATH=/nfs/compilers/mpich-1.2.5
+MPI_INCLUDE=$(MPI_PATH)/include
+MPI_LIB=$(MPI_PATH)/lib
+
+SRCS=main.c mcmc.c dataset.c likelihood.c token.c tree.c rand.c error.c \
+	model.c util.c xmltoken.c proposal.c runsetting.c parallel.c sumt.c rand2.c timing.c
+
+HEADERS=pbpi.h mcmc.h dataset.h likelihood.h token.h tree.h rand.h error.h \
+	model.h util.h xmltoken.h proposal.h runsetting.h parallel.h sumt.h rand2.h timing.h
+
+OBJS=main.o mcmc.o dataset.o likelihood.o token.o tree.o rand.o error.o \
+	model.o util.o xmltoken.o proposal.o runsetting.o parallel.o sumt.o rand2.o timing.o
+
+EXES=pbpi
+
+CC=/nfs/compilers/mpich-1.2.5/bin/mpicc
+
+CFLAGS= -O3 -fomit-frame-pointer
+#CFLAGS= -O3 
+
+
+pbpi:	$(OBJS)
+	$(CC) $(CFLAGS) -o pbpi $(OBJS) -L$(MPI_LIB) -lmpich -lm 
+	mv pbpi /nfs/home/ge/bin
+
+.c.o:
+	$(CC) $(CFLAGS) -I$(MPI_INCLUDE) -c $<
+
+install:
+	cp pbpi /home/fengx/bin
+
+package: $(SRCS) $(HEADERS) Makefile
+	tar cvfz ~/src/pbpi_src.$(VERSION)$(BUILD)tar.gz $(SRCS) $(HEADERS) Makefile
+	cp ~/src/pbpi_src.$(VERSION)$(BUILD)tar.gz ~/src/pbpi_src.tar.gz
+
+
+clean:
+	rm $(OBJS) $(EXES)

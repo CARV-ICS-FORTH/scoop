@@ -1,0 +1,1 @@
+./x264  -v --spes 6 --visualize   -A none --direct none   --bframes 4   -m 5 --no-cabac --b-adapt 0   --ref 1 --frames 100  --qp=26 --me umh  --merange 48  --no-psnr --no-ssim   -o ~/tmp/out.h264 /spare/video/hdvideobench/test_sequences/yuv/576p25_pedestrian.yuv 720x576

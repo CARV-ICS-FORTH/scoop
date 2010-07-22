@@ -1,0 +1,74 @@
+README
+
+
+1. Installation
+
+This installation guide assumes a Linux-based cluster environment.
+1.1 Get the source code
+
+Download the latest release of PBPI from http://www.pbpi.org/pub/pbpi.tgz and save to your local directory.
+
+Extract the source code with the command: tar xvfz pbpi.tgz
+1.2 Compilation
+
+Enter the directory with the source code and modify the Makefile under the src directory according to your computing enviornment. Usually you only need to change the compiler and the MPI library.
+
+Compile the code usng the command: make
+
+The executable file pbpi will appear on the bin directory.
+2. Running
+
+On a Beowulf cluster, you can pbpi using the following syntax:
+    mpirun -np <512> pbpi <sample.xml>
+Here 512 is the number of processors, sample.xml is the configuration file.
+
+You can also use
+    mpirun -np <512> pbpi <maximum_generation> <num_chains_per_grou>  <num_partitions> sample.xml
+to override the parallel configuration and maximum generations when testing the scalability.
+ 
+3. Configuration
+
+PBPI uses an XML file to define the configurations for an analysis. We are still working on a stable version of the configuration and standardize the format with an XML schema. However, most entry in the configuration file is self explaining. Here are provide some example for you to test the sample dataset coming with the source code.
+3.1 set the input dataset
+
+           <dataset>
+              <file>sample.nex</file>
+           </dataset>
+ 
+3.2 set mcmc parameters
+
+           <mcmc>
+             <nrun>1<nrun>                                                                      //how many runs are needed for each analysis
+             <number_of_chains>4</number_of_chains>                          //change the number of chains
+             <maximum_generation>1000000</maximum_generation>     //set the maximum generation
+             <sample_interval>10000</sample_interval>                           //set the sample interval
+             <print_interval>10000</print_interval>                                  //set the print interval
+           </mcmc>
+ 
+3.3 set the parallel parameter
+
+       <parallel>
+          <paralleism>
+             <chain_level>
+                <enable>yes</enable>
+                <num_chains_per_group>1</num_chains_per_group>        //how many mcmc chains per row
+             </chain_level>
+             <sequence_level>
+                <enable>yes</enable>
+                <num_partitions>64</num_partitions>                                //how many partition for each chain
+             </sequence_level>
+          <paralleism>
+       </parallel>
+ 
+
+The number of partitions and number of chains per group can be calculated as follows:
+
+number of processors = number of partitions X number of chain groups
+
+number of chain groups = number of chains / number of chains per group
+
+ For example, when running 16 chains on 512 processors, you need to set  number_of_chains  as 16, and set the parallel parameters as
+       num_chains_per_group = 1, num_partitions = 32
+
+or
+       num_chains_per_group = 2, num_partitions = 64

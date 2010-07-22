@@ -1,0 +1,169 @@
+/*
+ *  fixedgrid.sq
+ *  fixedgrid sequoia
+ *
+ *  Jae-Seung Yeom <jyeom@cs.vt.edu>
+ *
+ *  Computer Science Dept. VirginiaTech
+ *
+ */
+
+#include "sequoia.h"
+#include "params.h"
+
+
+/* 
+ * The core upwinded advection/diffusion equation.
+ * c = conc, w = wind, d = diff
+ * x2l is the 2-left neighbor of x, etc.
+ * x2r is the 2-right neighbor of x, etc.
+ * out = output variable
+ */
+
+inline real_t                                  \
+advec_diff(real_t cell_size,                   \
+           real_t c2l, real_t w2l, real_t d2l, \
+           real_t c1l, real_t w1l, real_t d1l, \
+           real_t   c, real_t   w, real_t   d, \
+           real_t c1r, real_t w1r, real_t d1r, \
+           real_t c2r, real_t w2r, real_t d2r)
+{
+    real_t wind, diff_term, advec_term, advec_termL, advec_termR;
+    
+    wind = (w1l + w) / 2.0;
+    if(wind >= 0.0) advec_termL = (1.0/6.0) * ( -c2l + 5.0*c1l + 2.0*c );
+    else advec_termL = (1.0/6.0) * ( 2.0*c1l + 5.0*c - c1r );
+    advec_termL *= wind;
+    wind = (w1r + w) / 2.0;
+    if(wind >= 0.0) advec_termR = (1.0/6.0) * ( -c1l + 5.0*c + 2.0*c1r );
+    else advec_termR = (1.0/6.0) * ( 2.0*c + 5.0*c1r - c2r );
+    advec_termR *= wind;
+    advec_term = (advec_termL - advec_termR) / cell_size;
+    diff_term = ( ((d1l+d)/2)*(c1l-c) - ((d+d1r)/2)*(c-c1r) ) / (cell_size * cell_size);
+    return advec_term + diff_term;
+}
+
+/*
+ * Applies the advection / diffusion equation to scalar data
+ */
+void space_advec_diff(int n,  \
+                      real_t *c,         \
+                      real_t *w,         \
+                      real_t *d,         \
+                      real_t *cb,        \
+                      real_t *wb,        \
+                      real_t *db,        \
+                      real_t cell_size,  \
+                      real_t *dcdx)      
+{
+    int i;
+    
+    /* Do boundary cell c[0] explicitly */
+    dcdx[0] = advec_diff(cell_size,
+                         cb[0], wb[0], db[0],  /* 2-left neighbors */
+                         cb[1], wb[1], db[1],  /* 1-left neighbors */
+                         c[0], w[0], d[0],     /* Values */
+                         c[1], w[1], d[1],     /* 1-right neighbors */
+                         c[2], w[2], d[2]);    /* 2-right neighbors */
+    
+    /* Do boundary cell c[1] explicitly */    
+    dcdx[1] = advec_diff(cell_size,
+                         cb[1], wb[1], db[1],  /* 2-left neighbors */
+                         cb[2], wb[2], db[2],  /* 1-left neighbors */
+                         c[1], w[1], d[1],     /* Values */
+                         c[2], w[2], d[2],     /* 1-right neighbors */
+                         c[3], w[3], d[3]);    /* 2-right neighbors */
+    
+    for(i=2; i<n-2; i++)
+    {
+        dcdx[i] = advec_diff(cell_size,
+                             c[i-2], w[i-2], d[i-2],  /* 2-left neighbors */
+                             c[i-1], w[i-1], d[i-1],  /* 1-left neighbors */
+                             c[i],   w[i],   d[i],    /* Values */
+                             c[i+1], w[i+1], d[i+1],  /* 1-right neighbors */
+                             c[i+2], w[i+2], d[i+2]); /* 2-right neighbors */
+    }
+    
+    /* Do boundary cell c[n-2] explicitly */
+    dcdx[n-2] = advec_diff(cell_size,
+                           c[n-4], w[n-4], d[n-4],  /* 2-left neighbors */
+                           c[n-3], w[n-3], d[n-3],  /* 1-left neighbors */
+                           c[n-2], w[n-2], d[n-2],  /* Values */
+                           cb[1],  wb[1],  db[1],   /* 1-right neighbors */
+                           cb[2],  wb[2],  db[2]);  /* 2-right neighbors */
+    
+    /* Do boundary cell c[n-1] explicitly */
+    dcdx[n-1] = advec_diff(cell_size,
+                           c[n-3], w[n-3], d[n-3],  /* 2-left neighbors */
+                           c[n-2], w[n-2], d[n-2],  /* 1-left neighbors */
+                           c[n-1], w[n-1], d[n-1],  /* Values */
+                           cb[2],  wb[2],  db[2],   /* 1-right neighbors */
+                           cb[3],  wb[3],  db[3]);  /* 2-right neighbors */
+}
+
+
+void discretize_leaf(sqArray_t *sq_dims, sqArray_t *sq_DXYT, sqArray_t *sq_wind, sqArray_t *sq_diff, sqArray_t *sq_concIn, sqArray_t *sq_concOut)
+{
+    int i;
+    int SZ = ((int*)((unsigned char*)sq_dims->ptr))[2];
+
+    double *DXYT = (double*)((unsigned char*)sq_DXYT->ptr);
+    double *concIn = (double*)((unsigned char*)sq_concIn->ptr);
+    double *wind = (double*)((unsigned char*)sq_wind->ptr);
+    double *diff = (double*)((unsigned char*)sq_diff->ptr);
+    double *concOut = (double*)((unsigned char*)sq_concOut->ptr);
+
+    double cell_size = DXYT[0];
+    double dt = DXYT[1];
+
+    double ctemp[SZ] __attribute__((aligned(128)));
+    double dcdx[SZ] __attribute__((aligned(128)));
+    double cbound[4] __attribute__((aligned(128)));
+    double wbound[4] __attribute__((aligned(128)));
+    double dbound[4] __attribute__((aligned(128)));
+
+    cbound[0] = concIn[SZ-2];
+    cbound[1] = concIn[SZ-1];
+    cbound[2] = concIn[0];
+    cbound[3] = concIn[1];
+    wbound[0] = wind[SZ-2];
+    wbound[1] = wind[SZ-1];
+    wbound[2] = wind[0];
+    wbound[3] = wind[1];
+    dbound[0] = diff[SZ-2];
+    dbound[1] = diff[SZ-1];
+    dbound[2] = diff[0];
+    dbound[3] = diff[1];
+
+    for(i=0; i<SZ; i++)
+    {
+        ctemp[i] = concOut[i] = concIn[i];
+    }
+
+    space_advec_diff(SZ, concIn, wind, diff, cbound, wbound, dbound, cell_size, dcdx);
+
+    for(i=0; i<SZ; i++)
+        ctemp[i] += dt*dcdx[i];
+
+    space_advec_diff(SZ, ctemp, wind, diff, cbound, wbound, dbound, cell_size, dcdx);
+
+    for(i=0; i<SZ; i++)
+        ctemp[i] += dt*dcdx[i];
+
+    for(i=0; i<SZ; i++)
+    {
+        concOut[i] = 0.5 * (concOut[i] + ctemp[i]);
+        if(concOut[i] < 0.0)
+            concOut[i] = 0.0;
+    }
+}
+
+void discretize_all_rows_leaf(sqArray_t *sq_dims, sqArray_t *sq_DXYT, sqArray_t *sq_wind, sqArray_t *sq_diff, sqArray_t *sq_concIn, sqArray_t *sq_concOut)
+{
+    discretize_leaf(sq_dims, sq_DXYT, sq_wind, sq_diff, sq_concIn, sq_concOut);
+}
+
+void discretize_all_cols_leaf(sqArray_t *sq_dims, sqArray_t *sq_DXYT, sqArray_t *sq_wind, sqArray_t *sq_diff, sqArray_t *sq_concIn, sqArray_t *sq_concOut)
+{
+    discretize_leaf(sq_dims, sq_DXYT, sq_wind, sq_diff, sq_concIn, sq_concOut);
+}

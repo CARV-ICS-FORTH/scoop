@@ -264,6 +264,14 @@ let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * s
 (*   let stride = mkFieldAccess local_arg "stride" in *)
 end
 
+(* change the return type of a function *)
+let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
+  match unrollType f.svar.vtype with
+    TFun (_, Some args, va, a) -> 
+      f.svar.vtype <- TFun(t, Some args, va, a);
+    | _ -> assert(false);
+end
+
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
@@ -274,6 +282,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new f.svar.vtype;
+  setFunctionReturnType f_new intType;
   (* create the arg_size* formals *)
   let args_num = (List.length f_new.sformals)-1 in
   for i = 0 to args_num do
