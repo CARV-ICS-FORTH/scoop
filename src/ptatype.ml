@@ -3087,6 +3087,7 @@ let forker = ref 0
 let non_forker = ref 0
 
 let addfun (fd: fundec) : unit = begin
+  Cil.prepareCFG fd;
   if !debug then ignore (E.log "typing function %s %s\n" fd.svar.vname (Lprof.timestamp ()));
   let location1 = !Cil.currentLoc in
   LV.computeLiveness fd;
@@ -3701,5 +3702,5 @@ let generate_constraints (f: file) : unit = begin
   if not (Strset.is_empty useundef) then
     ignore(E.log "functions declared and used but not defined:\n");
   Strset.iter handle_undef_function useundef;
-  clear_globals();
+  (*clear_globals();*)
 end
