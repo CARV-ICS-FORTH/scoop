@@ -492,6 +492,12 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   f_new
 end
 
+let get_arg_type (arg: string) : arg_t = match arg with
+      "in" -> In
+    | "out" -> Out
+    | "inout" -> InOut
+    | _ -> assert false
+                    
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
@@ -503,9 +509,12 @@ class findSPUDeclVisitor = object
         (Attr("tpc", args), _) -> begin
           let args' =
             List.map (fun arg -> match arg with
-                ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
+                ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+                    (varname, (get_arg_type arg_typ), varsize)
+              (*  ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
               | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> (varname, Out, varsize)
-              | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) -> (varname, InOut, varsize)
+              | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) ->
+                      (varname, InOut, varsize)*)
               | _ -> ignore(E.error "impossible"); assert false
             ) args in
           match s.skind with 
