@@ -516,7 +516,7 @@ class findSPUDeclVisitor = object
                 List.map (fun arg -> match arg with
                   ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
                     (* give all the arguments to Dtdepa*)
-                    (* Ptdepa.task_args_l := ((varname , currentFunction), funname , varname, (translate_arg arg_typ))::!Ptdepa.task_args_l; *)
+                    Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l; 
                     (varname, (translate_arg arg_typ), varsize)
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
@@ -729,6 +729,9 @@ let feature : featureDescr =
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
 
+      (* kasas was here :P *)
+      Ptdepa.find_dependencies f;	
+	
       (* create a global list (the spu output file) *)
       let spu_glist = ref [] in
 
