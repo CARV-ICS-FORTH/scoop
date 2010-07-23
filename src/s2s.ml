@@ -89,6 +89,9 @@ let ppc_file = ref dummyFile
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
+(* define the ppu_vector *)
+let ppu_vector = Attr("altivec", [ACons("vector__", [])])
+
 (* find the function definition of variable "name" in file f *)
 exception Found_fundec of fundec
 let find_function_fundec (f: file) (name: string) : fundec =
@@ -308,8 +311,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     (* unsigned int arg_stride *)
     let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
     (* vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
-    (*FIXME:??? produces __attribute__((__altivec__(vector__))) *)
-    let vector_uchar_p = TPtr(TInt(IUChar, []), [Attr("altivec", [ACons("vector__", [])])]) in
+    let vector_uchar_p = TPtr(TInt(IUChar, []), [ppu_vector]) in
     let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
@@ -492,11 +494,11 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   f_new
 end
 
-let get_arg_type (arg: string) : arg_t = match arg with
+let translate_arg (arg: string) : arg_t = match arg with
       "in" -> In
     | "out" -> Out
     | "inout" -> InOut
-    | _ -> assert false
+    | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
                     
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
@@ -507,23 +509,21 @@ class findSPUDeclVisitor = object
     if (prags <> []) then begin
       match (List.hd prags) with 
         (Attr("tpc", args), _) -> begin
-          let args' =
-            List.map (fun arg -> match arg with
-                ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
-                    (varname, (get_arg_type arg_typ), varsize)
-              (*  ACons(varname, ACons("in", [])::ACons(varsize, [])::[]) -> (varname, In, varsize)
-              | ACons(varname, ACons("out", [])::ACons(varsize, [])::[]) -> (varname, Out, varsize)
-              | ACons(varname, ACons("inout", [])::ACons(varsize, [])::[]) ->
-                      (varname, InOut, varsize)*)
-              | _ -> ignore(E.error "impossible"); assert false
-            ) args in
           match s.skind with 
             Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
               let funname = vi.vname in
+              let args' =
+                List.map (fun arg -> match arg with
+                  ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+                    (* give all the arguments to Dtdepa*)
+                    (* Ptdepa.task_args_l := ((varname , currentFunction), funname , varname, (translate_arg arg_typ))::!Ptdepa.task_args_l; *)
+                    (varname, (translate_arg arg_typ), varsize)
+                  | _ -> ignore(E.error "impossible"); assert false
+                ) args in
+              (* give the task calls to Dtdepa*)
+              (* Ptdepa.task_l := (funname , varname , currentFunction, args')::!Ptdepa.task_l; *)
               ignore(E.log "Found task \"%s\"\n" funname);
-              try
-                (* check if we have seen this function before *)
-                let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
+              let rest new_fd = 
                 (* add arguments to the call *)
                 let call_args = ref [] in
                 let args_num = ((List.length new_fd.sformals)/2)-1 in
@@ -537,26 +537,17 @@ class findSPUDeclVisitor = object
                 done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
-                ChangeTo(call)
+                ChangeTo(call) in
+              try
+                (* check if we have seen this function before *)
+                let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
+                rest new_fd
               with Not_found -> begin
                 let task = find_function_fundec (!in_file) funname in
                 let new_fd = make_tpc_func task args' in
                 add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
-                (* add arguments to the call *)
-                let call_args = ref [] in
-                let args_num = ((List.length new_fd.sformals)/2)-1 in
-                for i = 0 to args_num do
-                  let (vname, _, _) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
-                done;
-                for i = 0 to args_num do
-                  let (_, _, vsize) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
-                done;
-                let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
-                let call = mkStmtOneInstr instr in
-                ChangeTo(call)
+                rest new_fd
               end
             end
             | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren

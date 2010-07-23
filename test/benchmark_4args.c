@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "./include/ppu/ppu_intrinsics.h"
+#include <ppu_intrinsics.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
