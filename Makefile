@@ -21,6 +21,7 @@ LOCKSMITH_MODULES = \
 	locktype \
 	lockalloc \
   ptatype \
+	ptdepa \
 #	lockpick \
 #	locksmith \
 #	stmizer

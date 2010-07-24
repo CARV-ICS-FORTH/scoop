@@ -24,7 +24,7 @@ class prepareCFGVisitor = object
 	DoChildren	
 end
 
-(* return rhoSet for the specific arg (argument is argname * taskname) *)
+(* return rhoSet for the specific arg (argument is argname * function descriptor) *)
 let get_rhoSet (arg: (string * fundec)) : LF.rhoSet = 
 	let env = List.assoc (snd arg) !PT.global_fun_envs in 
 	let var = PT.env_lookup (fst arg) env in 
@@ -66,18 +66,25 @@ let print_dependencies ( dep_l : (string * fundec * string) * (string * fundec *
 	done;
 end
 
+let print_arg arg = print_endline (arg2string arg)  
+
 let find_dependencies (f: file) : unit = begin	
 	print_endline "no dependence shall escape !";
+	let list_size = List.length !task_args_l in
+	printf "size %d" list_size;
+	List.iter print_arg !task_args_l;
 	(* let prepareCFGs = new prepareCFGVisitor in 
-	   visitCilFile prepareCFGs f; *)
+	   visitCilFile prepareCFGs f; *) 
 	(* Rmtmps.removeUnusedTemps f;
         Rmalias.removeAliasAttr f; *)
 	PT.generate_constraints f;
 	LF.done_adding ();
 	List.iter find_arg_dependencies !task_args_l;
-	List.iter print_dependencies !arg_dep_l
+	List.iter print_dependencies !arg_dep_l;
+	print_endline "end";
 end
 
+(*
 let feature : featureDescr = 
   { fd_name = "findptrdep";
     fd_enabled = ref false;
@@ -91,4 +98,4 @@ let feature : featureDescr =
 	);
 	fd_post_check = true; 
   }
-
+*)
