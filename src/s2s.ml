@@ -74,11 +74,14 @@ let options =
 
 
 type spu_task =
-  string * (string * arg_t * string) list
+  string * (string * arg_t * string * string * string) list
 and arg_t =
     In
   | Out
   | InOut
+  | SIn
+  | SOut
+  | SInOut
 
 (* create 1 global list (the spe output file) *)
 let spu_tasks = ref []
@@ -217,29 +220,39 @@ let findLocal (fd: fundec) (name: string) : varinfo =
     raise Not_found
   with Found_var v -> v
 
-(*
-(* takes a stmt list and returns everything before the
-  avail_task->active = ACTIVE; stmt *)
-let rec get_head = function
- [] -> raise Not_found
- | s::tl -> match s.skind with 
-    Instr(Set (_, Const(CEnum(_, "ACTIVE", _)), _)::_) -> []
-    | Instr(_) -> ignore(E.log "instr: %a\n" d_stmt s); s::(get_head tl)
-    | Block(_) -> print_endline "BLOCK"; s::(get_head tl)
-    | _ -> print_endline "LALALA"; s::(get_head tl)
+(* Converts the strings describing the argument type to arg_t *)
+let translate_arg (arg: string) (strided: bool) : arg_t =
+  if (strided) then
+    match arg with
+        "in" -> SIn
+      | "out" -> SOut
+      | "inout" -> SInOut
+      | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
+  else
+    match arg with
+        "in" -> In
+      | "out" -> Out
+      | "inout" -> InOut
+      | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
 
-(* takes a stmt list and returns avail_task->active = ACTIVE; stmt
-  with all the stmts after it *)
-let rec get_tail = function
- [] -> raise Not_found
- | s::tl -> match s.skind with
-    Instr(Set (_, Const(CEnum(one, "ACTIVE", _)), _)::_) -> tl
-    | _ -> (get_tail tl)*)
+(* check if an arguments type is stride *)
+let is_strided (arg: arg_t) : bool =
+   match arg with
+    | SIn
+    | SOut
+    | SInOut -> true
+    | _ -> false
 
-let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * string)) : instr list = begin
+(* returns the argument type from an argument description 
+  (string * arg_t * string * string *string ) *)
+let get_arg_type (arg: (string * arg_t * string * string *string )) : arg_t =
+  match arg with
+    (_, arg_type ,_ ,_ ,_) -> arg_type
+
+let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * string * string * string)) : instr list = begin
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
-  let (_, arg_type, _) = arg in
+  let arg_type = get_arg_type arg in
   let il = ref [] in
   (*TODO: if !stats then
      if( TPC_IS_STRIDEARG(arg_flag) ) {
@@ -252,19 +265,32 @@ let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * s
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
   let eal = mkFieldAccess local_arg "eal" in
   il := Set(eal, CastE(find_type !in_file "uint32_t", arg_addr), locUnknown)::!il;
-  (* local_arg.size = arg_size; *)
   let size = mkFieldAccess local_arg "size" in
-  il := Set(size, arg_size, locUnknown)::!il;
+  if (is_strided arg_type) then begin
+    let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+    let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
+    (* #define TPC_BUILD_STRIDEARG(elems, elemsz)    (((elems)<<16U) | (elemsz)) *)
+    (* local_arg.size = TPC_BUILD_STRIDEARG(els,elsz); *)
+    let build_stride = BinOp(BOr, BinOp(Shiftlt, arg_els, (integer 16), intType), arg_elsz, intType) in
+    il := Set(size, build_stride, locUnknown)::!il;
+    (* TODO: local_arg.stride = arg_size; *)
+    let stride = mkFieldAccess local_arg "stride" in
+    il := Set(stride, arg_size, locUnknown)::!il;
+  end else
+    (* local_arg.size = arg_size; *)
+    il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
   let flag = mkFieldAccess local_arg "flag" in
   let arg_type_i = ref 0 in
   (match arg_type with
     In -> arg_type_i := 1;
     | Out -> arg_type_i := 2;
-    | InOut -> arg_type_i := 3;);
-  Set(flag, integer !arg_type_i, locUnknown)::!il
-  (*TODO: local_arg.stride = arg_stride; *)
-(*   let stride = mkFieldAccess local_arg "stride" in *)
+    | InOut -> arg_type_i := 3;
+    | SIn -> arg_type_i := 5;
+    | SOut -> arg_type_i := 6;
+    | SInOut -> arg_type_i := 7;);
+  il:= Set(flag, integer !arg_type_i, locUnknown)::!il;
+  !il
 end
 
 (* change the return type of a function *)
@@ -278,7 +304,7 @@ end
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = begin
+let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string ) list) : fundec = begin
   print_endline ("Creating tpc_function_" ^ f.svar.vname);
   let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ f.svar.vname) in
@@ -286,10 +312,15 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new f.svar.vtype;
   setFunctionReturnType f_new intType;
-  (* create the arg_size* formals *)
+  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (List.length f_new.sformals)-1 in
   for i = 0 to args_num do
-    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType)
+    let (_, arg_type, _, _, _) = List.nth args i in
+    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
+    if (is_strided arg_type) then begin
+      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
+      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
+    end;
   done;
   let avail_task = findLocal f_new "avail_task" in
   let instrs : instr list ref = ref [] in
@@ -310,8 +341,8 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
     let arg_flag = makeLocalVar f_new "arg_flag" uintType in
     (* unsigned int arg_stride *)
     let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
-    (* vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
-    let vector_uchar_p = TPtr(TInt(IUChar, []), [ppu_vector]) in
+    (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+    let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
     let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
@@ -493,12 +524,6 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string) list) : fundec = 
   incr func_id;
   f_new
 end
-
-let translate_arg (arg: string) : arg_t = match arg with
-      "in" -> In
-    | "out" -> Out
-    | "inout" -> InOut
-    | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
                     
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
@@ -514,10 +539,16 @@ class findSPUDeclVisitor = object
               let funname = vi.vname in
               let args' =
                 List.map (fun arg -> match arg with
-                  ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
-                    (* give all the arguments to Dtdepa*)
-                    Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l; 
-                    (varname, (translate_arg arg_typ), varsize)
+                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+                      (* give all the arguments to Dtdepa*)
+                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
+                   	  Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l; 
+                      (varname, (translate_arg arg_typ false), varsize, "", "")
+                  | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+                      (* give all the arguments to Dtdepa don't care for strided  *)
+                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
+                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l;
+                      (varname, (translate_arg arg_typ true), varsize, elsize, elnum)
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
               (* give the task calls to Dtdepa*)
@@ -526,14 +557,18 @@ class findSPUDeclVisitor = object
               let rest new_fd = 
                 (* add arguments to the call *)
                 let call_args = ref [] in
-                let args_num = ((List.length new_fd.sformals)/2)-1 in
+(*                 let args_num = ((List.length new_fd.sformals)/2)-1 in *)
+                let args_num = (List.length args')-1 in
                 for i = 0 to args_num do
-                  let (vname, _, _) = List.nth args' i in
+                  let (vname, _, _, _, _) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
                 done;
                 for i = 0 to args_num do
-                  let (_, _, vsize) = List.nth args' i in
+                  let (_, arg_type, vsize, velsz, vels) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
+                  if (is_strided arg_type) then
+                    call_args := Lval(var (find_scoped_var !currentFunction !in_file vels))::
+                      Lval(var (find_scoped_var !currentFunction !in_file velsz))::!call_args;
                 done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
@@ -570,7 +605,7 @@ let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
 end
 
 let make_case execfun (f_task: fundec) (task_info: varinfo)
-              (ex_task: varinfo) : stmt = begin
+              (ex_task: varinfo) (args: (string * arg_t * string * string * string) list): stmt = begin
   let res = ref [] in
   assert(isFunctionType f_task.svar.vtype);
   let ret, arglopt, hasvararg, _ = splitFunctionType f_task.svar.vtype in
@@ -578,13 +613,23 @@ let make_case execfun (f_task: fundec) (task_info: varinfo)
   let argl = match arglopt with None -> [] | Some l -> l in
   let argaddr = makeTempVar execfun voidPtrType in
   res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
-  let nextaddr n =
+  let nextaddr n stride =
     let lv = mkPtrFieldAccess (var ex_task) "arguments" in
     let t = typeOfLval lv in
     assert(isArrayType t);
     let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
     let szlv = mkFieldAccess idxlv "size" in
-    let plus = (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType)) in
+    let plus = 
+      if (stride) then
+        (* next = previous + ((ex_task->arguments[pre].size >>16U)
+                        *(ex_task->arguments[pre].size & 0x0FFFFU)) *)
+        let els = BinOp(Shiftrt, Lval(szlv), integer 16, intType) in
+        let elsz = BinOp(BAnd, Lval(szlv), integer 0x0FFFF, intType) in
+        (BinOp(PlusPI, (Lval(var argaddr)), BinOp(Mult, els, elsz,intType), voidPtrType))
+      else
+        (* next = previous + ex_task->arguments[pre].size *)
+        (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType))
+    in
     Set(var argaddr, plus, locUnknown);
   in
   let i = ref 0 in
@@ -594,7 +639,8 @@ let make_case execfun (f_task: fundec) (task_info: varinfo)
       let argvar = makeTempVar execfun argt in
       let castexp = CastE(argt, Lval(var argaddr)) in
       let castinstr = Set(var argvar, castexp, locUnknown) in
-      let advptrinstr = nextaddr !i in
+      let arg_type = get_arg_type (List.nth args !i) in
+      let advptrinstr = nextaddr !i (is_strided arg_type) in
       incr i;
       if !carry <> dummyInstr then res := !carry::!res;
       carry := advptrinstr;
@@ -621,7 +667,7 @@ end
 
 (* Make the execute_func function that branches on the task id and
  * calls the actual task function on the spe *)
-let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string) list) list) : global = begin
+let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string * string * string) list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
@@ -639,7 +685,7 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
     (fun (tpc_call, task, fargs) ->
       let c = Case (integer !id, locUnknown) in
       incr id;
-      let body = make_case exec_func task task_info ex_task in
+      let body = make_case exec_func task task_info ex_task fargs in
       (* add the arguments' declarations *)
       body.labels <- [c];
       let stmt_list = [body; mkStmt (Break locUnknown)] in
@@ -764,7 +810,7 @@ let feature : featureDescr =
 
 
       (* tasks  (new_tpc * old_original * args) *)
-      let tasks : (fundec * fundec * (string * arg_t * string) list) list = List.map
+      let tasks : (fundec * fundec * (string * arg_t * string * string * string) list) list = List.map
         (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
         (List.rev !spu_tasks)
       in

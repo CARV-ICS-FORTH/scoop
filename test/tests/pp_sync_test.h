@@ -1,0 +1,13 @@
+#ifndef _PP_SYNC_TEST_
+#define _PP_SYNC_TEST_
+
+
+#define ARRAY_SIZE  16777216
+//#define ARRAY_SIZE  131072
+#define BLOCK_SIZE 4096
+
+#define TOTAL_SEEDS (ARRAY_SIZE/BLOCK_SIZE)
+#define SEEDS_SIZE 32
+
+
+#endif

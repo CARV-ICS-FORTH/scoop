@@ -13,9 +13,10 @@
 #endif
 
 #if defined PPU
-  #define vector __attribute__((altivec(vector__)))
+//   #define vector __attribute__((altivec(vector__)))
   #define __vector __attribute__((altivec(vector__)))
 //  #include <ppu_intrinsics.h>
+  #include <altivec.h>
   #include "include/tpc_common.h"
   #include "include/tpc_ppe.h"
 extern int s_available_spe;
