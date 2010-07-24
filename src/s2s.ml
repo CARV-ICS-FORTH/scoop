@@ -249,11 +249,29 @@ let get_arg_type (arg: (string * arg_t * string * string *string )) : arg_t =
   match arg with
     (_, arg_type ,_ ,_ ,_) -> arg_type
 
-let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * string * string * string)) : instr list = begin
+let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
+ (arg: (string * arg_t * string * string * string)) : instr list = begin
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
   let arg_type = get_arg_type arg in
   let il = ref [] in
+  (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
+  if (!stats) then begin
+    let arg_bytes = var (find_local_var fd "arg_bytes") in
+    if (is_strided arg_type) then
+      let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+      let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
+      (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
+      il := Set(arg_bytes, BinOp(Mult, arg_els, arg_elsz, intType), locUnknown)::!il
+    else
+      (* arg_bytes = arg_size; *)
+      il := Set(arg_bytes, arg_size, locUnknown)::!il
+  end;
+  let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
+  let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
+  let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
+  il := Set(tmpvec, CastE(vector_uchar_p, AddrOf(av_task_arg_idx)) , locUnknown)::!il;
+
   (*TODO: if !stats then
      if( TPC_IS_STRIDEARG(arg_flag) ) {
        arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size);
@@ -290,6 +308,9 @@ let doArgument (i: int) (local_arg: lval) (fd: fundec) (arg: (string * arg_t * s
     | SOut -> arg_type_i := 6;
     | SInOut -> arg_type_i := 7;);
   il:= Set(flag, integer !arg_type_i, locUnknown)::!il;
+  (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
+  let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
+  il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
   !il
 end
 
@@ -322,40 +343,26 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
       ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
     end;
   done;
-  let avail_task = findLocal f_new "avail_task" in
+  let avail_task = var (findLocal f_new "avail_task") in
   let instrs : instr list ref = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
-  instrs := Set (mkPtrFieldAccess (var avail_task) "funcid",
+  instrs := Set (mkPtrFieldAccess avail_task "funcid",
   CastE(find_type !in_file "uint8_t", integer !func_id), locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  instrs := Set (mkPtrFieldAccess (var avail_task) "total_arguments",
+  instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
   CastE(find_type !in_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
   
   (* if we have arguments *)
   if (f_new.sformals <> []) then begin
-    (*(* void *arg_addr64 *)
-    let arg_addr64 = makeLocalVar f_new "arg_addr64" voidPtrType in
-    (* unsigned int arg_size *)
-    let arg_size = makeLocalVar f_new "arg_size" uintType in
-    (* unsigned int arg_flag *)
-    let arg_flag = makeLocalVar f_new "arg_flag" uintType in
-    (* unsigned int arg_stride *)
-    let arg_stride = makeLocalVar f_new "arg_stride" uintType in*)
     (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
     let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
-    let tmpvec = makeLocalVar f_new "tmpvec" vector_uchar_p in
+    let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
     for i = 0 to args_num do
-      (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
-      let av_task_arg = mkPtrFieldAccess (var avail_task) "arguments" in
-      let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
-      instrs := Set(var tmpvec, CastE(vector_uchar_p, AddrOf(av_task_arg_idx)) , locUnknown)::!instrs;
+      let arg = List.nth args i in
       (* local_arg <- argument description *)
-      instrs := (doArgument i local_arg f_new (List.nth args i) )@(!instrs);
-      (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
-      let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
-      instrs := Set(mkMem (Lval(var tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!instrs;
+      instrs := (doArgument i local_arg avail_task tmpvec f_new arg )@(!instrs);
     done;
   end;
 
@@ -776,7 +783,8 @@ let feature : featureDescr =
       let fspuVisitor = new findSPUDeclVisitor in
 
       (* kasas was here :P *)
-      Ptdepa.find_dependencies f;	
+      (* FIXME: Throws fatal error. To reproduce run locksmith/run.sh *)
+(*       Ptdepa.find_dependencies f; *)
 	
       (* create a global list (the spu output file) *)
       let spu_glist = ref [] in
