@@ -41,6 +41,7 @@ module E = Errormsg
 module H = Hashtbl
 module S = Str
 module L = List
+module CG = Callgraph
 
 let debug = ref false
 let stats = ref false
@@ -781,6 +782,10 @@ let feature : featureDescr =
       ppc_file := { f with fileName = (!out_name^".c");};
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
+
+      (* create a call graph and print it *)
+      let callgraph = CG.computeGraph f in
+      CG.printGraph stdout callgraph;
 
       (* kasas was here :P *)
       Ptdepa.find_dependencies f;
