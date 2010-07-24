@@ -783,8 +783,7 @@ let feature : featureDescr =
       let fspuVisitor = new findSPUDeclVisitor in
 
       (* kasas was here :P *)
-      (* FIXME: Throws fatal error. To reproduce run locksmith/run.sh *)
-(*       Ptdepa.find_dependencies f; *)
+      Ptdepa.find_dependencies f;
 	
       (* create a global list (the spu output file) *)
       let spu_glist = ref [] in
