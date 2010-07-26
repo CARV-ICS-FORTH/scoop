@@ -82,6 +82,12 @@ val find_function_fundec : Cil.file -> string -> Cil.fundec
  *)
 val add_after : Cil.file -> Cil.fundec -> Cil.fundec -> unit
 
+(* Adds a declaration of function f_new right AFTER the first occurence
+ * (declaration or definition) of the function named <f_old>. Also, the body of
+ * the function f_new is added at the end of the file.
+ *)
+val add_after_s : Cil.file -> string -> Cil.fundec -> unit
+
 (* Changes all call sites of function f_old, to rather call function f_new
  * instead.  f_new and f_old must have the same signature.
  *)

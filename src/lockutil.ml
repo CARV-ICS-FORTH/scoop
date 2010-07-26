@@ -148,6 +148,15 @@ let add_after (file: Cil.file) (f_old: fundec) (f_new: fundec) : unit =
   visitCilFile v file;
   file.globals <- file.globals @ [GFun(f_new, Cil.locUnknown)]
 
+(* Adds a declaration of function f_new right AFTER the first occurence
+ * (declaration or definition) of the function named <f_old>. Also, the body of
+ * the function f_new is added at the end of the file.
+ *)
+let add_after_s (file: Cil.file) (f_old: string) (f_new: fundec) : unit =
+  let v = new addFunVisitor f_old f_new in
+  visitCilFile v file;
+  file.globals <- file.globals @ [GFun(f_new, Cil.locUnknown)]
+
 class changeVarinfoVisitor (oldv: varinfo) (newv: varinfo) : cilVisitor =
   object (self)
     inherit nopCilVisitor

@@ -39,7 +39,6 @@ vector signed char __builtin_si_rdch(int);
 vector signed char __builtin_si_from_ptr(void *);
 vector signed char __builtin_si_from_uint(unsigned int);
 unsigned int __builtin_si_to_uint(vector signed char);
-//TODO: Foivo, continue :-)
 //  #include <spu_intrinsics.h>
   #include "include/tpc_common.h"
   #include "include/tpc_spe.h"
