@@ -570,8 +570,9 @@ class findTaggedCals = object
 end
 
 (* populates the global list of spu tasks [spu_tasks] *)
-class findSPUDeclVisitor = object
+class findSPUDeclVisitor cgraph = object
   inherit nopCilVisitor
+  val callgraph = cgraph 
   (* visits all stmts and checks for pragma directives *)
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
@@ -622,6 +623,17 @@ class findSPUDeclVisitor = object
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
                 rest new_fd
               with Not_found -> begin
+                (* Print the Callees *)
+                let cnode: CG.callnode = H.find callgraph funname in
+                (*let nodeName (n: CG.nodeinfo) : string =
+                  match n with
+                    NIVar (v, _) -> v.vname
+                  | NIIndirect (n, _) -> n in
+                let printEntry _ (n: CG.callnode) : unit =
+                  let name = nodeName n.cnInfo in
+                  (Printf.fprintf out " %s" name) 
+                in
+                Inthash.iter printEntry cnode.cnCallees;*)
                 let task = find_function_fundec (!spu_file) funname in
                 let new_fd = make_tpc_func task args' in
                 add_after !ppc_file task new_fd;
@@ -817,13 +829,13 @@ let feature : featureDescr =
 (*       in_file := f; *)
       spu_file := { f with fileName = (!out_name^"_func.c");};
       ppc_file := { f with fileName = (!out_name^".c");};
-      (* find tpc_decl pragmas *)
-      let fspuVisitor = new findSPUDeclVisitor in
-      let ftagVisitor = new findTaggedCals in
 
       (* create a call graph and print it *)
       let callgraph = CG.computeGraph f in
-      CG.printGraph stdout callgraph;
+
+      (* find tpc_decl pragmas *)
+      let fspuVisitor = new findSPUDeclVisitor callgraph in
+      let ftagVisitor = new findTaggedCals in
 	
       (* create a global list (the spu output file) *)
       let spu_glist = ref [] in
