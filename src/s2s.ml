@@ -886,7 +886,7 @@ let feature : featureDescr =
         (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
         (List.rev !spu_tasks)
       in
-      spu_glist := List.append !spu_glist [(make_exec_func f tasks)];
+      spu_glist := List.append !spu_glist [(make_exec_func !spu_file tasks)];
       (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
       writeFile !ppc_file;
