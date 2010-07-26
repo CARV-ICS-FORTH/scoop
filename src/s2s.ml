@@ -87,7 +87,9 @@ and arg_t =
 (* create 1 global list (the spe output file) *)
 let spu_tasks = ref []
 (* create a ref to the input file *)
-let in_file = ref dummyFile
+(* let in_file = ref dummyFile *)
+(* create a ref to the new spu file *)
+let spu_file = ref dummyFile
 (* create a ref to the new ppe file *)
 let ppc_file = ref dummyFile
 (* keeps the current funcid for the new tpc_function *)
@@ -283,7 +285,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
 
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
   let eal = mkFieldAccess local_arg "eal" in
-  il := Set(eal, CastE(find_type !in_file "uint32_t", arg_addr), locUnknown)::!il;
+  il := Set(eal, CastE(find_type !spu_file "uint32_t", arg_addr), locUnknown)::!il;
   let size = mkFieldAccess local_arg "size" in
   if (is_strided arg_type) then begin
     let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
@@ -348,10 +350,10 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
   let instrs : instr list ref = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
   instrs := Set (mkPtrFieldAccess avail_task "funcid",
-  CastE(find_type !in_file "uint8_t", integer !func_id), locUnknown):: !instrs;
+  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
-  CastE(find_type !in_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
+  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
   
   (* if we have arguments *)
   if (f_new.sformals <> []) then begin
@@ -359,7 +361,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
     let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
     let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
     (* struct tpc_arg_element local_arg *)
-    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element")) in
+    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
     for i = 0 to args_num do
       let arg = List.nth args i in
       (* local_arg <- argument description *)
@@ -379,9 +381,9 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
   (* unsigned int total_bytes *)
   let total_bytes = makeLocalVar f_new "total_bytes" uintType in
   (* volatile queue_entry_t *remote_entry *)
-(*   let remote_entry = makeLocalVar f_new "remote_entry" (TPtr((find_type !in_file "queue_entry_t"), [Attr("volatile", [])])) in *)
+(*   let remote_entry = makeLocalVar f_new "remote_entry" (TPtr((find_type !spu_file "queue_entry_t"), [Attr("volatile", [])])) in *)
   (* volatile queue_entry_t *avail_task *)
-  let avail_task = makeLocalVar f_new "avail_task" (TPtr((find_type !in_file "queue_entry_t"), [Attr("volatile", [])])) in
+  let avail_task = makeLocalVar f_new "avail_task" (TPtr((find_type !spu_file "queue_entry_t"), [Attr("volatile", [])])) in
   (* TODO: add the #ifdef
     #ifdef STATISTICS
       uint64_t tmptime1, tmptime2, tmptime3;
@@ -393,7 +395,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
   (* unsigned int task_id *)
   let task_id = makeLocalVar f_new "task_id" uintType in
   (* volatile completions_status_t *st *)
-  let st = makeLocalVar f_new "st" (TPtr((find_tcomp !in_file "completions_status_t"), [Attr("volatile", [])])) in
+  let st = makeLocalVar f_new "st" (TPtr((find_tcomp !spu_file "completions_status_t"), [Attr("volatile", [])])) in
   (* if (f_new.sformals <> []) then begin *)
     (* void *arg_addr64 *)
     let arg_addr64 = makeLocalVar f_new "arg_addr64" voidPtrType in
@@ -406,7 +408,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
     (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
     let tmpvec = makeLocalVar f_new "tmpvec" (TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])])) in
     (* struct tpc_arg_element local_arg *)
-    let local_arg = makeLocalVar f_new "local_arg" (find_tcomp !in_file "tpc_arg_element") in
+    let local_arg = makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element") in
   (* end *)
 
   (*** Initialize local variables ***)
@@ -432,23 +434,23 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
     READ_TIME_REG(tmptime1);
   *)
   (* get the compl_status enuminfo *)
-  let compl_status_enum = find_enum !in_file "compl_status" in
+  let compl_status_enum = find_enum !spu_file "compl_status" in
   (* get the entry_status enuminfo *)
-  let entry_status_enum = find_enum !in_file "entry_status" in
+  let entry_status_enum = find_enum !spu_file "entry_status" in
   (* get the s_available_spe varinfo *)
-  let g_max_spes = find_global_var !in_file "G_max_spes" in
+  let g_max_spes = find_global_var !spu_file "G_max_spes" in
   (* get the s_available_spe varinfo *)
-  let s_available_spe = find_global_var !in_file "s_available_spe" in
+  let s_available_spe = find_global_var !spu_file "s_available_spe" in
   (* get the task_queue_tail varinfo *)
-  let task_queue_tail = find_global_var !in_file "task_queue_tail" in
+  let task_queue_tail = find_global_var !spu_file "task_queue_tail" in
   (* get the task_queue_tail varinfo *)
-  let compl_queue = find_global_var !in_file "compl_queue" in
+  let compl_queue = find_global_var !spu_file "compl_queue" in
   (* get the g_task_current_id varinfo *)
-  let g_task_current_id = find_global_var !in_file "g_task_current_id" in
+  let g_task_current_id = find_global_var !spu_file "g_task_current_id" in
   (* get the g_task_current_id varinfo *)
-  let g_task_id_queue = find_global_var !in_file "g_task_id_queue" in
+  let g_task_id_queue = find_global_var !spu_file "g_task_id_queue" in
   (* get the task_queue varinfo *)
-  let task_queue = find_global_var !in_file "task_queue" in
+  let task_queue = find_global_var !spu_file "task_queue" in
   (* create the while body *)
   let w_body = ref [] in
   (* create the [s_available_spe][task_queue_tail[s_available_spe]] offset *)
@@ -494,9 +496,9 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
   (* avail_task = &task_queue[s_available_spe][task_queue_tail[s_available_spe]]; *)
   stmts := mkStmtOneInstr(Set (var avail_task, AddrOf((Var task_queue, big_offset)) , locUnknown))::!stmts;
   (* avail_task->funcid = (uint8_t)funcid; *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
+  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !spu_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !in_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
+  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !spu_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
   (* total_bytes=0; *)
   stmts := mkStmtOneInstr(Set (var total_bytes, zero, locUnknown))::!stmts;
 
@@ -532,7 +534,41 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
   incr func_id;
   f_new
 end
-                    
+
+
+(* populates the calls list for Ptdepa module *)
+class findTaggedCals = object
+  inherit nopCilVisitor
+  (* visits all stmts and checks for pragma directives *)
+  method vstmt (s: stmt) : stmt visitAction =
+    let prags = s.pragmas in
+    if (prags <> []) then begin
+      match (List.hd prags) with 
+        (Attr("tpc", args), _) -> begin
+          match s.skind with 
+            Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+              let funname = vi.vname in
+                ignore(List.map (fun arg -> match arg with
+                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+                      (* give all the arguments to Dtdepa*)
+                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
+                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l
+                  | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+                      (* give all the arguments to Dtdepa don't care for strided  *)
+                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
+                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l
+                  | _ -> ignore(E.error "impossible"); assert false
+                ) args);
+                DoChildren
+            end
+            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
+            | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
+        end
+        | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
+    end else
+      DoChildren
+end
+
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor = object
   inherit nopCilVisitor
@@ -550,12 +586,12 @@ class findSPUDeclVisitor = object
                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
                       (* give all the arguments to Dtdepa*)
                       (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
-                   	  Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l; 
+(*                    	  Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l;  *)
                       (varname, (translate_arg arg_typ false), varsize, "", "")
                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
                       (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
-                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l;
+(*                       Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l; *)
                       (varname, (translate_arg arg_typ true), varsize, elsize, elnum)
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
@@ -569,14 +605,14 @@ class findSPUDeclVisitor = object
                 let args_num = (List.length args')-1 in
                 for i = 0 to args_num do
                   let (vname, _, _, _, _) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vname))::!call_args;
+                  call_args := Lval(var (find_scoped_var !currentFunction !spu_file vname))::!call_args;
                 done;
                 for i = 0 to args_num do
                   let (_, arg_type, vsize, velsz, vels) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !in_file vsize))::!call_args;
+                  call_args := Lval(var (find_scoped_var !currentFunction !spu_file vsize))::!call_args;
                   if (is_strided arg_type) then
-                    call_args := Lval(var (find_scoped_var !currentFunction !in_file vels))::
-                      Lval(var (find_scoped_var !currentFunction !in_file velsz))::!call_args;
+                    call_args := Lval(var (find_scoped_var !currentFunction !spu_file vels))::
+                      Lval(var (find_scoped_var !currentFunction !spu_file velsz))::!call_args;
                 done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
@@ -586,7 +622,7 @@ class findSPUDeclVisitor = object
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
                 rest new_fd
               with Not_found -> begin
-                let task = find_function_fundec (!in_file) funname in
+                let task = find_function_fundec (!spu_file) funname in
                 let new_fd = make_tpc_func task args' in
                 add_after !ppc_file task new_fd;
                 spu_tasks := (funname, (new_fd, task, args'))::!spu_tasks;
@@ -715,7 +751,7 @@ let make_exec_func (f: file) (tasks: (fundec * fundec * (string * arg_t * string
   let expr = Lval(mkPtrFieldAccess (var ex_task) "funcid") in
   let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
   (* get the task_state enuminfo *)
-  let task_state_enum = find_enum !in_file "task_state" in
+  let task_state_enum = find_enum !spu_file "task_state" in
   (* task_info->state = EXECUTED no need for it in every case *)
   let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
   let executed = find_executed task_state_enum.eitems in
@@ -778,17 +814,16 @@ let feature : featureDescr =
     fd_doit = 
     (function (f: file) -> 
       (* get the input file for global use *)
-      in_file := f;
+(*       in_file := f; *)
+      spu_file := { f with fileName = (!out_name^"_func.c");};
       ppc_file := { f with fileName = (!out_name^".c");};
       (* find tpc_decl pragmas *)
       let fspuVisitor = new findSPUDeclVisitor in
+      let ftagVisitor = new findTaggedCals in
 
       (* create a call graph and print it *)
       let callgraph = CG.computeGraph f in
       CG.printGraph stdout callgraph;
-
-      (* kasas was here :P *)
-      Ptdepa.find_dependencies f;
 	
       (* create a global list (the spu output file) *)
       let spu_glist = ref [] in
@@ -803,9 +838,21 @@ let feature : featureDescr =
 (*      preprocessAndMergeWithHeader f "spu_intrinsics.h";
       preprocessAndMergeWithHeader f "spu_mfcio.h";*)
       (*preprocessAndMergeWithHeader f "tpc_skeleton_tpc.c" "SPU";*)
-      preprocessAndMergeWithHeader f "tpc_s2s.h" "SPU";
+      preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
 (*       preprocessAndMergeWithHeader f "include/tpc_common.h" "SPU"; *)
       (*preprocessAndMergeWithHeader f "include/tpc_spe.h" "SPU";*)
+
+      Cil.iterGlobals !ppc_file 
+        (function
+          GFun(fd,_) ->
+            currentFunction := fd;
+            ignore(visitCilFunction ftagVisitor fd);
+        | _ -> ()
+        )
+      ;
+
+      (* kasas was here :P *)
+      Ptdepa.find_dependencies f;
 
       Cil.iterGlobals !ppc_file 
         (function
@@ -815,6 +862,7 @@ let feature : featureDescr =
         | _ -> ()
         )
       ;
+
       (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
       (* copy all globals except the function declaration of "main" *)
@@ -830,7 +878,9 @@ let feature : featureDescr =
       (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
       writeFile !ppc_file;
-      writeNewFile f (!out_name^"_func.c") !spu_glist;
+      !spu_file.globals <- !spu_glist;
+      writeFile !spu_file;
+(*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
       );
     fd_post_check = true;
   } 
