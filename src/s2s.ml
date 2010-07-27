@@ -478,15 +478,16 @@ class findSPUDeclVisitor cgraph = object
                 try
                   (* Print the Callees *)
                   let cnode: CG.callnode = H.find callgraph funname in
-                  (*let nodeName (n: CG.nodeinfo) : string =
+                  let nodeName (n: CG.nodeinfo) : string =
                     match n with
-                      NIVar (v, _) -> v.vname
-                    | NIIndirect (n, _) -> n in
-                  let printEntry _ (n: CG.callnode) : unit =
-                    let name = nodeName n.cnInfo in
-                    (Printf.fprintf out " %s" name) 
+                      CG.NIVar (v, _) -> v.vname
+                    | CG.NIIndirect (n, _) -> n
                   in
-                  Inthash.iter printEntry cnode.cnCallees;*)
+                  let printEntry _ (n: CG.callnode) : unit =
+                    let name = nodeName n.CG.cnInfo in
+                    ignore(E.log " %s" name) 
+                  in
+                  Inthash.iter printEntry cnode.CG.cnCallees;
                   let task = find_function_fundec (!spu_file) funname in
                   rest2 task.svar
                 with Not_found -> begin
