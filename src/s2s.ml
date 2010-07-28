@@ -258,6 +258,15 @@ let is_strided (arg: arg_t) : bool =
     | SInOut -> true
     | _ -> false
 
+(* check if an arguments type is out *)
+let is_out_arg (arg: arg_t) : bool =
+   match arg with
+    | Out
+    | InOut
+    | SOut
+    | SInOut -> true
+    | _ -> false
+
 (* returns the argument type from an argument description 
   (string * arg_t * string * string *string ) *)
 let get_arg_type (arg: (string * arg_t * string * string *string )) : arg_t =
@@ -272,15 +281,26 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let il = ref [] in
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
   if (!stats) then begin
+    let total_bytes = var (find_local_var fd "total_bytes") in
     let arg_bytes = var (find_local_var fd "arg_bytes") in
     if (is_strided arg_type) then
       let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
       let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
       (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
       il := Set(arg_bytes, BinOp(Mult, arg_els, arg_elsz, intType), locUnknown)::!il
-    else
+    else begin
       (* arg_bytes = arg_size; *)
       il := Set(arg_bytes, arg_size, locUnknown)::!il
+    end;
+    (* total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag)); *)
+    let total_size = 
+      if (is_out_arg arg_type) then begin
+        BinOp(PlusA, Lval(total_bytes), BinOp(Mult, integer 2, Lval(arg_bytes), intType), intType)
+      end else begin
+        BinOp(PlusA, Lval(total_bytes), Lval(arg_bytes), intType)
+      end
+    in
+    il := Set(total_bytes, total_size, locUnknown)::!il
   end;
   let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
   let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
@@ -475,7 +495,11 @@ class findSPUDeclVisitor cgraph = object
                   add_after_s !ppc_file var_i.vname new_fd;
                   spu_tasks := (funname, (new_fd, var_i, args'))::!spu_tasks;
                   rest new_fd in
+                (* try to find the function definition *)
                 try
+                  let task = find_function_fundec (!spu_file) funname in
+                  (* TODO: copy itself and the callees *)
+
                   (* Print the Callees *)
                   let cnode: CG.callnode = H.find callgraph funname in
                   let nodeName (n: CG.nodeinfo) : string =
@@ -487,9 +511,12 @@ class findSPUDeclVisitor cgraph = object
                     let name = nodeName n.CG.cnInfo in
                     ignore(E.log " %s" name) 
                   in
+                  ignore(E.log " Calls:"); 
                   Inthash.iter printEntry cnode.CG.cnCallees;
-                  let task = find_function_fundec (!spu_file) funname in
+                  ignore(E.log "\n");
+
                   rest2 task.svar
+                (* else try to find the function signature/prototype *)
                 with Not_found -> begin
                   let task = find_function_sign (!spu_file) funname in
                   rest2 task
@@ -657,6 +684,7 @@ let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit 
   if (!stats) then
     statistics := "-DSTATISTICS=1";
   ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^" "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^" "^(!statistics)^" -I./include/ppu -I./include/spu "^(header));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -680,7 +708,7 @@ let feature : featureDescr =
     fd_extraopt = options;
     fd_doit = 
     (function (f: file) -> 
-      (* get the input file for global use *)
+      (* create two copies of the initial file *)
 (*       in_file := f; *)
       spu_file := { f with fileName = (!out_name^"_func.c");};
       ppc_file := { f with fileName = (!out_name^".c");};
@@ -697,17 +725,9 @@ let feature : featureDescr =
 
       (* copy all code from file f to file_ppc *)
       preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
-      (*preprocessAndMergeWithHeader !ppc_file "ppu_intrinsics.h" "PPU";*)
-(*       preprocessAndMergeWithHeader !ppc_file "include/tpc_common.h" "PPU"; *)
-      (*preprocessAndMergeWithHeader !ppc_file "include/tpc_ppe.h" "PPU"; *)
 
       (* copy all code from file f to file_spe plus the needed headers*)
-(*      preprocessAndMergeWithHeader f "spu_intrinsics.h";
-      preprocessAndMergeWithHeader f "spu_mfcio.h";*)
-      (*preprocessAndMergeWithHeader f "tpc_skeleton_tpc.c" "SPU";*)
       preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
-(*       preprocessAndMergeWithHeader f "include/tpc_common.h" "SPU"; *)
-      (*preprocessAndMergeWithHeader f "include/tpc_spe.h" "SPU";*)
 
       Cil.iterGlobals !ppc_file 
         (function

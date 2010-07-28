@@ -1007,22 +1007,22 @@ struct exception {
    void __attribute__((__overloaded__))  __sync_fetch_and_xor(...) ;  */
 /* compiler builtin: 
    float __builtin_nanf(char const   * ) ;  */
-//#line  34 "tpc_s2s.h"
+//#line  36 "tpc_s2s.h"
 extern signed char __attribute__((__spu_vector__))  __builtin_si_frest(signed char __attribute__((__spu_vector__))   ) ;
-//#line  35
+//#line  37
 extern signed char __attribute__((__spu_vector__))  __builtin_si_fi(signed char __attribute__((__spu_vector__))   ,
                                                                     signed char __attribute__((__spu_vector__))   ) ;
-//#line  36
-extern signed char __attribute__((__spu_vector__))  __builtin_si_frsqest(signed char __attribute__((__spu_vector__))   ) ;
-//#line  37
-extern void __builtin_si_wrch(int  , signed char __attribute__((__spu_vector__))   ) ;
 //#line  38
-extern signed char __attribute__((__spu_vector__))  __builtin_si_rdch(int  ) ;
+extern signed char __attribute__((__spu_vector__))  __builtin_si_frsqest(signed char __attribute__((__spu_vector__))   ) ;
 //#line  39
-extern signed char __attribute__((__spu_vector__))  __builtin_si_from_ptr(void * ) ;
+extern void __builtin_si_wrch(int  , signed char __attribute__((__spu_vector__))   ) ;
 //#line  40
-extern signed char __attribute__((__spu_vector__))  __builtin_si_from_uint(unsigned int  ) ;
+extern signed char __attribute__((__spu_vector__))  __builtin_si_rdch(int  ) ;
 //#line  41
+extern signed char __attribute__((__spu_vector__))  __builtin_si_from_ptr(void * ) ;
+//#line  42
+extern signed char __attribute__((__spu_vector__))  __builtin_si_from_uint(unsigned int  ) ;
+//#line  43
 extern unsigned int __builtin_si_to_uint(signed char __attribute__((__spu_vector__))   ) ;
 //#line  346 "/usr/include/libio.h"
 extern struct _IO_FILE_plus _IO_2_1_stdin_ ;
@@ -1451,7 +1451,7 @@ extern unsigned int __mfc_multi_tag_reserve(unsigned int  ) ;
 extern unsigned int __mfc_multi_tag_release(unsigned int  , unsigned int  ) ;
 //#line  35 "include/tpc_spe.h"
 extern int execute_task(queue_entry_t *ex_task , tpc_spe_task_state_t *task_info ) ;
-//#line  45 "tpc_s2s.h"
+//#line  47 "tpc_s2s.h"
 extern struct tpc_spe_statistics_t *G_spe_stats[16U] ;
 //#line  140 "/usr/include/stdlib.h"
 extern  __attribute__((__nothrow__)) size_t __ctype_get_mb_cur_max(void) ;
@@ -1845,11 +1845,11 @@ extern  __attribute__((__nothrow__)) char *__stpncpy(char * __restrict  __dest ,
 extern  __attribute__((__nothrow__)) char *stpncpy(char * __restrict  __dest , char const   * __restrict  __src ,
                                                    size_t __n )  __attribute__((__nonnull__(1,2))) ;
 //#line  324 "./include/ppu/ppu_intrinsics.h"
-__inline static  __attribute__((__nothrow__)) double ( __attribute__((__always_inline__)) __ppu_fabs)(double x )  __attribute__((__const__)) ;
+__inline static  __attribute__((__nothrow__)) double ( __attribute__((__always_inline__)) __ppu_fabs___0)(double x )  __attribute__((__const__)) ;
 //#line  325
-__inline static  __attribute__((__nothrow__)) double ( __attribute__((__always_inline__)) __ppu_fabs)(double x )  __attribute__((__const__)) ;
+__inline static  __attribute__((__nothrow__)) double ( __attribute__((__always_inline__)) __ppu_fabs___0)(double x )  __attribute__((__const__)) ;
 //#line  325 "./include/ppu/ppu_intrinsics.h"
-__inline static double ( __attribute__((__always_inline__)) __ppu_fabs)(double x ) 
+__inline static double ( __attribute__((__always_inline__)) __ppu_fabs___0)(double x ) 
 { double r ;
 
   {
@@ -1860,11 +1860,11 @@ __inline static double ( __attribute__((__always_inline__)) __ppu_fabs)(double x
 }
 }
 //#line  333
-__inline static  __attribute__((__nothrow__)) float ( __attribute__((__always_inline__)) __ppu_fabsf)(float x )  __attribute__((__const__)) ;
+__inline static  __attribute__((__nothrow__)) float ( __attribute__((__always_inline__)) __ppu_fabsf___0)(float x )  __attribute__((__const__)) ;
 //#line  334
-__inline static  __attribute__((__nothrow__)) float ( __attribute__((__always_inline__)) __ppu_fabsf)(float x )  __attribute__((__const__)) ;
+__inline static  __attribute__((__nothrow__)) float ( __attribute__((__always_inline__)) __ppu_fabsf___0)(float x )  __attribute__((__const__)) ;
 //#line  334 "./include/ppu/ppu_intrinsics.h"
-__inline static float ( __attribute__((__always_inline__)) __ppu_fabsf)(float x ) 
+__inline static float ( __attribute__((__always_inline__)) __ppu_fabsf___0)(float x ) 
 { float r ;
 
   {
