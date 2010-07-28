@@ -66,7 +66,7 @@ let find_arg_dependencies (arg1: arg_type) : unit = begin
       let (argname2, func2, taskname2) = arg2 in
       print_endline ("\twith "^argname2);
       (* check only in different tasks *)
-			let vname2 = func2.svar.vname in (* temp fix for match *)
+(*			let vname2 = func2.svar.vname in (* temp fix for match *)
       match func1.svar.vname with
       | vname2 -> (* same scope *) 
 						if(taskname1 <> taskname2) then  
@@ -79,6 +79,10 @@ let find_arg_dependencies (arg1: arg_type) : unit = begin
 					if(is_aliased (argname1, func1) (argname2, func2)) then
 						(print_endline ("\t\t"^argname1^" aliases to "^argname2);
 						aliased_args := arg2::!aliased_args;))
+*)
+      if(is_aliased (argname1, func1) (argname2, func2)) then
+        (print_endline ("\t\t"^argname1^" aliases to "^argname2);
+        aliased_args := arg2::!aliased_args;)
     done;
     arg_dep_l := (arg1, !aliased_args)::!arg_dep_l;
     let (argname, func, taskname) = arg1 in
