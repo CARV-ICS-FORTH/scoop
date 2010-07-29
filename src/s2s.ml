@@ -443,6 +443,27 @@ class findTaggedCals = object
       DoChildren
 end
 
+(* recursively copies a function definition and all it's callees
+   from the ppc_file to the spu_file *)
+let rec deep_copy_function (task: string) (callgraph: CG.callgraph) = begin
+    (* First copy the Callees *)
+    let cnode: CG.callnode = H.find callgraph task in
+    let nodeName (n: CG.nodeinfo) : string =
+      match n with
+        CG.NIVar (v, _) -> v.vname
+      | CG.NIIndirect (n, _) -> n
+    in
+    let deep_copy _ (n: CG.callnode) : unit =
+      let name = nodeName n.CG.cnInfo in
+      deep_copy_function name callgraph
+    in
+    Inthash.iter deep_copy cnode.CG.cnCallees;
+    
+    (* now copy current *)
+    let new_fd = GFun(find_function_fundec (!ppc_file) task, locUnknown) in
+    (!spu_file).globals <- (!spu_file).globals@[new_fd];
+end
+
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
   inherit nopCilVisitor
@@ -473,14 +494,14 @@ class findSPUDeclVisitor cgraph = object
                 let args_num = (List.length args')-1 in
                 for i = 0 to args_num do
                   let (vname, _, _, _, _) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !spu_file vname))::!call_args;
+                  call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
                 done;
                 for i = 0 to args_num do
                   let (_, arg_type, vsize, velsz, vels) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !spu_file vsize))::!call_args;
+                  call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args;
                   if (is_strided arg_type) then
-                    call_args := Lval(var (find_scoped_var !currentFunction !spu_file vels))::
-                      Lval(var (find_scoped_var !currentFunction !spu_file velsz))::!call_args;
+                    call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
+                      Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;
                 done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
@@ -497,28 +518,14 @@ class findSPUDeclVisitor cgraph = object
                   rest new_fd in
                 (* try to find the function definition *)
                 try
-                  let task = find_function_fundec (!spu_file) funname in
-                  (* TODO: copy itself and the callees *)
-
-                  (* Print the Callees *)
-                  let cnode: CG.callnode = H.find callgraph funname in
-                  let nodeName (n: CG.nodeinfo) : string =
-                    match n with
-                      CG.NIVar (v, _) -> v.vname
-                    | CG.NIIndirect (n, _) -> n
-                  in
-                  let printEntry _ (n: CG.callnode) : unit =
-                    let name = nodeName n.CG.cnInfo in
-                    ignore(E.log " %s" name) 
-                  in
-                  ignore(E.log " Calls:"); 
-                  Inthash.iter printEntry cnode.CG.cnCallees;
-                  ignore(E.log "\n");
-
+                  (* checking for the function definition *)
+                  let task = find_function_fundec (!ppc_file) funname in
+                  (* copy itself and the callees *)
+                  deep_copy_function funname callgraph;
                   rest2 task.svar
                 (* else try to find the function signature/prototype *)
                 with Not_found -> begin
-                  let task = find_function_sign (!spu_file) funname in
+                  let task = find_function_sign (!ppc_file) funname in
                   rest2 task
                 end
               end
@@ -700,6 +707,14 @@ let isNotSkeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
+(* Checks if <g> is a typedef, enum, struct or union *)
+let is_typedef (g: global) : bool = match g with
+    GType(_, _)
+  | GCompTag(_, _)
+  | GCompTagDecl(_, _)
+  | GEnumTag(_, _)
+  | GEnumTagDecl(_, _) -> true
+  | _ -> false
 
 let feature : featureDescr = 
   { fd_name = "findspucode";
@@ -710,7 +725,8 @@ let feature : featureDescr =
     (function (f: file) -> 
       (* create two copies of the initial file *)
 (*       in_file := f; *)
-      spu_file := { f with fileName = (!out_name^"_func.c");};
+(*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
+      spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
       ppc_file := { f with fileName = (!out_name^".c");};
 
       (* create a call graph and print it *)
@@ -721,13 +737,22 @@ let feature : featureDescr =
       let ftagVisitor = new findTaggedCals in
 	
       (* create a global list (the spu output file) *)
-      let spu_glist = ref [] in
+(*       let spu_glist = ref [] in *)
 
       (* copy all code from file f to file_ppc *)
       preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
 
-      (* copy all code from file f to file_spe plus the needed headers*)
+      (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
+         plus the needed headers *)
       preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
+      (*let old_types_l = List.filter is_typedef (!spu_file).globals in
+      let new_types_l = List.filter is_typedef (!ppc_file).globals in
+      (* copy only non defined *)
+      let types_to_add = List.filter
+        (fun g -> not (List.exists (fun k -> k=g) old_types_l))
+        new_types_l 
+      in
+      (!spu_file).globals <- types_to_add@(!spu_file).globals;*)
 
       Cil.iterGlobals !ppc_file 
         (function
@@ -739,7 +764,7 @@ let feature : featureDescr =
       ;
 
       (* kasas was here :P *)
-(*       Ptdepa.find_dependencies f; *)
+      Ptdepa.find_dependencies f;
 
       Cil.iterGlobals !ppc_file 
         (function
@@ -753,7 +778,7 @@ let feature : featureDescr =
       (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
       (* copy all globals except the function declaration of "main" *)
-      spu_glist := List.filter isNotMain (!spu_file).globals;
+(*       spu_glist := List.filter isNotMain (!spu_file).globals; *)
 
 
       (* tasks  (new_tpc * old_original * args) *)
@@ -761,11 +786,11 @@ let feature : featureDescr =
         (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
         (List.rev !spu_tasks)
       in
-      spu_glist := List.append !spu_glist [(make_exec_func !spu_file tasks)];
+      (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
       (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
       writeFile !ppc_file;
-      !spu_file.globals <- !spu_glist;
+(*       !spu_file.globals <- !spu_glist; *)
       writeFile !spu_file;
 (*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
       );

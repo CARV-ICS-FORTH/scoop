@@ -81,10 +81,6 @@ int tpc_call_tpcAD65(/*uint8_t funcid, uint8_t total_arguments, void* addr,  int
   Foo_32412312231();
 
   avail_task->active = ACTIVE;
-  // Increase local tail
-  task_queue_tail[s_available_spe] = (task_queue_tail[s_available_spe]+1) % MAX_QUEUE_ENTRIES;
-  // Choose next SPE in round-robin.
-  s_available_spe = (s_available_spe+1) % G_max_spes;
 
   READ_TIME_REG(tmptime3);
 
@@ -95,6 +91,11 @@ int tpc_call_tpcAD65(/*uint8_t funcid, uint8_t total_arguments, void* addr,  int
   G_ppe_stats.stalled_ticks += (tmptime2 - tmptime1);
   G_ppe_stats.issue_ticks += (tmptime3 - tmptime2);
 #endif
+  // Increase local tail
+  task_queue_tail[s_available_spe] = (task_queue_tail[s_available_spe]+1) % MAX_QUEUE_ENTRIES;
+
+  // Choose next SPE in round-robin.
+  s_available_spe = (s_available_spe+1) % G_max_spes;
 
 #ifdef TPC_MULTITHREADED
   pthread_mutex_unlock( &tpc_callwait_mutex );

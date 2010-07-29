@@ -2,6 +2,17 @@
 #define __ALTIVEC__
 #define TBR 79800000.0
 
+
+#if defined STATISTICS && PPU
+// Statistics
+  #define READ_TIME_REG(var)    \
+  {                             \
+    (var) = __mftb();           \
+  }
+#else
+  #define READ_TIME_REG(var)  
+#endif
+  
 #if defined PPU
 //   #define vector __attribute__((altivec(vector__)))
   #define __vector __attribute__((altivec(vector__)))
@@ -18,17 +29,6 @@ extern int g_task_current_id[MAX_SPES] __attribute__ ((aligned (64)));
 extern unsigned int g_task_id_queue[MAX_SPES][MAX_QUEUE_ENTRIES] __attribute__ ((aligned (128)));
 extern queue_entry_t *task_queue[MAX_SPES];
 extern struct tpc_ppe_statistics_t  G_ppe_stats;  // in MM
-
-  #if defined STATISTICS
-  // Statistics
-    #define READ_TIME_REG(var)    \
-    {                             \
-      (var) = __mftb();           \
-    }
-  #else
-    #define READ_TIME_REG(var)  
-  #endif
-
   #include "tpc_skeleton_tpc.c"
 #elif defined SPU
   #define vector __attribute__((spu_vector))
