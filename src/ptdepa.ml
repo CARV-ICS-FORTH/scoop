@@ -4,6 +4,7 @@ open Printf
 
 module PT = Ptatype
 module LF = Labelflow
+module E = Errormsg
 
 type arg_type = (string * fundec * string)
  
@@ -41,7 +42,7 @@ let get_rhoSet (arg: (string * fundec)) : LF.rhoSet =
   let env = List.assoc func !PT.global_fun_envs in 
   let (argtype, argaddress) = PT.env_lookup argname env in 
   match argtype.PT.t with 
-  | PT.ITPtr(_, _) -> LF.get_rho_p2set_m argaddress  
+  | PT.ITPtr(_, _) -> LF.close_rhoset_m (LF.RhoSet.singleton argaddress)
   | _ ->  print_endline ("Warning: "^argname^" is not a pointer.");
 					LF.RhoSet.empty (* if arg is not a pointer, return an empty set 
 													 * so that is_aliased returns false *)
@@ -51,6 +52,7 @@ let is_aliased (arg1: (string * fundec)) (arg2: (string * fundec)) : bool =
   let set1 = get_rhoSet arg1 in 
   let set2 = get_rhoSet arg2 in
   let final_set = LF.RhoSet.inter set1 set2 in
+  ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
   if(LF.RhoSet.is_empty final_set) then print_endline("set empty") 
 	else print_endline("not empty");
   not (LF.RhoSet.is_empty final_set)
