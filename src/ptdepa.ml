@@ -52,7 +52,7 @@ let get_rhoSet (arg: (string * fundec)) : LF.rhoSet =
   ignore(E.log "lookup of %s gives location %a with type %a\n" argname
     LF.d_rho argaddress PT.d_tau argtype);
   match argtype.PT.t with
-  | PT.ITPtr(_, _) -> LF.close_rhoset_m (LF.RhoSet.singleton argaddress)
+  | PT.ITPtr(_, r) -> LF.close_rhoset_m (LF.RhoSet.singleton r)
   | _ ->  print_endline ("Warning: "^argname^" is not a pointer.");
 					LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 													 * so that is_aliased returns false *)
