@@ -3,7 +3,7 @@ ROOT=`pwd`
 cd cil
 #autoconf
 ./configure EXTRASRCDIRS="$ROOT/src" \
-  EXTRAFEATURES="locksmith lockpick stmizer s2s"
+  EXTRAFEATURES="s2s"
 cd ..
 cat locksmith.in | sed -e "s.ROOT.$ROOT." > locksmith
 cat lockpick.in | sed -e "s.ROOT.$ROOT." > lockpick

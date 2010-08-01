@@ -42,6 +42,7 @@ module H = Hashtbl
 module S = Str
 module L = List
 module CG = Callgraph
+module Lprof = Lockprofile
 
 let debug = ref false
 let stats = ref false
@@ -720,7 +721,19 @@ let feature : featureDescr =
   { fd_name = "findspucode";
     fd_enabled = ref true;
     fd_description = "find all pragmas declaring spu tasks";
-    fd_extraopt = options;
+    fd_extraopt = options
+    @ Ptatype.options
+    @ Uniqueness.options
+    @ Locksettings.options
+    (*@ Livevars.options*)
+    @ Shared.options
+    @ Correlation.options
+    @ Controlflow.options
+    @ Bansheemlifc.options
+    @ Labelflow.options
+    @ Lprof.options
+    @ Ptdepa.options
+    ;
     fd_doit = 
     (function (f: file) -> 
       (* create two copies of the initial file *)
