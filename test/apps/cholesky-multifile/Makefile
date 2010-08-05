@@ -7,19 +7,19 @@
 LIBTPC=libtpc
 
 
-CFLAGS = -O3 -ftree-vectorize -funroll-loops   -ffast-math -fno-tree-pre -g  -m32 -maltivec  -I../../$(LIBTPC)/include/
-SPUFLAGS=  -O3 -funroll-loops -DVEC  -ffast-math  -fomit-frame-pointer   -fmodulo-sched -ftree-vectorize -I. -I./spe -I../../$(LIBTPC)/include/
+CFLAGS = -O3 -ftree-vectorize -funroll-loops   -ffast-math -fno-tree-pre -g  -m32 -maltivec  -I../../../$(LIBTPC)/include/
+SPUFLAGS=  -O3 -funroll-loops -DVEC  -ffast-math  -fomit-frame-pointer   -fmodulo-sched -ftree-vectorize -I. -I./spe -I../../../$(LIBTPC)/include/
 
 CC=ppu-gcc
 SCC=spu-gcc
 
-SRCSPU= spe/func.c   \
+SRCSPU= cholesky_func.c   \
         spe/spu_sgemm_tile.c \
         spe/spu_spotrf_tile.c \
         spe/spu_ssyrk_tile.c \
         spe/spu_strsm_tile.c 
 
-SRCS = cholesky_kernels.c
+SRCS = cholesky.c
 
 HEADERS =   spe/spu_sgemm_tile.h \
         spe/spu_spotrf_tile.h \
@@ -30,7 +30,7 @@ HEADERS =   spe/spu_sgemm_tile.h \
 
 
 EMBEDBIN=tpc_spe_binary-embed.o
-LDFLAGS= ../../$(LIBTPC)/libtpc_ppe.a -lspe2 -lpthread 
+LDFLAGS= ../../../$(LIBTPC)/libtpc_ppe.a -lspe2 -lpthread 
 
 
 ###############
@@ -54,7 +54,7 @@ $(OBJS):  %.o: %.c
 
 ###############
 
-default: cholesky-serial cholesky
+default: cholesky #cholesky-serial 
 
 
 cholesky: $(OBJS) $(EMBEDBIN) 
@@ -62,7 +62,7 @@ cholesky: $(OBJS) $(EMBEDBIN)
 
 
 tpc_spe_binary-embed.o:  $(OBJSPU) $(HEADERS)
-	$(SCC)  $(SLDFLAGS)  $(OBJSPU) -o tpc_spe_binary  ../../$(LIBTPC)/libtpc_spe.a
+	$(SCC)  $(SLDFLAGS)  $(OBJSPU) -o tpc_spe_binary  ../../../$(LIBTPC)/libtpc_spe.a
 	ppu-embedspu -m32 tpc_spe_binary tpc_spe_binary tpc_spe_binary-embed.o
 
 

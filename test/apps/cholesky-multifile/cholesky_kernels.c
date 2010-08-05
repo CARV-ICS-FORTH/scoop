@@ -38,7 +38,12 @@
 
 #define NB 64
 
-void compute(struct timeval *start, struct timeval *stop, int DIM, float ***A)
+void spu_sgemm_tile(float *A, float *B, float *C);
+void spu_ssyrk_tile(float *A, float *C);
+void spu_spotrf_tile(float *A);
+void spu_strsm_tile(float *T, float *B);
+
+void compute(struct timeval *start, struct timeval *stop, int DIM, float *A[DIM][DIM])
 {
   int i, j, k;
   tpc_reset_stats();
@@ -99,14 +104,14 @@ void compute(struct timeval *start, struct timeval *stop, int DIM, float ***A)
     }
     tpc_wait_all();
   }
-  #pragma css finish 
+//   #pragma css finish 
   gettimeofday(stop, NULL);
 }
 
 
 float **A;
 
-static void convert_to_blocks(int DIM, int N, float *Alin, float ***A)
+static void convert_to_blocks(int DIM, int N, float *Alin, float *A[DIM][DIM])
 {
 int i, j;
   for (i = 0; i < N; i++)

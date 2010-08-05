@@ -5,7 +5,7 @@
 //
 //==============================================================================================
 
-// #include <spu_intrinsics.h>
+#include <spu_intrinsics.h>
 
 #include "spu_spotrf_tile.h"
 

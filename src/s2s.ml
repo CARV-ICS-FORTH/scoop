@@ -167,7 +167,7 @@ let find_global_var (f: file) (name: string) : varinfo =
   in
   try
     iterGlobals f findit;
-    ignore(E.error  "\"%s\" is not globally defined in %s\n" name f.fileName);
+    ignore(E.warn  "\"%s\" is not globally defined in %s\n" name f.fileName);
     raise Not_found
   with Found_var v -> v
 
@@ -179,7 +179,7 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.sformals;
-    ignore(E.error  "\"%s\" is not a formal of %s\n" name fd.svar.vname);
+    ignore(E.warn  "\"%s\" is not a formal of %s\n" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
@@ -191,7 +191,7 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.slocals;
-    ignore(E.error "\"%s\" is not a local of %s" name fd.svar.vname);
+    ignore(E.warn "\"%s\" is not a local of %s" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
@@ -207,7 +207,7 @@ let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
           ( try
             find_global_var f name
           with Not_found -> (
-              ignore(E.error "\"%s\" is not accessible from %s" name fd.svar.vname);
+              ignore(E.warn "\"%s\" is not accessible from %s" name fd.svar.vname);
               raise Not_found)
           )
       )
@@ -757,15 +757,9 @@ let feature : featureDescr =
 
       (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
          plus the needed headers *)
-      preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
-      (*let old_types_l = List.filter is_typedef (!spu_file).globals in
       let new_types_l = List.filter is_typedef (!ppc_file).globals in
-      (* copy only non defined *)
-      let types_to_add = List.filter
-        (fun g -> not (List.exists (fun k -> k=g) old_types_l))
-        new_types_l 
-      in
-      (!spu_file).globals <- types_to_add@(!spu_file).globals;*)
+      (!spu_file).globals <- new_types_l;
+      preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
 
       Cil.iterGlobals !ppc_file 
         (function
@@ -777,7 +771,7 @@ let feature : featureDescr =
       ;
 
       (* kasas was here :P *)
-      Ptdepa.find_dependencies f;
+(*       Ptdepa.find_dependencies f; *)
 
       Cil.iterGlobals !ppc_file 
         (function
