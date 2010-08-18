@@ -218,7 +218,7 @@ let find_enum (f: file) (name: string) : enuminfo =
   let findit = function
     | GEnumTag(ei, _) when ei.ename = name -> raise (Found_enum ei)
     | _ -> ()
-  in
+  in 
   try
     iterGlobals f findit;
     raise Not_found
@@ -426,14 +426,15 @@ class findTaggedCals = object
                 ignore(List.map (fun arg -> match arg with
                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
                       (* give all the arguments to Dtdepa*)
-                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
-                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l
+                      Ptdepa.task_args_l := (varname , !currentFunction)::!Ptdepa.task_args_l;
+                      Ptdepa.addArg (varname, !currentFunction);
                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
-                      (* Ptdepa.task_args_l := ((varname , !currentFunction), funname , varname, (translate_arg arg_typ false))::!Ptdepa.task_args_l; *)
-                      Ptdepa.task_args_l := (varname , !currentFunction, funname)::!Ptdepa.task_args_l
+                      Ptdepa.task_args_l := (varname , !currentFunction)::!Ptdepa.task_args_l;         
+                      Ptdepa.addArg (varname, !currentFunction);
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args);
+                Ptdepa.addTask vi.vname !currentFunction;
                 DoChildren
             end
             | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
@@ -771,7 +772,7 @@ let feature : featureDescr =
       ;
 
       (* kasas was here :P *)
-(*       Ptdepa.find_dependencies f; *)
+      Ptdepa.find_dependencies f;
 
       Cil.iterGlobals !ppc_file 
         (function
