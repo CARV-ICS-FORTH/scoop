@@ -20,8 +20,8 @@ let options = [
   " Write task dependecies in \"task-dep.dot\"";
 ]
 
-             (* argname * fundec *)
-type arg_type = (string * fundec)
+             (* argname * in/out type * fundec *)
+type arg_type = (string * string * fundec)
       (* (task scope * taskname) * argument list *)
 and task_t = ((fundec * string) * arg_type list) 
 
@@ -75,7 +75,7 @@ let append2task_dep_l (task: (fundec * string)) (arg: (string * arg_type list)) 
 
 (* return rhoSet for the specific arg (argument is argname * function descriptor) *)
 let get_rhoSet (arg: arg_type) : LF.rhoSet =
-  let (argname, func) = arg in
+  let (argname, _, func) = arg in
   let env = List.assoc func !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup argname env in
   (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
@@ -85,20 +85,32 @@ let get_rhoSet (arg: arg_type) : LF.rhoSet =
   | _ ->  ignore(E.log "Warning: %s is not a pointer" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
+(* return true if arg_t is In or SIn *)
+let is_in_arg (arg: string): bool = 
+  match arg with 
+      "In"
+    | "SIn" -> true 
+    | _ -> false
 
 (* check if arg1 aliases to arg2 *)
 let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
-  let set1 = get_rhoSet arg1 in
-  let set2 = get_rhoSet arg2 in
-  let final_set = LF.RhoSet.inter set1 set2 in
-  (*
-  let (argname1, _) = arg1 in
-  let (argname2, _) = arg2 in 
-  ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
-  ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
-  ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
-  *)
-  not (LF.RhoSet.is_empty final_set)
+  (* if both arguments are only inputs, return false (they could 
+     be alised, but we treat them as if the were not) *)
+  let (_, t, _) = arg1 in
+  let (_, t', _) = arg2 in
+  if((is_in_arg t) && (is_in_arg t')) then false 
+  else
+    let set1 = get_rhoSet arg1 in
+    let set2 = get_rhoSet arg2 in
+    let final_set = LF.RhoSet.inter set1 set2 in
+    (*
+    let (argname1, _) = arg1 in
+    let (argname2, _) = arg2 in 
+    ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
+    ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
+    ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+    *)
+    not (LF.RhoSet.is_empty final_set)
 
 (* 
  * check if there are any dependencies between any of the arguments 
@@ -120,9 +132,9 @@ let find_arg_dependencies (arg1: arg_type) : unit = begin
   let args_number = List.length !task_args_l in
     for i = 0 to (args_number-1) do
       let arg2 = List.nth !task_args_l i in
-      let (argname1, func1) = arg1 in
-      let (argname2, func2) = arg2 in
-      if(is_aliased (argname1, func1) (argname2, func2)) then
+      let (argname1, _, func1) = arg1 in
+      let (argname2, _, func2) = arg2 in
+      if(is_aliased arg1 arg2) then
         aliased_args := arg2::!aliased_args;
     done;
     arg_dep_l := (arg1, !aliased_args)::!arg_dep_l;
@@ -144,9 +156,9 @@ let find_task_dependencies (elem: task_t) : unit = begin
   depended_tasks := [];)
 end
 
-(* statistics utilities *)
+(* utilities *)
 let arg2string (arg: arg_type) : string =
-  let (argname, _) = arg in
+  let (argname, _, _) = arg in
   "arg: "^argname
 
 let print_arg_dependencies (dep_l: arg_type * arg_type list) : unit = begin
@@ -187,6 +199,20 @@ let print_task_graph (outf: out_channel) : unit =
       end)
     !task_dep_l
       
+let print_args_graph (outf: out_channel) : unit = 
+  List.iter 
+    (fun (n: (arg_type * arg_type list)) -> begin 
+      let (argname, _, _) = (fst n) in
+      let dep_l = (snd n) in
+      List.iter 
+        (fun dn -> begin
+          let (argname', _, _) = dn in
+          Printf.fprintf outf "%s->%s\n" argname argname';
+        end) dep_l;
+      Printf.fprintf outf "%s\n" argname;
+      end)
+    !arg_dep_l
+ 
 
 let find_dependencies (f: file) : unit = begin	
   (* let prepareCFGs = new prepareCFGVisitor in
@@ -204,12 +230,14 @@ let find_dependencies (f: file) : unit = begin
     *)
     Dotpretty.close_file ();
   end;
-
   List.iter find_arg_dependencies !task_args_l;
   List.iter print_arg_dependencies !arg_dep_l;
   List.iter find_task_dependencies !tasks_l;
   List.iter print_task_dependencies !task_dep_l;
   if !do_task_graph_out then begin
+    Dotpretty.init_file "arg-dep.dot" "argument dependencies";
+    print_args_graph !Dotpretty.outf;
+    Dotpretty.close_file ();
     Dotpretty.init_file "task-dep.dot" "task dependencies";
     print_task_graph !Dotpretty.outf;
     Dotpretty.close_file ();

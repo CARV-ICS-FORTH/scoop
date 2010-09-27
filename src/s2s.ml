@@ -424,14 +424,14 @@ class findTaggedCals = object
             Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
               let funname = vi.vname in
                 ignore(List.map (fun arg -> match arg with
-                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
                       (* give all the arguments to Dtdepa*)
-                      Ptdepa.task_args_l := (varname , !currentFunction)::!Ptdepa.task_args_l;
-                      Ptdepa.addArg (varname, !currentFunction);
+                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;
+                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
-                      Ptdepa.task_args_l := (varname , !currentFunction)::!Ptdepa.task_args_l;         
-                      Ptdepa.addArg (varname, !currentFunction);
+                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;         
+                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args);
                 Ptdepa.addTask vi.vname !currentFunction;
