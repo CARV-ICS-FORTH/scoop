@@ -5542,17 +5542,31 @@ and doDecl (isglobal: bool) : A.definition -> chunk = function
         
   | A.PRAGMA (a, loc) when isglobal -> begin
       currentLoc := convLoc(loc);
-      match doAttr ("dummy", [a]) with
-        [Attr("dummy", [a'])] ->
-          let a'' =
-            match a' with
-            | ACons (s, args) -> Attr (s, args)
-            | _ -> E.s (error "Unexpected attribute in #pragma")
-          in
-          cabsPushGlobal (GPragma (a'', !currentLoc));
-          empty
-
-      | _ -> E.s (error "Too many attributes in pragma")
+      match a with
+        COMMA(el) -> begin
+          match doAttr ("dummy", el) with
+            [Attr("dummy", el')] ->
+              let el'' =
+                match el' with
+                | AStr(s)::args -> Attr (s, args)
+                | _ -> E.s (error "Unexpected attribute in #pragma")
+              in
+              cabsPushGlobal (GPragma (el'', !currentLoc));
+              empty
+          | _ -> E.s (error "Too many attributes in pragma")
+        end
+        | _ -> begin
+          match doAttr ("dummy", [a]) with
+            [Attr("dummy", [a'])] ->
+              let a'' =
+                match a' with
+                | ACons (s, args) -> Attr (s, args)
+                | _ -> E.s (error "Unexpected attribute in #pragma")
+              in
+              cabsPushGlobal (GPragma (a'', !currentLoc));
+              empty
+          | _ -> E.s (error "Too many attributes in pragma")
+        end
   end
   | A.TRANSFORMER (_, _, _) -> E.s (E.bug "TRANSFORMER in cabs2cil input")
   | A.EXPRTRANSFORMER (_, _, _) -> 
@@ -6330,16 +6344,29 @@ and doStatement (s : A.statement) : chunk =
                      
     | A.SPRAGMA (expr, s, loc) -> begin
         currentLoc := convLoc(loc);
-        match doAttr ("dummy", [expr]) with
-          [Attr("dummy", [a'])] ->
-            let a'' =
-              match a' with
-              | ACons (s, args) -> Attr (s, args)
-              | _ -> E.s (error "Unexpected attribute in #pragma")
-            in
-            consPragma a'' (doStatement s) !currentLoc
-
-        | _ -> E.s (error "Too many attributes in pragma")
+        match expr with
+          COMMA(el) -> begin
+            match doAttr ("dummy", el) with
+              [Attr("dummy", el')] ->
+                let el'' =
+                  match el' with
+                  | AStr(s)::args -> Attr (s, args)
+                  | _ -> E.s (error "Unexpected attribute in #pragma")
+                in
+                consPragma el'' (doStatement s) !currentLoc
+            | _ -> E.s (error "Too many attributes in pragma")
+          end
+          | _ -> begin
+            match doAttr ("dummy", [expr]) with
+              [Attr("dummy", [a'])] ->
+                let a'' =
+                  match a' with
+                  | ACons (s, args) -> Attr (s, args)
+                  | _ -> E.s (error "Unexpected attribute in #pragma")
+                in
+                consPragma a'' (doStatement s) !currentLoc
+            | _ -> E.s (error "Too many attributes in pragma")
+          end
       end
 
     | A.GOTO (l, loc) -> 

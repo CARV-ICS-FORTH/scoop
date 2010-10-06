@@ -545,7 +545,7 @@ rule initial =
 |		'('		       {dbgToken (LPAREN (currentLoc ())) }
 |		')'				{RPAREN}
 |		';'		       {dbgToken (SEMICOLON (currentLoc ())) }
-|		','				{COMMA}
+|   ','       {COMMA}
 |		'.'				{DOT}
 |		"sizeof"		{SIZEOF (currentLoc ())}
 |               "__asm"                 { if !Cprint.msvcMode then 

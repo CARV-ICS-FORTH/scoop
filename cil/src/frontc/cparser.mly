@@ -312,7 +312,7 @@ let transformOffsetOf (speclist, dtype) member =
 %nonassoc 	ELSE
 
 
-%left	COMMA
+%left COMMA
 %right	EQ PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ PERCENT_EQ
                 AND_EQ PIPE_EQ CIRC_EQ INF_INF_EQ SUP_SUP_EQ
 %right	QUEST COLON
@@ -1343,11 +1343,22 @@ just_attributes:
 |   just_attribute just_attributes      { $1 :: $2 }
 ;
 
+pragma_arg:
+|   IDENT paren_attr_list_ne            { CALL(VARIABLE (fst $1), $2) }
+;
+
+pragma_arg_list:
+|   PRAGMA_EOL                          { [] }
+|   IDENT pragma_arg_list               { (CONSTANT (CONST_STRING (fst $1))) :: $2 }
+|   pragma_arg pragma_arg_list          { $1 :: $2 }
+;
+
 /** (* PRAGMAS and ATTRIBUTES *) ***/
 pragma: 
-| PRAGMA attr PRAGMA_EOL		        { ($2, $1) }
-| PRAGMA attr SEMICOLON PRAGMA_EOL	{ ($2, $1) }
-| PRAGMA_LINE                       { (VARIABLE (fst $1), snd $1) }
+// | PRAGMA attr PRAGMA_EOL  { ($2, $1) }
+|   PRAGMA attr SEMICOLON PRAGMA_EOL    { ($2, $1) }
+|   PRAGMA pragma_arg_list              { ( COMMA($2) , $1) }
+|   PRAGMA_LINE                         { (VARIABLE (fst $1), snd $1) }
 ;
 
 /* (* We want to allow certain strange things that occur in pragmas, so we 

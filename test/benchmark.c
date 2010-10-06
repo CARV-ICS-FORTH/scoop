@@ -176,7 +176,7 @@ int main(int argc, char **argv)
 
   // Warm up
   for(i=0; i<spes_num; ++i) {
-    #pragma tpc
+    #pragma css task
     computation_func0();
 //     tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
   starttime = __mftb();
 
   for(i=0; i<total_tpcs; ++i) {
-    #pragma tpc
+    #pragma css task
     computation_func0();
 //     tpc_call(funcid, args_num, tpc_buf[i%spes_num],arg_size,arg_flag);
   }

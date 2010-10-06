@@ -159,7 +159,7 @@ int main(int argc, char **argv)
 
   // Warm up - TLB
   for(i=0; i<spes_num; ++i) {
-    #pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size), tpc_buf2(in, arg_size), tpc_buf3(in, arg_size))
+    #pragma css task input(tpc_buf0[arg_size], tpc_buf1[arg_size], tpc_buf2[arg_size], tpc_buf3[arg_size])
 	computation_func0(tpc_buf0, tpc_buf1, tpc_buf2, tpc_buf3);
     //tpc_call(1, args_num, tpc_buf[i%spes_num],arg_size,TPC_INOUT_ARG);
   }
@@ -195,7 +195,7 @@ int main(int argc, char **argv)
 	}
   }else{
 */	for(i=0; i<total_tpcs; ++i) {
-	  #pragma tpc(tpc_buf0(in, arg_size), tpc_buf1(in, arg_size), tpc_buf2(in, arg_size), tpc_buf3(in, arg_size))
+    #pragma css task input(tpc_buf0[arg_size], tpc_buf1[arg_size], tpc_buf2[arg_size], tpc_buf3[arg_size])
 	  computation_func0(tpc_buf0, tpc_buf1, tpc_buf2, tpc_buf3);
 	}
 //  }
