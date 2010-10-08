@@ -441,7 +441,7 @@ class findTaggedCals = object
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
     if (prags <> []) then begin
-      match (List.hd prags) with 
+      match (List.hd prags) with
         (Attr("css", sub::rest), loc) -> begin
           match sub with
             AStr("task") -> begin
@@ -462,6 +462,27 @@ class findTaggedCals = object
             end
             | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
         end
+        | (Attr("tpc", args), _) -> begin
+          match s.skind with 
+            Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+(*               let funname = vi.vname in *)
+                ignore(List.map (fun arg -> match arg with
+                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
+                      (* give all the arguments to Dtdepa*)
+                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;
+                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
+                  | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+                      (* give all the arguments to Dtdepa don't care for strided  *)
+                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;         
+                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
+                  | _ -> ignore(E.error "impossible"); assert false
+                ) args);
+                Ptdepa.addTask vi.vname !currentFunction;
+                DoChildren
+              end
+            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
+            | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
+          end
         | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
      end else
        DoChildren
