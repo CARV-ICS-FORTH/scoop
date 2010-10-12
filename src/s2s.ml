@@ -246,10 +246,12 @@ let translate_arg (arg: string) (strided: bool) : arg_t =
       | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
   else
     match arg with
-        "input" -> In
+        "in" (* legacy *)
+      | "input" -> In
+      | "out" (* legacy *)
       | "output" -> Out
       | "inout" -> InOut
-      | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
+      | _ -> ignore(E.error "Only input/output/inout are allowed"); assert false
 
 (* check if an arguments type is stride *)
 let is_strided (arg: arg_t) : bool =

@@ -5539,7 +5539,7 @@ and doDecl (isglobal: bool) : A.definition -> chunk = function
       currentLoc := convLoc(loc);
       cabsPushGlobal (GAsm (s, !currentLoc));
       empty
-        
+
   | A.PRAGMA (a, loc) when isglobal -> begin
       currentLoc := convLoc(loc);
       match a with
@@ -5549,6 +5549,8 @@ and doDecl (isglobal: bool) : A.definition -> chunk = function
               let el'' =
                 match el' with
                 | AStr(s)::args -> Attr (s, args)
+                  (* Legacy support (#pragma tpc( arg(in, size), ...) *)
+                  | ACons(s, args)::[] -> Attr (s, args)
                 | _ -> E.s (error "Unexpected attribute in #pragma")
               in
               cabsPushGlobal (GPragma (el'', !currentLoc));
@@ -6351,6 +6353,8 @@ and doStatement (s : A.statement) : chunk =
                 let el'' =
                   match el' with
                   | AStr(s)::args -> Attr (s, args)
+                  (* Legacy support (#pragma tpc( arg(in, size), ...) *)
+                  | ACons(s, args)::[] -> Attr (s, args)
                   | _ -> E.s (error "Unexpected attribute in #pragma")
                 in
                 consPragma el'' (doStatement s) !currentLoc
