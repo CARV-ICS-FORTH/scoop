@@ -418,7 +418,6 @@ let rec ptdepa_process_args typ args : unit =
   if ( args <> []) then begin
     match (L.hd args) with
       AIndex(ACons(varname, []), ACons(varsize, [])) -> begin 
-        Ptdepa.task_args_l := (varname , typ, !currentFunction)::!Ptdepa.task_args_l;
         Ptdepa.addArg (varname, typ, !currentFunction);
       end
       | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ);
@@ -471,11 +470,9 @@ class findTaggedCals = object
                 ignore(List.map (fun arg -> match arg with
                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
                       (* give all the arguments to Dtdepa*)
-                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
-                      Ptdepa.task_args_l := (varname , arg_typ, !currentFunction)::!Ptdepa.task_args_l;         
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args);
