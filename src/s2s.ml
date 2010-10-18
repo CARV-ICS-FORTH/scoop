@@ -272,12 +272,12 @@ let is_out_arg (arg: arg_t) : bool =
 
 (* returns the argument type from an argument description 
   (string * arg_t * string * string *string ) *)
-let get_arg_type (arg: (string * arg_t * string * string *string )) : arg_t =
+let get_arg_type (arg: (string * arg_t * exp * exp * exp )) : arg_t =
   match arg with
     (_, arg_type ,_ ,_ ,_) -> arg_type
 
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
- (arg: (string * arg_t * string * string * string)) : instr list = begin
+ (arg: (string * arg_t * exp * exp * exp)) : instr list = begin
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
   let arg_type = get_arg_type arg in
@@ -329,7 +329,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     (* local_arg.size = TPC_BUILD_STRIDEARG(els,elsz); *)
     let build_stride = BinOp(BOr, BinOp(Shiftlt, arg_els, (integer 16), intType), arg_elsz, intType) in
     il := Set(size, build_stride, locUnknown)::!il;
-    (* TODO: local_arg.stride = arg_size; *)
+    (* local_arg.stride = arg_size; *)
     let stride = mkFieldAccess local_arg "stride" in
     il := Set(stride, arg_size, locUnknown)::!il;
   end else
@@ -363,7 +363,7 @@ end
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * string * string * string ) list) : fundec = begin
+let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) list) : fundec = begin
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
@@ -455,13 +455,7 @@ class findTaggedCals = object
                 | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
                 | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
             end
-            | AStr("wait") -> begin
-              match rest with 
-                ACons("on", exps)::_ -> (* wait on *) DoChildren
-                | [] -> (* wait all? *) DoChildren
-                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
-            end
-            | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
+            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc); DoChildren
         end
         | (Attr("tpc", args), _) -> begin
           match s.skind with 
@@ -529,13 +523,57 @@ let tpc_call_with_arrray (st: stmt) : bool =
   end else
     false
 
+(* Convert an attribute into an expression, if possible. Otherwise raise 
+ * NotAnExpression *)
+exception NotAnExpression of attrparam
+let rec attrParamToExp (a: attrparam) : exp= 
+  match a with
+      AInt(i) -> integer i                    (** An integer constant *)
+    | AStr(s) -> Const(CStr s)                (** A string constant *)
+    | ACons(name, []) ->                      (** An id *)
+      Lval (Var (find_scoped_var !currentFunction !ppc_file name) , NoOffset)
+    (* TODO *)
+    (*| ACons(name, args) ->                    (** A function call *)
+      let args' = L.map (fun a -> attrParamToExp a) args in
+      let instr = Call (None, Lval (var find_function_sign !ppc_file name), args', locUnknown) in
+      let call = mkStmtOneInstr instr in
+      Lval (var (find_scoped_var !currentFunction !ppc_file name) , NoOffset)*)
+    | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
+    | ASizeOfE(a) -> SizeOfE (attrParamToExp a)
+    | AAlignOf(t) -> AlignOf t
+    | AAlignOfE(a) -> AlignOfE (attrParamToExp a)
+    | AUnOp(op, a) -> UnOp(op, attrParamToExp a, intType) (* how would i know what type to put? *)
+    | ABinOp(op, a, b) -> BinOp(op, attrParamToExp a, attrParamToExp b, intType) (* same as above *)
+    | ADot(a, s) -> begin                    (** a.foo **)
+      let predot = attrParamToExp a in
+      match predot with Lval(v) ->
+          Lval (mkFieldAccess v s)
+        | _ -> raise (NotAnExpression a)
+    end
+    | AStar(a) -> Lval(mkMem (attrParamToExp a) NoOffset) (** * a *)
+    | AAddrOf(a) -> begin                                 (** & a **)
+      let ar = attrParamToExp a in
+      match ar with Lval(v) ->
+          mkAddrOf v
+        | _ -> raise (NotAnExpression a)
+    end
+    | AIndex(a, i) -> begin                               (** a1[a2] *)
+      let arr = attrParamToExp a in
+      match arr with Lval(v) ->
+          Lval(addOffsetLval (Index(attrParamToExp i, NoOffset)) v)
+        | _ -> raise (NotAnExpression a)
+    end
+(*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
+    | _ -> raise (NotAnExpression a)
+
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
 let rec s2s_process_args typ args =
   match args with
     (arg::rest) -> begin
       match arg with
-        AIndex(ACons(varname, []), ACons(varsize, [])) ->
-          (varname, (translate_arg typ false), varsize, "", "")::(s2s_process_args typ rest)
+(*         AIndex(ACons(varname, []), ACons(varsize, [])) -> *)
+        AIndex(ACons(varname, []), varsize) ->
+          (varname, (translate_arg typ false), attrParamToExp varsize, attrParamToExp varsize, attrParamToExp varsize)::(s2s_process_args typ rest)
 (*         | handle strided... *)
         | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ); []
     end
@@ -557,8 +595,26 @@ class findSPUDeclVisitor cgraph = object
   val callgraph = cgraph 
   (* visits all stmts and checks for pragma directives *)
   method vstmt (s: stmt) : stmt visitAction =
+    (*ignore(match s.skind with 
+      Instr(Call(_, Lval((Var(vi), _)), args, _)::_) ->
+        L.iter (fun a -> ignore(E.log "arg= %a\n" d_exp a)) args;
+      | _ -> (););*)
     let prags = s.pragmas in
     if (prags <> []) then begin
+      match (List.hd prags) with
+        (Attr("css", AStr("wait")::rest), loc) -> begin
+          (* Support #pragma css wait on(...) *)
+          match rest with 
+              ACons("on", exps)::_ -> (* wait on *) DoChildren
+            | AStr("all")::_ -> begin
+                let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
+                let instr = Call (None, Lval (var twa), [], locUnknown) in
+                ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ])))
+                (* wait all *)
+            end
+            | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
+        end
+        | _ -> ();
       match s.skind with 
         Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
           match (List.hd prags) with 
@@ -566,12 +622,14 @@ class findSPUDeclVisitor cgraph = object
               let funname = vi.vname in
               let args' =
                 List.map (fun arg -> match arg with
-                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) ->
+(*                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> *)
+                    ACons(varname, ACons(arg_typ, [])::varsize::[]) ->
                       (* give all the arguments to Dtdepa*)
-                      (varname, (translate_arg arg_typ false), varsize, "", "")
-                  | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+                      (varname, (translate_arg arg_typ false), attrParamToExp varsize, attrParamToExp varsize, attrParamToExp varsize)
+(*                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) -> *)
+                  | ACons(varname, ACons(arg_typ, [])::varsize::elsize::elnum::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
-                      (varname, (translate_arg arg_typ true), varsize, elsize, elnum)
+                      (varname, (translate_arg arg_typ true), attrParamToExp varsize, attrParamToExp elsize, attrParamToExp elnum)
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
               ignore(E.log "Found task \"%s\"\n" funname);
@@ -585,10 +643,12 @@ class findSPUDeclVisitor cgraph = object
                 done;
                 for i = 0 to args_num do
                   let (_, arg_type, vsize, velsz, vels) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args;
+(*                   call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
+                  call_args := vsize::!call_args;
                   if (is_strided arg_type) then
-                    call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
-                      Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;
+(*                    call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
+                      Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
+                    call_args := vels::velsz::!call_args;
                 done;
                 let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                 let call = mkStmtOneInstr instr in
@@ -617,8 +677,6 @@ class findSPUDeclVisitor cgraph = object
                 end
               end
             end
-            | (Attr("tpc_wait_all", _), _) -> (* Must insert tpc_wait_all() *) DoChildren
-            | (Attr("tpc_wait_for", AStr("val")::_), _) -> (* Must insert tpc_wait(val) *) DoChildren
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> begin
               match sub with
@@ -639,10 +697,12 @@ class findSPUDeclVisitor cgraph = object
                         done;
                         for i = 0 to args_num do
                           let (_, arg_type, vsize, velsz, vels) = List.nth args i in
-                          call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args;
+(*                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
+                          call_args := vsize::!call_args;
                           if (is_strided arg_type) then
-                            call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
-                              Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;
+                            (*call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
+                              Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
+                            call_args := vels::velsz::!call_args;
                         done;
                         let instr = Call (None, Lval (var new_fd.svar), List.rev !call_args, locUnknown) in
                         let call = mkStmtOneInstr instr in
@@ -672,13 +732,6 @@ class findSPUDeclVisitor cgraph = object
                       end
                     end
                     | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
-                    | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
-                end
-                (* Support #pragma css wait on(...) *)
-                | AStr("wait")-> begin
-                  match rest with 
-                    ACons("on", exps)::_ -> (* wait on *) DoChildren
-                    | [] -> (* wait all? *) DoChildren
                     | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
                 end
                 | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
@@ -711,7 +764,7 @@ let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
 end
 
 let make_case execfun (task: varinfo) (task_info: varinfo)
-              (ex_task: varinfo) (args: (string * arg_t * string * string * string) list): stmt = begin
+              (ex_task: varinfo) (args: (string * arg_t * exp * exp * exp) list): stmt = begin
   let res = ref [] in
   assert(isFunctionType task.vtype);
   let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
@@ -773,7 +826,7 @@ end
 
 (* Make the execute_func function that branches on the task id and
  * calls the actual task function on the spe *)
-let make_exec_func (f: file) (tasks: (fundec * varinfo * (string * arg_t * string * string * string) list) list) : global = begin
+let make_exec_func (f: file) (tasks: (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
@@ -950,7 +1003,7 @@ let feature : featureDescr =
 
 
       (* tasks  (new_tpc * old_original * args) *)
-      let tasks : (fundec * varinfo * (string * arg_t * string * string * string) list) list = List.map
+      let tasks : (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list = List.map
         (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
         (List.rev !spu_tasks)
       in

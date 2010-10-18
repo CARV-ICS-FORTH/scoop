@@ -172,7 +172,8 @@ int main(int argc, char **argv)
 	  computation_func13(tpc_buf0, tpc_buf1);
 	}
 	  */
-  tpc_wait_all();
+  #pragma css wait all
+  //tpc_wait_all();
 
   if (arg_size) {
     for(i=0; i<args_num; ++i) {
@@ -202,7 +203,8 @@ int main(int argc, char **argv)
 
   issuetime = __mftb();
 
-  tpc_wait_all();
+  #pragma css wait all
+  //tpc_wait_all();
   
   finishtime = __mftb();
 
