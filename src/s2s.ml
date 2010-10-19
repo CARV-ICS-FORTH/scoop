@@ -50,6 +50,7 @@ let thread = ref false
 let out_name = ref "final"
 let queue_size = ref "16"
 let currentFunction = ref dummyFunDec
+let prevstmt = ref dummyStmt
 
 let options =
   [
@@ -417,7 +418,7 @@ end
 let rec ptdepa_process_args typ args : unit =
   if ( args <> []) then begin
     match (L.hd args) with
-      AIndex(ACons(varname, []), ACons(varsize, [])) -> begin 
+      AIndex(ACons(varname, []), varsize) -> begin 
         Ptdepa.addArg (varname, typ, !currentFunction);
       end
       | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ);
@@ -459,26 +460,21 @@ let tpc_call_with_arrray (st: stmt) : bool =
 
 exception CouldntGetLoopLower of stmt 
 let get_lower (s: stmt) : exp =
-  let block = L.hd s.preds in
-    match block.skind with
-        Block(_) -> begin
-          let initial = L.hd block.preds in
-            match initial.skind with
-                Instr(il) -> begin
-                  match (L.hd (L.rev il)) with
-                    Set(_, e, _) -> e
-                  | _ -> raise (CouldntGetLoopLower s)
-                end
-              | _ -> raise (CouldntGetLoopLower s)
-        end
-      | _ -> raise (CouldntGetLoopLower s)
+  match (!prevstmt).skind with
+      Instr(il) -> begin
+        match (L.hd (L.rev il)) with
+          Set(_, e, _) -> e
+        | _ -> raise (CouldntGetLoopLower s)
+      end
+    | _ -> raise (CouldntGetLoopLower s)
 
 exception CouldntGetLoopUpper of stmt 
 let get_upper (s: stmt) : exp =
   match s.skind with
       Loop(b, _, _, _) -> begin
         match (L.hd b.bstmts).skind with
-          If(UnOp(LNot, ec, _), _, _, _) -> ec
+            If(ec, _, _, _) -> ec
+(*           | If(UnOp(LNot, ec, _), _, _, _) -> ec *)
           | _ -> raise (CouldntGetLoopUpper s)
       end
     | _ -> raise (CouldntGetLoopUpper s)
@@ -513,12 +509,12 @@ class findTaggedCals = object
                 Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
                   ptdepa_process rest;
                   Ptdepa.addTask vi.vname !currentFunction;
-                  DoChildren
+                  prevstmt := s; DoChildren
                 end
-                | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
-                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
+                | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); prevstmt := s; DoChildren
+                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); prevstmt := s; DoChildren
             end
-            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc); DoChildren
+            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc); prevstmt := s; DoChildren
         end
         | (Attr("tpc", args), _) -> begin
           match s.skind with 
@@ -534,12 +530,12 @@ class findTaggedCals = object
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args);
                 Ptdepa.addTask vi.vname !currentFunction;
-                DoChildren
+                prevstmt := s; DoChildren
               end
-            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
-            | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
+            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); prevstmt := s; DoChildren
+            | _ -> ignore(E.warn "Ignoring pragma"); prevstmt := s; DoChildren
           end
-        | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
+        | _ -> ignore(E.warn "Unrecognized pragma"); prevstmt := s; DoChildren
      end else begin
        (* Get info about array indices from loops *)
        match s.skind with
@@ -548,18 +544,18 @@ class findTaggedCals = object
             let tagged_stmts = L.filter tpc_call_with_arrray b_code.bstmts in
             if (tagged_stmts<>[]) then
               let successor = get_successor s in
-              let lower = get_lower s in
               let upper = get_upper s in
+              let lower = get_lower s in
               ignore(E.log "\tlower=%a\n" d_exp lower);
               ignore(E.log "\tupper=%a\n" d_exp upper);
               ignore(E.log "\tsucc=%a\n"  d_exp successor);
               (*for each call
                 let indice = get_indice tagged_stmt in*)
               (* visit the b_code.bstmts to find the Upper and the successor function *)
-              DoChildren else
-            DoChildren
+              prevstmt := s; DoChildren else begin
+            prevstmt := s; DoChildren end
           end
-        | _ -> DoChildren
+        | _ -> prevstmt := s; DoChildren
     end
 end
 
@@ -745,18 +741,18 @@ class findSPUDeclVisitor cgraph = object
                 (* Support #pragma css task... *)
                 AStr("task")-> begin
                   match s.skind with 
-                    Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> begin
                       let funname = vi.vname in
                       let args = s2s_process rest in
                       ignore(E.log "Found task \"%s\"\n" funname);
                       let rest new_fd = 
                         (* add arguments to the call *)
-                        let call_args = ref [] in
-                        let args_num = (List.length args)-1 in
+                        let call_args = ref (L.rev oargs) in
+                        let args_num = (List.length args)-1 in(*
                         for i = 0 to args_num do
                           let (vname, _, _, _, _) = List.nth args i in
                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
-                        done;
+                        done;*)
                         for i = 0 to args_num do
                           let (_, arg_type, vsize, velsz, vels) = List.nth args i in
 (*                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
