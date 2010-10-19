@@ -337,15 +337,15 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
   let flag = mkFieldAccess local_arg "flag" in
-  let arg_type_i = ref 0 in
-  (match arg_type with
-    In -> arg_type_i := 1;
-    | Out -> arg_type_i := 2;
-    | InOut -> arg_type_i := 3;
-    | SIn -> arg_type_i := 5;
-    | SOut -> arg_type_i := 6;
-    | SInOut -> arg_type_i := 7;);
-  il:= Set(flag, integer !arg_type_i, locUnknown)::!il;
+  let arg_type_i = 
+    (match arg_type with
+      In -> 1
+      | Out -> 2
+      | InOut -> 3
+      | SIn -> 5
+      | SOut -> 6
+      | SInOut -> 7) in
+  il:= Set(flag, integer arg_type_i, locUnknown)::!il;
   (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
   let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
@@ -424,7 +424,7 @@ let rec ptdepa_process_args typ args : unit =
     ptdepa_process_args typ (L.tl args)
   end
 
-let rec ptdepa_process io : unit =
+let rec ptdepa_process io : unit = begin
   match io with 
     (cur::rest) -> begin
       match cur with
@@ -434,6 +434,69 @@ let rec ptdepa_process io : unit =
       ptdepa_process rest
     end
     | _ -> ();
+end
+
+(* function that checks if an exp uses an indice *)
+let uses_indice (e: exp) : bool =
+  match (e) with 
+    (BinOp(PlusPI, _, _, _))
+    | (BinOp(IndexPI, _, _, _))
+    | (Lval(_, Index(_, _))) -> true
+    | _ -> false
+
+(* function that checks if a stmt is tagged with a #pragma tpc... *)
+let tpc_call_with_arrray (st: stmt) : bool =
+  if (st.pragmas <> []) then begin
+    match (L.hd st.pragmas) with
+      (Attr("css", _), _) -> begin
+        match (st.skind)  with
+          Instr(Call(_, _, args, _)::_) -> L.exists uses_indice args
+          | _ -> false
+      end
+      | _ -> false
+  end else
+    false
+
+exception CouldntGetLoopLower of stmt 
+let get_lower (s: stmt) : exp =
+  let block = L.hd s.preds in
+    match block.skind with
+        Block(_) -> begin
+          let initial = L.hd block.preds in
+            match initial.skind with
+                Instr(il) -> begin
+                  match (L.hd (L.rev il)) with
+                    Set(_, e, _) -> e
+                  | _ -> raise (CouldntGetLoopLower s)
+                end
+              | _ -> raise (CouldntGetLoopLower s)
+        end
+      | _ -> raise (CouldntGetLoopLower s)
+
+exception CouldntGetLoopUpper of stmt 
+let get_upper (s: stmt) : exp =
+  match s.skind with
+      Loop(b, _, _, _) -> begin
+        match (L.hd b.bstmts).skind with
+          If(UnOp(LNot, ec, _), _, _, _) -> ec
+          | _ -> raise (CouldntGetLoopUpper s)
+      end
+    | _ -> raise (CouldntGetLoopUpper s)
+
+exception CouldntGetLoopSuccesor of stmt 
+let get_successor (s: stmt) : exp =
+  match s.skind with
+      Loop(b, _, _, _) -> begin
+        let lstmt = L.hd (L.rev b.bstmts) in
+          match lstmt.skind with
+            Instr(il) -> begin
+              match (L.hd (L.rev il)) with
+                Set(_, e, _) -> e
+              | _ -> raise (CouldntGetLoopSuccesor s)
+            end
+          | _ -> raise (CouldntGetLoopSuccesor s)
+      end
+    | _ -> raise (CouldntGetLoopSuccesor s)
 
 (* populates the calls list for Ptdepa module *)
 class findTaggedCals = object
@@ -477,8 +540,27 @@ class findTaggedCals = object
             | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
           end
         | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
-     end else
-       DoChildren
+     end else begin
+       (* Get info about array indices from loops *)
+       match s.skind with
+          Loop(b_code, _, _, _) -> begin
+            (* Check if there is any task inside the loop *)
+            let tagged_stmts = L.filter tpc_call_with_arrray b_code.bstmts in
+            if (tagged_stmts<>[]) then
+              let successor = get_successor s in
+              let lower = get_lower s in
+              let upper = get_upper s in
+              ignore(E.log "\tlower=%a\n" d_exp lower);
+              ignore(E.log "\tupper=%a\n" d_exp upper);
+              ignore(E.log "\tsucc=%a\n"  d_exp successor);
+              (*for each call
+                let indice = get_indice tagged_stmt in*)
+              (* visit the b_code.bstmts to find the Upper and the successor function *)
+              DoChildren else
+            DoChildren
+          end
+        | _ -> DoChildren
+    end
 end
 
 (* recursively copies a function definition and all it's callees
@@ -502,27 +584,6 @@ let rec deep_copy_function (task: string) (callgraph: CG.callgraph) = begin
     (!spu_file).globals <- (!spu_file).globals@[new_fd];
 end
 
-(* function that checks if an exp uses an indice *)
-let uses_indice (e: exp) : bool =
-  match (e) with 
-    (BinOp(PlusPI, _, _, _))
-    | (BinOp(IndexPI, _, _, _))
-    | (Lval(_, Index(_, _))) -> true
-    | _ -> false
-
-(* function that checks if a stmt is tagged with a #pragma tpc... *)
-let tpc_call_with_arrray (st: stmt) : bool =
-  if (st.pragmas <> []) then begin
-    match (L.hd st.pragmas) with
-      (Attr("css", _), _) -> begin
-        match (st.skind)  with
-          Instr(Call(_, _, args, _)::_) -> L.exists uses_indice args
-          | _ -> false
-      end
-      | _ -> false
-  end else
-    false
-
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
 exception NotAnExpression of attrparam
@@ -532,7 +593,7 @@ let rec attrParamToExp (a: attrparam) : exp=
     | AStr(s) -> Const(CStr s)                (** A string constant *)
     | ACons(name, []) ->                      (** An id *)
       Lval (Var (find_scoped_var !currentFunction !ppc_file name) , NoOffset)
-    (* TODO *)
+    (* We don't support function calls as argument size *)
     (*| ACons(name, args) ->                    (** A function call *)
       let args' = L.map (fun a -> attrParamToExp a) args in
       let instr = Call (None, Lval (var find_function_sign !ppc_file name), args', locUnknown) in
@@ -563,6 +624,7 @@ let rec attrParamToExp (a: attrparam) : exp=
           Lval(addOffsetLval (Index(attrParamToExp i, NoOffset)) v)
         | _ -> raise (NotAnExpression a)
     end
+    (* not supported *)
 (*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
     | _ -> raise (NotAnExpression a)
 
@@ -738,14 +800,6 @@ class findSPUDeclVisitor cgraph = object
             end
             | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
           end
-        (* Get info about array indices from loops *)
-        | Loop(b_code, _, _, _) -> begin
-          (* Check if there is any task inside the loop *)
-          if (L.exists tpc_call_with_arrray b_code.bstmts) then
-            (* visit the b_code.bstmts to find the Upper and the successor function *)
-            DoChildren else
-          DoChildren
-        end
         | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
         | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
     end else
