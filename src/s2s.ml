@@ -48,12 +48,17 @@ let debug = ref false
 let stats = ref false
 let thread = ref false
 let out_name = ref "final"
-let queue_size = ref "16"
+let queue_size = ref "0"
+let arch = ref "unknown"
 let currentFunction = ref dummyFunDec
 let prevstmt = ref dummyStmt
 
 let options =
   [
+    "--arch",
+      Arg.String(fun s -> arch := s),
+      " S2S: Define the target architecture (x86/cell).";
+
     "--debug-tpctool",
       Arg.Set(debug),
       " S2S: Print debugging information.";
@@ -64,7 +69,7 @@ let options =
 
     "--queue-size",
       Arg.String(fun s -> queue_size := s),
-      " S2S: Specify the queue size of the spes";
+      " S2S: Specify the queue size of the spes as defined in the Makefile";
 
     "--with-stats",
       Arg.Set(stats),
@@ -954,8 +959,8 @@ let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit 
   let statistics = ref "" in
   if (!stats) then
     statistics := "-DSTATISTICS=1";
-  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^" "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
-print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^" "^(!statistics)^" -I./include/ppu -I./include/spu "^(header));
+  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+(* print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)); *)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -1000,71 +1005,77 @@ let feature : featureDescr =
     fd_doit = 
     (function (f: file) -> 
       ignore(E.log "Welcome to S2S!!!\n");
-      (* create two copies of the initial file *)
-(*       in_file := f; *)
-(*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
-      spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
-      ppc_file := { f with fileName = (!out_name^".c");};
+      if (!arch = "unknown") then
+        ignore(E.error "No architecture specified. Exiting!\n")
+      else if (!queue_size = "0") then
+        ignore(E.error "No queue_size specified. Exiting!\n")
+      else begin
+        (* create two copies of the initial file *)
+  (*       in_file := f; *)
+  (*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
+        spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
+        ppc_file := { f with fileName = (!out_name^".c");};
 
-      (* create a call graph and print it *)
-      let callgraph = CG.computeGraph f in
+        (* create a call graph and print it *)
+        let callgraph = CG.computeGraph f in
 
-      (* find tpc_decl pragmas *)
-      let fspuVisitor = new findSPUDeclVisitor callgraph in
-      let ftagVisitor = new findTaggedCals in
-	
-      (* create a global list (the spu output file) *)
-(*       let spu_glist = ref [] in *)
+        (* find tpc_decl pragmas *)
+        let fspuVisitor = new findSPUDeclVisitor callgraph in
+        let ftagVisitor = new findTaggedCals in
+    
+        (* create a global list (the spu output file) *)
+  (*       let spu_glist = ref [] in *)
 
-      (* copy all code from file f to file_ppc *)
-      preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
+        (* copy all code from file f to file_ppc *)
+        preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
 
-      (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
-         plus the needed headers *)
-      let new_types_l = List.filter is_typedef (!ppc_file).globals in
-      (!spu_file).globals <- new_types_l;
-      preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
+        (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
+          plus the needed headers *)
+        let new_types_l = List.filter is_typedef (!ppc_file).globals in
+        (!spu_file).globals <- new_types_l;
+        preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
 
-      Cil.iterGlobals !ppc_file 
-        (function
-          GFun(fd,_) ->
-            currentFunction := fd;
-            ignore(visitCilFunction ftagVisitor fd);
+        Cil.iterGlobals !ppc_file 
+          (function
+            GFun(fd,_) ->
+              currentFunction := fd;
+              ignore(visitCilFunction ftagVisitor fd);
+            | _ -> ()
+          )
+        ;
+
+        (* kasas was here :P *)
+        Ptdepa.find_dependencies f;
+
+        Cil.iterGlobals !ppc_file 
+          (function
+            GFun(fd,_) ->
+              currentFunction := fd;
+              ignore(visitCilFunction fspuVisitor fd);
           | _ -> ()
-        )
-      ;
+          )
+        ;
 
-      (* kasas was here :P *)
-      Ptdepa.find_dependencies f;
-
-      Cil.iterGlobals !ppc_file 
-        (function
-          GFun(fd,_) ->
-            currentFunction := fd;
-            ignore(visitCilFunction fspuVisitor fd);
-        | _ -> ()
-        )
-      ;
-
-      (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
-      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
-      (* copy all globals except the function declaration of "main" *)
-(*       spu_glist := List.filter isNotMain (!spu_file).globals; *)
+        (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
+        (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
+        (* copy all globals except the function declaration of "main" *)
+  (*       spu_glist := List.filter isNotMain (!spu_file).globals; *)
 
 
-      (* tasks  (new_tpc * old_original * args) *)
-      let tasks : (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list = List.map
-        (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
-        (List.rev !spu_tasks)
-      in
-      (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
-      (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
-      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
-      writeFile !ppc_file;
-(*       !spu_file.globals <- !spu_glist; *)
-      writeFile !spu_file;
-(*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
-      );
+        (* tasks  (new_tpc * old_original * args) *)
+        let tasks : (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list = List.map
+          (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
+          (List.rev !spu_tasks)
+        in
+        (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
+        (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
+        (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
+        writeFile !ppc_file;
+  (*       !spu_file.globals <- !spu_glist; *)
+        writeFile !spu_file;
+  (*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
+      end
+    );
     fd_post_check = true;
   }
 
