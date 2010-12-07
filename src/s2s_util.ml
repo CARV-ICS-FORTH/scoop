@@ -46,9 +46,7 @@ module CG = Callgraph
 (*                          Types                                             *)
 (******************************************************************************)
 
-type spu_task =
-  string * (string * arg_t * string * string * string) list
-and arg_t =
+type arg_t =
     In
   | Out
   | InOut
@@ -218,7 +216,7 @@ let findLocal (fd: fundec) (name: string) : varinfo =
 
 
 (******************************************************************************)
-(*                                Transformers                                *)
+(*                                Converters                                  *)
 (******************************************************************************)
 
 
@@ -300,6 +298,28 @@ let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
     | _ -> assert(false);
 end
 
+(* returns the compiler added variables of the function *)
+let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
+  List.filter 
+    (fun formal -> 
+        List.exists 
+          (fun formal2 -> formal <> formal2 )
+          old_f.sformals
+    )
+    new_f.sformals
+end
+
+let getCompinfo = function
+  (* unwrap the struct *)
+    TComp (ci, _) -> ci
+  (* if it's not a struct, die. too bad. *)
+  | _ -> assert false
+
+
+(******************************************************************************)
+(*                                   LOOP                                     *)
+(******************************************************************************)
+
 exception CouldntGetLoopLower of stmt 
 let get_loop_lower (s: stmt) : exp =
   match (!prevstmt).skind with
@@ -335,23 +355,6 @@ let get_loop_successor (s: stmt) : exp =
           | _ -> raise (CouldntGetLoopSuccesor s)
       end
     | _ -> raise (CouldntGetLoopSuccesor s)
-
-(* returns the compiler added variables of the function *)
-let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
-  List.filter 
-    (fun formal -> 
-        List.exists 
-          (fun formal2 -> formal <> formal2 )
-          old_f.sformals
-    )
-    new_f.sformals
-end
-
-let getCompinfo = function
-  (* unwrap the struct *)
-    TComp (ci, _) -> ci
-  (* if it's not a struct, die. too bad. *)
-  | _ -> assert false
 
 
 (******************************************************************************)

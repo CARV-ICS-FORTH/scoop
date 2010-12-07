@@ -39,9 +39,7 @@
 (*                          Types                                             *)
 (******************************************************************************)
 
-type spu_task =
-  string * (string * arg_t * string * string * string) list
-and arg_t =
+type  arg_t =
     In
   | Out
   | InOut
@@ -54,9 +52,13 @@ and arg_t =
 (*                          Globals                                           *)
 (******************************************************************************)
 
+(* flag for STATISTICS as defined in the makefile *)
 val stats : bool ref
+(* The queue size as defined in the makefile *)
 val queue_size : string ref
+(* The function we are parsing now *)
 val currentFunction : Cil.fundec ref
+(* the last parsed stmt *)
 val prevstmt : Cil.stmt ref
 
 (* create a ref to the input file *)
@@ -212,3 +214,14 @@ val isNotSkeleton : Cil.global -> bool
 
 (* Checks if <g> is a typedef, enum, struct or union *)
 val is_typedef : Cil.global -> bool
+
+
+(******************************************************************************)
+(*                          Constructors                                      *)
+(******************************************************************************)
+
+(* for a struct instance creates the struct.field *)
+val mkFieldAccess : Cil.lval -> string -> Cil.lval
+
+(* for a struct instance   pointer creates the struct->field *)
+val mkPtrFieldAccess : Cil.lval -> string -> Cil.lval
