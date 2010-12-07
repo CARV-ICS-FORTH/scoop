@@ -47,9 +47,10 @@ module Lprof = Lockprofile
 let debug = ref false
 let stats = ref false
 let thread = ref false
+let unaligned_args = ref false
 let out_name = ref "final"
 let queue_size = ref "0"
-let block_size = ref "0"
+let block_size = ref 0
 let arch = ref "unknown"
 let currentFunction = ref dummyFunDec
 let prevstmt = ref dummyStmt
@@ -73,12 +74,16 @@ let options =
       " S2S: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
 
     "--block-size",
-      Arg.String(fun s -> block_size := s),
+      Arg.Int(fun s -> block_size := s),
       " S2S: Specify the block size for x86. Defined in the Makefile as BLOCK_SZ";
 
     "--with-stats",
       Arg.Set(stats),
       " S2S: Enable code for statistics, for use with -DSTATISTICS";
+
+    "--with-unaligned-arguments",
+      Arg.Set(unaligned_args),
+      " S2S: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
 
     "--threaded",
       Arg.Set(thread),
@@ -109,6 +114,14 @@ let func_id = ref 0
 
 (* define the ppu_vector *)
 let ppu_vector = Attr("altivec", [ACons("vector__", [])])
+
+let voidType = TVoid([])
+let intType = TInt(IInt,[])
+let uintType = TInt(IUInt,[])
+let longType = TInt(ILong,[])
+let ulongType = TInt(IULong,[])
+let charType = TInt(IChar, [])
+let boolType = TInt(IBool, [])
 
 (* find the function definition of variable <name> in file f *)
 exception Found_fundec of fundec
@@ -288,13 +301,21 @@ let get_arg_type (arg: (string * arg_t * exp * exp * exp )) : arg_t =
     (_, arg_type ,_ ,_ ,_) -> arg_type
 
 
-let arg_t2int = function
+let arg_t2integer = function
     | In -> integer 1
     | Out -> integer 2
     | InOut -> integer 3
     | SIn -> integer 5
     | SOut -> integer 6
     | SInOut -> integer 7
+
+let arg_t2int = function
+    | In -> 1
+    | Out -> 2
+    | InOut -> 3
+    | SIn -> 5
+    | SOut -> 6
+    | SInOut -> 7
 
 let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: (string * arg_t * exp * exp * exp)) : instr list = begin
@@ -357,7 +378,7 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
     il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
   let flag = mkFieldAccess local_arg "flag" in
-  il:= Set(flag, arg_t2int arg_type, locUnknown)::!il;
+  il:= Set(flag, arg_t2integer arg_type, locUnknown)::!il;
   (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
   let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
@@ -378,10 +399,11 @@ let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
   let v = new changeStmtVisitor fake stl in
   visitCilStmt v s
 
-let doArgument_x86 (i: int) (closure: lval) (e_addr: lval) (limit: lval) (fd: fundec)
+let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
  (arg: (string * arg_t * exp * exp * exp)) : stmt list = begin
+  let closure = mkPtrFieldAccess this "closure" in
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
-  let arg_addr = Lval( var (List.nth fd.sformals i)) in
+  let arg_addr = var (List.nth fd.sformals i) in
   let arg_type = get_arg_type arg in
   let stl = ref [] in
   let il = ref [] in
@@ -401,46 +423,97 @@ let doArgument_x86 (i: int) (closure: lval) (e_addr: lval) (limit: lval) (fd: fu
   il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
   (* limit=(((uint32_t)arg_addr64)+arg_size); *)
-  let plus = (BinOp(PlusA, CastE(uint32_t, arg_addr), arg_size, uint32_t)) in
+  let plus = (BinOp(PlusA, CastE(uint32_t, Lval arg_addr), arg_size, uint32_t)) in
   il := Set(limit, plus, locUnknown)::!il;
 
-  (* TODO UNALIGNED_ARGUMENTS_ALLOWED flag *)
-  (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
-        uint32_t tmp_addr=(uint32_t)arg_addr64;
-        arg_addr64=((uint32_t)(tmp_addr/BLOCK_SZ))*BLOCK_SZ;
-        this->closure.arguments[arg_index].stride = tmp_addr-(uint32_t)arg_addr64;
-  #endif*)
-
-  (* TODO create the loop *)
-  (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
-    this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
-    this->closure.arguments[  this->closure.total_arguments ].size = BLOCK_SZ;
-    AddAttribute_Task( this, (void* )(e_addr), arg_flag,BLOCK_SZ);
-    this -> closure.total_arguments++;
-  }*)
-
-  (*if(limit-e_addr){
-    this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
-    this->closure.arguments[  this->closure.total_arguments ].size = limit-e_addr;
-    AddAttribute_Task( this, (void* )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
-    this -> closure.total_arguments++;
-  }*)
-  let sub = (BinOp(MinusA, Lval limit, Lval e_addr, TInt(IBool, []))) in
-  let flag = mkFieldAccess idxlv "flag" in
-  let ilt = [Set(flag, arg_t2int arg_type, locUnknown)] in
   let size = mkFieldAccess idxlv "size" in
-  ilt = Set(size, sub, locUnknown)::ilt;
-
-  let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
-  ilt = Set(total_arguments, pplus, locUnknown)::ilt;
-  let bl = mkBlock [] in
-  stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::[mkStmt(Instr (L.rev !il))];
-
-  (* this->closure.arguments[ block_index_start ].flag|=TPC_START_ARG;
-     tpc_common.h:20:#define TPC_START_ARG   0x10 *)
-  let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
   let flag = mkFieldAccess idxlv "flag" in
-  stl := mkStmtOneInstr(Set(flag, integer 0x10, locUnknown))::!stl;
+  let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
+
+  (* TODO take list from ptdepa *)
+  if (false) then begin
+    (* if(TPC_IS_SAFEARG(arg_flag)){
+
+        this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;
+        this->closure.arguments[  this->closure.total_arguments ].flag    = arg_flag|TPC_START_ARG;
+
+        this->closure.arguments[  this->closure.total_arguments ].eal_in  = (uint32_t) arg_addr64;
+        this->closure.arguments[  this->closure.total_arguments ].eal_out = (uint32_t) arg_addr64;
+        this->closure.total_arguments++;
+        continue; //We don't need continue here, we are not in a loop :)
+      }
+      #define TPC_START_ARG   0x10
+    *)
+    il := Set(size, arg_size, locUnknown)::!il;
+    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
+    let eal_in = mkFieldAccess idxlv "eal_in" in
+    il := Set(eal_in, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    let eal_out = mkFieldAccess idxlv "eal_out" in
+    il := Set(eal_out, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];
+  end else begin
+
+    (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
+        uint32_t tmp_addr=(uint32_t)arg_addr64;
+        arg_addr64 = (void* )(((uint32_t)(tmp_addr/BLOCK_SZ))*BLOCK_SZ);
+        this->closure.arguments[ this->closure.total_arguments].stride = tmp_addr-(uint32_t)arg_addr64;
+        arg_size +=this->closure.arguments[ this->closure.total_arguments ].stride;
+        //      limit +=this->closure.arguments[ this->closure.total_arguments ].stride;
+        e_addr=(uint32_t)arg_addr64;
+      #endif*)
+    if (!unaligned_args) then begin
+      let tmp_addr = var (makeLocalVar fd "tmp_addr" uint32_t) in
+      il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
+      let div = BinOp(Div, Lval tmp_addr, integer !block_size, uint32_t) in
+      let mul = BinOp(Mult, CastE(uint32_t, div), integer !block_size, voidPtrType) in
+      il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
+      let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, Lval arg_addr), intType) in
+      il := Set(stride, new_stride, locUnknown)::!il;
+      il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    end;
+
+    (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
+      this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
+      this->closure.arguments[  this->closure.total_arguments ].size = BLOCK_SZ;
+      AddAttribute_Task( this, (void* )(e_addr), arg_flag,BLOCK_SZ);
+      this -> closure.total_arguments++;
+      this->closure.arguments[ this->closure.total_arguments ].stride=0;
+    }*)
+    let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in
+    let ilt = ref [closure_flag] in
+    ilt := Set(size, integer !block_size, locUnknown)::!ilt;
+    let addAttribute_Task = find_function_sign (!ppc_file) "AddAttribute_Task" in
+    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; integer !block_size ] in
+    ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+    ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
+    let start = [mkStmtOneInstr (Set(e_addr, Lval arg_addr, locUnknown))] in
+    let e_addr_plus = BinOp(PlusA, Lval e_addr, integer !block_size, intType) in
+    let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
+    let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
+    let body = [mkStmt (Instr (L.rev !ilt))] in
+    stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
+
+    (*if(limit-e_addr){
+      this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
+      this->closure.arguments[  this->closure.total_arguments ].size = limit-e_addr;
+      AddAttribute_Task( this, (void* )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
+      this -> closure.total_arguments++;
+    }*)
+    let sub = (BinOp(MinusA, Lval limit, Lval e_addr, boolType)) in
+    ilt := [closure_flag];
+    ilt := Set(size, sub, locUnknown)::!ilt;
+    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; Lval size] in
+    ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+    ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
+    let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
+    stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::!stl;
+
+    (* this->closure.arguments[ block_index_start ].flag|=TPC_START_ARG;
+      tpc_common.h:20:#define TPC_START_ARG   0x10 *)
+    let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
+    let flag = mkFieldAccess idxlv "flag" in
+    stl := mkStmtOneInstr(Set(flag, integer 0x10, locUnknown))::!stl;
+  end;
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
   !stl
@@ -515,9 +588,8 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
     instrs := Set (mkFieldAccess this_closure "total_arguments",
     CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
     
-    (* const uint32_t limit *)
+    (* uint32_t limit *)
     let limit = makeLocalVar f_new "limit" (find_type !spu_file "uint32_t") in
-    ignore(limit.vattr = [Attr("const", [])]);
     (* uint32_t e_addr; *)
     let e_addr = var (makeLocalVar f_new "e_addr" (find_type !spu_file "uint32_t")) in
 
@@ -526,7 +598,7 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
       let arg = List.nth args i in
 
       (* local_arg <- argument description *)
-      stmts := (doArgument_x86 i this_closure e_addr (var limit) f_new arg )@[mkStmtOneInstr funcid_set];
+      stmts := (doArgument_x86 i this e_addr (var limit) f_new arg )@[mkStmtOneInstr funcid_set];
     done;
 
     (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
@@ -1157,14 +1229,17 @@ let feature : featureDescr =
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
 
-        (* copy all code from file f to file_ppc *)
-        preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
+        if(!arch = "cell") then begin
+          (* copy all code from file f to file_ppc *)
+          preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "PPU";
 
-        (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
-          plus the needed headers *)
-        let new_types_l = List.filter is_typedef (!ppc_file).globals in
-        (!spu_file).globals <- new_types_l;
-        preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
+          (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
+            plus the needed headers *)
+          let new_types_l = List.filter is_typedef (!ppc_file).globals in
+          (!spu_file).globals <- new_types_l;
+          preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" "SPU";
+        end else
+          preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" "X86tpc";
 
         Cil.iterGlobals !ppc_file 
           (function
@@ -1209,211 +1284,3 @@ let feature : featureDescr =
     );
     fd_post_check = true;
   }
-
-
-
-(******************************************************************************)
-(******************************************************************************)
-(******************************************************************************)
-(******************************************************************************)
-
-(*
-(* alternative make_tpc_func without the use of a skeleton
- *)
-let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string ) list) : fundec = begin
-  let f_new = emptyFunction ("tpc_function_" ^ f.svar.vname) in
-  setFunctionTypeMakeFormals f_new f.svar.vtype;
-  setFunctionReturnType f_new intType;
-  (* TODO: push the size variables as args *)
-  (*** Declare the local variables ***)
-  (* unsigned int total_bytes *)
-  let total_bytes = makeLocalVar f_new "total_bytes" uintType in
-  (* volatile queue_entry_t *remote_entry *)
-(*   let remote_entry = makeLocalVar f_new "remote_entry" (TPtr((find_type !spu_file "queue_entry_t"), [Attr("volatile", [])])) in *)
-  (* volatile queue_entry_t *avail_task *)
-  let avail_task = makeLocalVar f_new "avail_task" (TPtr((find_type !spu_file "queue_entry_t"), [Attr("volatile", [])])) in
-  (* TODO: add the #ifdef
-    #ifdef STATISTICS
-      uint64_t tmptime1, tmptime2, tmptime3;
-      int arg_bytes;
-    #endif
-  *)
-  (* unsigned int *task_id_qs *)
-  let task_id_qs = makeLocalVar f_new "task_id_qs" (TPtr(uintType, [])) in
-  (* unsigned int task_id *)
-  let task_id = makeLocalVar f_new "task_id" uintType in
-  (* volatile completions_status_t *st *)
-  let st = makeLocalVar f_new "st" (TPtr((find_tcomp !spu_file "completions_status_t"), [Attr("volatile", [])])) in
-
-  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
-  let args_num = (List.length f_new.sformals)-1 in
-  for i = 0 to args_num do
-    let (_, arg_type, _, _, _) = List.nth args i in
-    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-    if (is_strided arg_type) then begin
-      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
-      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
-    end;
-  done;
-  let avail_task = var (findLocal f_new "avail_task") in
-  let instrs : instr list ref = ref [] in
-  (* avail_task->funcid = (uint8_t)funcid; *)
-  instrs := Set (mkPtrFieldAccess avail_task "funcid",
-  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown):: !instrs;
-  (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
-  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
-  
-  (* if we have arguments *)
-  if (f_new.sformals <> []) then begin
-    (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
-    let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
-    let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
-    (* struct tpc_arg_element local_arg *)
-    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
-    for i = 0 to args_num do
-      let arg = List.nth args i in
-      (* local_arg <- argument description *)
-      instrs := (doArgument i local_arg avail_task tmpvec f_new arg )@(!instrs);
-    done;
-  end;
-
-  (* if (f_new.sformals <> []) then begin *)
-    (* void *arg_addr64 *)
-    let arg_addr64 = makeLocalVar f_new "arg_addr64" voidPtrType in
-    (* unsigned int arg_size *)
-    let arg_size = makeLocalVar f_new "arg_size" uintType in
-    (* unsigned int arg_flag *)
-    let arg_flag = makeLocalVar f_new "arg_flag" uintType in
-    (* unsigned int arg_stride *)
-    let arg_stride = makeLocalVar f_new "arg_stride" uintType in
-    (* vector unsigned char *tmpvec   where vector is __attribute__((vector_size(8))) *)
-    let tmpvec = makeLocalVar f_new "tmpvec" (TPtr(TInt(IUChar, []), [Attr("__attribute__", [ACons("vector_size", [AInt(8)])])])) in
-    (* struct tpc_arg_element local_arg *)
-    let local_arg = makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element") in
-  (* end *)
-
-  (*** Initialize local variables ***)
-  let stmts = ref [] in
-  (* remote_entry=NULL *)
-(*   stmts := mkStmtOneInstr (Set (var remote_entry, CastE(voidPtrType ,zero), locUnknown))::!stmts; *)
-  (* avail_task=NULL *)
-  stmts := mkStmtOneInstr (Set (var avail_task, CastE(voidPtrType ,zero), locUnknown))::!stmts;
-  (* if (f_new.sformals <> []) then begin *)
-    (* arg_addr64=NULL *)
-    stmts := mkStmtOneInstr (Set (var arg_addr64, CastE(voidPtrType ,zero), locUnknown))::!stmts;
-    (* arg_size=0 *)
-    stmts := mkStmtOneInstr (Set (var arg_size, zero, locUnknown))::!stmts;
-    (* arg_flag=0 *)
-    stmts := mkStmtOneInstr (Set (var arg_flag, zero, locUnknown))::!stmts;
-    (* arg_stride=0 *)
-    stmts := mkStmtOneInstr (Set (var arg_stride, zero, locUnknown))::!stmts;
-  (* end *)
-  (* TODO: Add the #ifdef
-    #ifdef TPC_MULTITHREADED
-      pthread_mutex_lock( &tpc_callwait_mutex );
-    #endif
-    READ_TIME_REG(tmptime1);
-  *)
-  (* get the compl_status enuminfo *)
-  let compl_status_enum = find_enum !spu_file "compl_status" in
-  (* get the entry_status enuminfo *)
-  let entry_status_enum = find_enum !spu_file "entry_status" in
-  (* get the s_available_spe varinfo *)
-  let g_max_spes = find_global_var !spu_file "G_max_spes" in
-  (* get the s_available_spe varinfo *)
-  let s_available_spe = find_global_var !spu_file "s_available_spe" in
-  (* get the task_queue_tail varinfo *)
-  let task_queue_tail = find_global_var !spu_file "task_queue_tail" in
-  (* get the task_queue_tail varinfo *)
-  let compl_queue = find_global_var !spu_file "compl_queue" in
-  (* get the g_task_current_id varinfo *)
-  let g_task_current_id = find_global_var !spu_file "g_task_current_id" in
-  (* get the g_task_current_id varinfo *)
-  let g_task_id_queue = find_global_var !spu_file "g_task_id_queue" in
-  (* get the task_queue varinfo *)
-  let task_queue = find_global_var !spu_file "task_queue" in
-  (* create the while body *)
-  let w_body = ref [] in
-  (* create the [s_available_spe][task_queue_tail[s_available_spe]] offset *)
-  let big_offset = Index(Lval(var s_available_spe), Index(Lval((Var(task_queue_tail) , Index(Lval(var s_available_spe), NoOffset))), NoOffset)) in
-  (* st = &compl_queue[s_available_spe][task_queue_tail[s_available_spe]] *)
-  w_body := mkStmtOneInstr (Set (var st, AddrOf((Var compl_queue, big_offset)) , locUnknown))::!w_body;
-  let st_status = mkPtrFieldAccess (var st) "status" in
-  (* st->status = WAITING; break; *)
-  let bthen = mkBlock [ mkStmtOneInstr (Set (st_status, Const(CEnum(zero, "WAITING", compl_status_enum)), locUnknown) ); mkStmt (Break locUnknown) ] in
-  (* s_available_spe = (s_available_spe+1) % G_max_spes; *)
-  let next_spe_s = mkStmtOneInstr(Set (var s_available_spe, BinOp(Mod, BinOp(PlusA, Lval(var s_available_spe), one, intType), Lval(var g_max_spes), intType), locUnknown) ) in
-  let belse = mkBlock [ next_spe_s ] in
-  (*
-    if(st->status == COMPLETED) {
-      st->status = WAITING;
-      break;
-    } else {
-      s_available_spe = (s_available_spe+1) % G_max_spes;
-    }
-  *)
-  w_body := mkStmt(If(BinOp(Eq, Lval(st_status), Const(CEnum(one, "COMPLETED", compl_status_enum)), TInt(IBool, [])), bthen, belse, locUnknown))::!w_body;
-  (* push while in stmts *)
-  stmts := mkStmt(Loop( mkBlock (L.rev !w_body), locUnknown, None, None))::!stmts;
-  (* g_task_current_id[s_available_spe] *)
-  let gtc_indexed = (Var g_task_current_id, Index(Lval(var s_available_spe), NoOffset)) in
-  (** task_id = g_task_current_id[s_available_spe]++; **)
-  (* task_id = g_task_current_id[s_available_spe]; *)
-  stmts := mkStmtOneInstr(Set (var task_id, Lval(gtc_indexed), locUnknown))::!stmts;
-  (* g_task_current_id[s_available_spe]++; *)
-  stmts := mkStmtOneInstr(Set (gtc_indexed, BinOp(PlusA, Lval(gtc_indexed), one, intType), locUnknown))::!stmts;
-  (* task_id_qs = &g_task_id_queue[s_available_spe][task_queue_tail[s_available_spe]]; *)
-  stmts := mkStmtOneInstr(Set (var task_id_qs, AddrOf((Var g_task_id_queue, big_offset)) , locUnknown))::!stmts;
-  (** task_id = (task_id & 0x0FFFFFFF) | (s_available_spe << 28); **)
-  (* (task_id & 0x0FFFFFFF) *)
-  let lbs = BinOp(BAnd, Lval(var task_id), Const(CInt64(Int64.of_string "0x0FFFFFFF", IInt, None)), intType) in
-  (* (s_available_spe << 28) *)
-  let rbs = BinOp(Shiftlt, Lval(var s_available_spe), Const(CInt64(Int64.of_int 28, IInt, None)), intType) in
-  (* task_id = lbs | rbs; *)
-  stmts := mkStmtOneInstr(Set (var task_id, BinOp(BOr, lbs, rbs, intType), locUnknown))::!stmts;
-  (* *task_id_qs = task_id; *)
-  stmts := mkStmtOneInstr(Set ((mkMem (Lval(var task_id_qs)) NoOffset), Lval(var task_id), locUnknown))::!stmts;
-  (* TODO: READ_TIME_REG(tmptime2); *)
-  (* avail_task = &task_queue[s_available_spe][task_queue_tail[s_available_spe]]; *)
-  stmts := mkStmtOneInstr(Set (var avail_task, AddrOf((Var task_queue, big_offset)) , locUnknown))::!stmts;
-  (* avail_task->funcid = (uint8_t)funcid; *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "funcid", CastE(find_type !spu_file "uint8_t", Const(CInt64(Int64.of_int !func_id, IInt, None))), locUnknown))::!stmts;
-  (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "total_arguments", CastE(find_type !spu_file "uint8_t", Const(CInt64(Int64.of_int (List.length f_new.sformals), IInt, None))), locUnknown))::!stmts;
-  (* total_bytes=0; *)
-  stmts := mkStmtOneInstr(Set (var total_bytes, zero, locUnknown))::!stmts;
-
-  (* TODO: complete code depending on arguments *)
-
-  (* avail_task->active = ACTIVE *)
-  stmts := mkStmtOneInstr(Set (mkPtrFieldAccess (var avail_task) "active", Const(CEnum(one, "ACTIVE", entry_status_enum)), locUnknown))::!stmts;
-  (* TODO:
-    READ_TIME_REG(tmptime3);
-    #ifdef STATISTICS
-      G_ppe_stats.stat_tpc_per_spe[s_available_spe] += 1;
-      G_ppe_stats.bytes_per_spe[s_available_spe] += total_bytes;
-      G_ppe_stats.stalled_ticks += (tmptime2 - tmptime1);
-      G_ppe_stats.issue_ticks += (tmptime3 - tmptime2);
-    #endif
-    #ifdef TPC_MULTITHREADED
-      pthread_mutex_unlock( &tpc_callwait_mutex );
-    #endif
-  *)
-  (** task_queue_tail[s_available_spe] = c % MAX_QUEUE_ENTRIES; **)
-  (* task_queue_tail[s_available_spe] *)
-  let tqt_indexed = (Var task_queue_tail, Index(Lval(var s_available_spe), NoOffset)) in
-  (* (task_queue_tail[s_available_spe]+1) *)
-  let tqt_plus1 = BinOp(PlusA, Lval(tqt_indexed), one, intType) in
-  (* tqt_indexed = tqt_plus1 % MAX_QUEUE_ENTRIES; *)
-  stmts := mkStmtOneInstr(Set (tqt_indexed, BinOp(Mod, tqt_plus1, Const(CInt64(Int64.of_int 1(* FIXME: MAX_QUEUE_ENTRIES *), IInt, None)), intType), locUnknown))::!stmts;
-  (* s_available_spe = (s_available_spe+1) % G_max_spes; *)
-  stmts := next_spe_s::!stmts;
-  (* return task_id; *)
-  stmts := mkStmt (Return (Some (Lval (var task_id)), locUnknown))::!stmts;
-  (* reverse the stmt list and put it in the body *)
-  f_new.sbody <- mkBlock (L.rev !stmts);
-  incr func_id;
-  f_new
-end
-*)

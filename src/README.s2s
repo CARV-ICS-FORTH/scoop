@@ -1,8 +1,8 @@
 (*
  *
  * Copyright (c) 2010, 
- *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
+ *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -42,16 +42,21 @@ we support 2 syntaxes
 
 2. CellSS syntax
 
-	#pragma css wait all
-	#pragma css wait on(list of expressions)
-	#pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
+  #pragma css wait all
+  #pragma css wait on(list of expressions)
+  #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
 
-	Parameter notation:
-		<parameter>\[parameter size*\]
-		* The parameter size must be an expression, thus we don't allow
-		  function calls. Also there is no support for the conditional
-		   operator (? :)
+  Parameter notation:
+    <parameter>\[parameter size*\]
+    * The parameter size must be an expression, thus we don't allow
+      function calls. Also there is no support for the conditional
+       operator (? :)
 
-	Example:
-		#pragma css task input(a[sizeof(a)], b[4*sizeof(b_type)]) output(c[16])
-		
+  Example:
+    #pragma css task input(a[sizeof(a)], b[4*sizeof(b_type)]) output(c[16])
+
+
+
+NOTES:
+
+  s2s_alter.ml contains an alternative method without skeleton files
