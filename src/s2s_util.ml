@@ -459,9 +459,13 @@ end
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
-let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit = begin
-  (* FIXME: what if we move arround the executable? *)
-  ignore (Sys.command ("echo | gcc -E "^def^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+let preprocessAndMergeWithHeader (f: file) (header: string) (def: string)
+    (arch: string) (incPath: string) : unit = begin
+  if (arch="cell") then begin
+    ignore (Sys.command ("echo | gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"))
+  end else begin
+    ignore (Sys.command ("echo | gcc -E "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"))
+  end;
 (* print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)); *)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in

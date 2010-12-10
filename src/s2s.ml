@@ -55,6 +55,7 @@ let unaligned_args = ref false
 let out_name = ref "final"
 let block_size = ref 0
 let arch = ref "unknown"
+let includePath = ref ""
 let currentFunction = ref dummyFunDec
 let prevstmt = ref dummyStmt
 
@@ -70,6 +71,10 @@ let options =
     "--arch",
       Arg.String(fun s -> arch := s),
       " S2S: Define the target architecture (x86/cell).";
+
+    "--include",
+      Arg.String(fun s -> includePath := s),
+      " S2S: Define the include path for any custom headers of yours.";
 
     "--debug",
       Arg.Set(debug),
@@ -650,15 +655,20 @@ let feature : featureDescr =
           def := " -DSTATISTICS=1"^(!def);
         if(!arch = "cell") then begin
           (* copy all code from file f to file_ppc *)
-          preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" (" -DPPU=1"^(!def));
+          ignore(E.warn "Path = %s\n" !includePath);
+          
+          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/tpc_s2s.h") (" -DPPU=1"^(!def))
+                                      !arch !includePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader !spu_file "tpc_s2s.h" (" -DSPU=1"^(!def));
+          preprocessAndMergeWithHeader !spu_file ((!includePath)^"/tpc_s2s.h") (" -DSPU=1"^(!def))
+                                      !arch !includePath;
         end else
-          preprocessAndMergeWithHeader !ppc_file "tpc_s2s.h" (" -DX86tpc=1"^(!def));
+          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/tpc_s2s.h") (" -DX86tpc=1"^(!def))
+                                      !arch !includePath;
 
         Cil.iterGlobals !ppc_file 
           (function
