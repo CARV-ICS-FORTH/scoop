@@ -47,26 +47,20 @@ type  arg_t =
   | SOut
   | SInOut
 
-
 (******************************************************************************)
 (*                          Globals                                           *)
 (******************************************************************************)
 
-(* flag for STATISTICS as defined in the makefile *)
-val stats : bool ref
-(* The queue size as defined in the makefile *)
-val queue_size : string ref
-(* The function we are parsing now *)
-val currentFunction : Cil.fundec ref
-(* the last parsed stmt *)
-val prevstmt : Cil.stmt ref
+(* define the ppu_vector *)
+val ppu_vector : Cil.attribute
+val voidType : Cil.typ
+val intType : Cil.typ
+val uintType : Cil.typ
+val longType : Cil.typ
+val ulongType : Cil.typ
+val charType : Cil.typ
+val boolType : Cil.typ
 
-(* create a ref to the input file *)
-(* let in_file = ref dummyFile *)
-(* create a ref to the new spu file *)
-val spu_file : Cil.file ref
-(* create a ref to the new ppe file *)
-val ppc_file : Cil.file ref
 
 (******************************************************************************)
 (*                          Search Functions                                  *)
@@ -131,7 +125,7 @@ val arg_t2int : arg_t -> int
 
 (* recursively copies a function definition and all it's callees
    from the ppc_file to the spu_file *)
-val deep_copy_function : string -> Callgraph.callgraph -> unit
+val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -> unit
 
 (******************************************************************************)
 (*                         AttrParam to Expression                            *)
@@ -139,7 +133,7 @@ val deep_copy_function : string -> Callgraph.callgraph -> unit
 
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
-val attrParamToExp : Cil.attrparam -> Cil.exp
+val attrParamToExp : Cil.attrparam -> Cil.fundec -> Cil.file -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
@@ -165,7 +159,7 @@ val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list
  *)
 
 (* returns i=0 *)
-val get_loop_lower : Cil.stmt -> Cil.exp
+val get_loop_lower : Cil.stmt -> Cil.stmt -> Cil.exp
 
 (* returns i<N *)
 val get_loop_condition : Cil.stmt -> Cil.exp

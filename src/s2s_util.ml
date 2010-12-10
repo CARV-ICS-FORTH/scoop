@@ -54,22 +54,21 @@ type arg_t =
   | SOut
   | SInOut
 
-
 (******************************************************************************)
 (*                          Globals                                           *)
 (******************************************************************************)
 
-let stats = ref false
-let queue_size = ref "0"
-let currentFunction = ref dummyFunDec
-let prevstmt = ref dummyStmt
+(* define the ppu_vector *)
+let ppu_vector = Attr("altivec", [ACons("vector__", [])])
 
-(* create a ref to the input file *)
-(* let in_file = ref dummyFile *)
-(* create a ref to the new spu file *)
-let spu_file = ref dummyFile
-(* create a ref to the new ppe file *)
-let ppc_file = ref dummyFile
+let voidType = TVoid([])
+let intType = TInt(IInt,[])
+let uintType = TInt(IUInt,[])
+let longType = TInt(ILong,[])
+let ulongType = TInt(IULong,[])
+let charType = TInt(IChar, [])
+let boolType = TInt(IBool, [])
+
 
 (******************************************************************************)
 (*                          Search Functions                                  *)
@@ -261,7 +260,8 @@ let arg_t2int = function
 
 (* recursively copies a function definition and all it's callees
    from the ppc_file to the spu_file *)
-let rec deep_copy_function (task: string) (callgraph: CG.callgraph) = begin
+let rec deep_copy_function (task: string) (callgraph: CG.callgraph)
+      (spu_file: file) (ppc_file: file)= begin
     (* First copy the Callees *)
     let cnode: CG.callnode = H.find callgraph task in
     let nodeName (n: CG.nodeinfo) : string =
@@ -271,13 +271,13 @@ let rec deep_copy_function (task: string) (callgraph: CG.callgraph) = begin
     in
     let deep_copy _ (n: CG.callnode) : unit =
       let name = nodeName n.CG.cnInfo in
-      deep_copy_function name callgraph
+      deep_copy_function name callgraph spu_file ppc_file
     in
     Inthash.iter deep_copy cnode.CG.cnCallees;
     
     (* now copy current *)
-    let new_fd = GFun(find_function_fundec (!ppc_file) task, locUnknown) in
-    (!spu_file).globals <- (!spu_file).globals@[new_fd];
+    let new_fd = GFun(find_function_fundec (ppc_file) task, locUnknown) in
+    spu_file.globals <- spu_file.globals@[new_fd];
 end
 
 (******************************************************************************)
@@ -321,8 +321,8 @@ let getCompinfo = function
 (******************************************************************************)
 
 exception CouldntGetLoopLower of stmt 
-let get_loop_lower (s: stmt) : exp =
-  match (!prevstmt).skind with
+let get_loop_lower (s: stmt) (prevstmt: stmt) : exp =
+  match (prevstmt).skind with
       Instr(il) -> begin
         match (L.hd (L.rev il)) with
           Set(_, e, _) -> e
@@ -386,46 +386,50 @@ let mkPtrFieldAccess lv fieldname =
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
 exception NotAnExpression of attrparam
-let rec attrParamToExp (a: attrparam) : exp= 
-  match a with
-      AInt(i) -> integer i                    (** An integer constant *)
-    | AStr(s) -> Const(CStr s)                (** A string constant *)
-    | ACons(name, []) ->                      (** An id *)
-      Lval (Var (find_scoped_var !currentFunction !ppc_file name) , NoOffset)
-    (* We don't support function calls as argument size *)
-    (*| ACons(name, args) ->                    (** A function call *)
-      let args' = L.map (fun a -> attrParamToExp a) args in
-      let instr = Call (None, Lval (var find_function_sign !ppc_file name), args', locUnknown) in
-      let call = mkStmtOneInstr instr in
-      Lval (var (find_scoped_var !currentFunction !ppc_file name) , NoOffset)*)
-    | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
-    | ASizeOfE(a) -> SizeOfE (attrParamToExp a)
-    | AAlignOf(t) -> AlignOf t
-    | AAlignOfE(a) -> AlignOfE (attrParamToExp a)
-    | AUnOp(op, a) -> UnOp(op, attrParamToExp a, intType) (* how would i know what type to put? *)
-    | ABinOp(op, a, b) -> BinOp(op, attrParamToExp a, attrParamToExp b, intType) (* same as above *)
-    | ADot(a, s) -> begin                    (** a.foo **)
-      let predot = attrParamToExp a in
-      match predot with Lval(v) ->
-          Lval (mkFieldAccess v s)
-        | _ -> raise (NotAnExpression a)
-    end
-    | AStar(a) -> Lval(mkMem (attrParamToExp a) NoOffset) (** * a *)
-    | AAddrOf(a) -> begin                                 (** & a **)
-      let ar = attrParamToExp a in
-      match ar with Lval(v) ->
-          mkAddrOf v
-        | _ -> raise (NotAnExpression a)
-    end
-    | AIndex(a, i) -> begin                               (** a1[a2] *)
-      let arr = attrParamToExp a in
-      match arr with Lval(v) ->
-          Lval(addOffsetLval (Index(attrParamToExp i, NoOffset)) v)
-        | _ -> raise (NotAnExpression a)
-    end
-    (* not supported *)
-(*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
-    | _ -> raise (NotAnExpression a)
+let attrParamToExp (a: attrparam) (currentFunction: fundec) (ppc_file: file) : exp= 
+  let rec subAttr2Exp (a: attrparam) : exp= begin
+    match a with
+        AInt(i) -> integer i                    (** An integer constant *)
+      | AStr(s) -> Const(CStr s)                (** A string constant *)
+      | ACons(name, []) ->                      (** An id *)
+        Lval (Var (find_scoped_var currentFunction ppc_file name) , NoOffset)
+      (* We don't support function calls as argument size *)
+      (*| ACons(name, args) ->                    (** A function call *)
+        let args' = L.map (fun a -> attrParamToExp a) args in
+        let instr = Call (None, Lval (var find_function_sign ppc_file name), args', locUnknown) in
+        let call = mkStmtOneInstr instr in
+        Lval (var (find_scoped_var !currentFunction ppc_file name) , NoOffset)*)
+      | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
+      | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
+      | AAlignOf(t) -> AlignOf t
+      | AAlignOfE(a) -> AlignOfE (subAttr2Exp a)
+      | AUnOp(op, a) -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
+      | ABinOp(op, a, b) -> BinOp(op, subAttr2Exp a,
+                                    subAttr2Exp b, intType) (* same as above *)
+      | ADot(a, s) -> begin                    (** a.foo **)
+        let predot = subAttr2Exp a in
+        match predot with Lval(v) ->
+            Lval (mkFieldAccess v s)
+          | _ -> raise (NotAnExpression a)
+      end
+      | AStar(a) -> Lval(mkMem (subAttr2Exp a) NoOffset) (** * a *)
+      | AAddrOf(a) -> begin                                 (** & a **)
+        let ar = subAttr2Exp a in
+        match ar with Lval(v) ->
+            mkAddrOf v
+          | _ -> raise (NotAnExpression a)
+      end
+      | AIndex(a, i) -> begin                               (** a1[a2] *)
+        let arr = subAttr2Exp a in
+        match arr with Lval(v) ->
+            Lval(addOffsetLval (Index(subAttr2Exp i, NoOffset)) v)
+          | _ -> raise (NotAnExpression a)
+      end
+      (* not supported *)
+  (*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
+      | _ -> raise (NotAnExpression a)
+  end in
+  subAttr2Exp a
 
 
 (******************************************************************************)
@@ -457,10 +461,7 @@ end
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader (f: file) (header: string) (def: string): unit = begin
   (* FIXME: what if we move arround the executable? *)
-  let statistics = ref "" in
-  if (!stats) then
-    statistics := "-DSTATISTICS=1";
-  ignore (Sys.command ("echo | gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E "^def^" -I./include/ppu -I./include/spu "^(header)^" - >/tmp/_cil_rewritten_tmp.h"));
 (* print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)); *)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
