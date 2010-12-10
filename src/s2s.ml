@@ -71,7 +71,7 @@ let options =
       Arg.String(fun s -> arch := s),
       " S2S: Define the target architecture (x86/cell).";
 
-    "--debug-tpctool",
+    "--debug",
       Arg.Set(debug),
       " S2S: Print debugging information.";
 

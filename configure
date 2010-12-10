@@ -5,6 +5,9 @@ cd cil
 ./configure EXTRASRCDIRS="$ROOT/src" \
   EXTRAFEATURES="s2s"
 cd ..
-cat locksmith.in | sed -e "s.ROOT.$ROOT." > locksmith
-cat lockpick.in | sed -e "s.ROOT.$ROOT." > lockpick
-chmod a+x locksmith lockpick
+files="locksmith lockpick s2s"
+for i in $files
+do
+	cat $i.in | sed -e "s.ROOT.$ROOT." > $i
+done
+chmod a+x $files
