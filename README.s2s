@@ -36,24 +36,24 @@
 
 #pragma support
 
-we support 2 syntaxes
+  we support 2 syntaxes
 
-1. #pragma tpc(arg1(in/out/inout, argsize1), arg2(in/out/inout, argsize2) ...)
+  1. #pragma tpc(arg1(in/out/inout, argsize1), arg2(in/out/inout, argsize2) ...)
 
-2. CellSS syntax
+  2. CellSS syntax
 
-  #pragma css wait all
-  #pragma css wait on(list of expressions)
-  #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
+    #pragma css wait all
+    #pragma css wait on(list of expressions)
+    #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
 
-  Parameter notation:
-    <parameter>\[parameter size*\]
-    * The parameter size must be an expression, thus we don't allow
-      function calls. Also there is no support for the conditional
-       operator (? :)
+    Parameter notation:
+      <parameter>\[parameter size*\]
+      * The parameter size must be an expression, thus we don't allow
+        function calls. Also there is no support for the conditional
+        operator (? :)
 
-  Example:
-    #pragma css task input(a[sizeof(a)], b[4*sizeof(b_type)]) output(c[16])
+    Example:
+      #pragma css task input(a[sizeof(a)], b[4*sizeof(b_type)]) output(c[16])
 
 
 DEPENDENCIES
@@ -65,6 +65,11 @@ DEPENDENCIES
   indent
   ncurses-devel
   emacs
+
+  you will also need the cell development package including ppu_intrinsics.h
+  altivec.h in your include path (C_INCLUDE_PATH)
+  (e.g. export C_INCLUDE_PATH=$C_INCLUDE_PATH:/path/to/cell/sdk/include )
+
 
 INSTALL
 

@@ -657,17 +657,17 @@ let feature : featureDescr =
           (* copy all code from file f to file_ppc *)
           ignore(E.warn "Path = %s\n" !includePath);
           
-          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/tpc_s2s.h") (" -DPPU=1"^(!def))
+          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
                                       !arch !includePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader !spu_file ((!includePath)^"/tpc_s2s.h") (" -DSPU=1"^(!def))
+          preprocessAndMergeWithHeader !spu_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
                                       !arch !includePath;
         end else
-          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/tpc_s2s.h") (" -DX86tpc=1"^(!def))
+          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
                                       !arch !includePath;
 
         Cil.iterGlobals !ppc_file 
