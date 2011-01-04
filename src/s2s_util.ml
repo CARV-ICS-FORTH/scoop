@@ -178,9 +178,11 @@ let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
     find_local_var fd name
   with Not_found -> 
       ( try
+        ignore(E.warn "Now looking in formals");
         find_formal_var fd name
       with Not_found -> 
           ( try
+            ignore(E.warn "Now looking in globals");
             find_global_var f name
           with Not_found -> (
               ignore(E.warn "\"%s\" is not accessible from %s" name fd.svar.vname);

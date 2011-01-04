@@ -137,6 +137,11 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
   setFunctionReturnType f_new intType;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (List.length f_new.sformals)-1 in
+  if ( args_num > (List.length args) ) then
+  begin
+    ignore(E.error "Number of arguments described in #pragma doesn't much the\
+          number of arguments in the function declaration"); assert false
+  end;
   for i = 0 to args_num do
     let (_, arg_type, _, _, _) = List.nth args i in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
@@ -304,10 +309,10 @@ let rec s2s_process_args typ args =
       match arg with
 (*         AIndex(ACons(varname, []), ACons(varsize, [])) -> *)
         AIndex(ACons(varname, []), varsize) ->
+          let tmp_size = attrParamToExp varsize !currentFunction !ppc_file in
           (varname, (translate_arg typ false),
-              attrParamToExp varsize !currentFunction !ppc_file,
-              attrParamToExp varsize !currentFunction !ppc_file,
-              attrParamToExp varsize !currentFunction !ppc_file)::(s2s_process_args typ rest)
+              tmp_size, tmp_size, tmp_size)::(s2s_process_args typ rest)
+(* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
 (*         | handle strided... *)
         | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ); []
     end
@@ -318,7 +323,7 @@ let rec s2s_process io =
     (cur::rest) -> begin
       match cur with
         AStr("highpriority") -> s2s_process rest
-        | ACons(arg_typ, args) -> s2s_process_args arg_typ args
+        | ACons(arg_typ, args) -> (s2s_process_args arg_typ args)@(s2s_process rest)
         | _ -> ignore(E.log "Syntax error in #pragma tpc task"); []
     end
     | _ -> []
