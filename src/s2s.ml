@@ -534,8 +534,16 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let arglist = List.map
     (fun (_, argt, _) ->
       let argvar = makeTempVar execfun argt in
-      let castexp = CastE(argt, Lval(var argaddr)) in
-      let castinstr = Set(var argvar, castexp, locUnknown) in
+      let rec castexp atyp = match atyp with
+        TInt(_, _)
+        | TFloat(_, _)
+        | TEnum(_, _)
+        | TComp(_, _) -> 
+          CastE(argt, Lval(mkMem (CastE( TPtr(argt, []), Lval(var argaddr))) NoOffset))
+        | TNamed(_, _) -> castexp (unrollType atyp)
+        | _ -> CastE(argt, Lval(var argaddr))
+      in
+      let castinstr = Set(var argvar, castexp argt, locUnknown) in
       let arg_type = get_arg_type (List.nth args !i) in
       let advptrinstr = nextaddr !i (is_strided arg_type) in
       incr i;
@@ -685,7 +693,7 @@ let feature : featureDescr =
         ;
 
         (* kasas was here :P *)
-        Ptdepa.find_dependencies f;
+(*         Ptdepa.find_dependencies f; *)
 
         Cil.iterGlobals !ppc_file 
           (function

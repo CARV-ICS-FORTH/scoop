@@ -264,6 +264,8 @@ let arg_t2int = function
    from the ppc_file to the spu_file *)
 let rec deep_copy_function (task: string) (callgraph: CG.callgraph)
       (spu_file: file) (ppc_file: file)= begin
+    (* TODO copy globals? *)
+
     (* First copy the Callees *)
     let cnode: CG.callnode = H.find callgraph task in
     let nodeName (n: CG.nodeinfo) : string =
@@ -278,8 +280,12 @@ let rec deep_copy_function (task: string) (callgraph: CG.callgraph)
     Inthash.iter deep_copy cnode.CG.cnCallees;
     
     (* now copy current *)
-    let new_fd = GFun(find_function_fundec (ppc_file) task, locUnknown) in
-    spu_file.globals <- spu_file.globals@[new_fd];
+    try
+      (* First check whether the function is defined *)
+      let new_fd = GFun(find_function_fundec (ppc_file) task, locUnknown) in
+      spu_file.globals <- spu_file.globals@[new_fd];
+      (* if not check whether we have a signature *)
+    with Not_found -> ignore(find_function_sign (ppc_file) task);
 end
 
 (******************************************************************************)
@@ -464,9 +470,11 @@ end
 let preprocessAndMergeWithHeader (f: file) (header: string) (def: string)
     (arch: string) (incPath: string) : unit = begin
   if (arch="cell") then begin
-    ignore (Sys.command ("echo | gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"))
+    (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
+    ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"))
   end else begin
-    ignore (Sys.command ("echo | gcc -E "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"))
+    (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
+    ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"))
   end;
 (* print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)); *)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
@@ -534,6 +542,7 @@ let is_typedef (g: global) : bool = match g with
   | GCompTagDecl(_, _)
   | GEnumTag(_, _)
   | GEnumTagDecl(_, _) -> true
+  | GVarDecl(vi, _) when vi.vstorage=Extern -> true
   | _ -> false
 
 let isCompType = function
