@@ -69,8 +69,9 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
   let flag = mkFieldAccess idxlv "flag" in
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
-  (* TODO take list from ptdepa *)
-  if (false) then begin
+  (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
+  let (arg_name,_,_,_,_) = arg in
+  if (Ptdepa.isSafeArg fd arg_name) then begin
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;

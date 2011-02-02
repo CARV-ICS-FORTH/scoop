@@ -176,13 +176,16 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
 let isSafeArg (task: fundec) (argname: string) : bool =
   let taskname = task.svar.vname in 
   let rec search_list = function 
-    [] -> false
-  | (task_n::tl) -> let ((_, taskname'), args) = task_n in 
-    if(taskname' = taskname) then 
-      hasDependencies args argname
-    else 
-      search_list tl
-  in search_list task_dep_l
+      [] -> false
+    | (task_n::tl) -> begin
+      let ((_, taskname'), args) = task_n in 
+      if(taskname' = taskname) then 
+        hasDependencies args argname
+      else 
+        search_list tl
+    end
+  in
+  search_list (!task_dep_l)
 
 (* writes dependencies in graphiz format *)
 let plot_task_dep_graph (outf: out_channel) : unit = begin 
@@ -199,7 +202,7 @@ let plot_task_dep_graph (outf: out_channel) : unit = begin
       | (arg::tl) ->  
         let ((argname, _, _), dependencies) = arg in
 	Printf.fprintf outf "\t\t%s_%s [label = \"%s\"];\n" taskname argname argname;
-	let rec  edges' = function
+	let rec plot_dependencies edges' = function
           [] -> edges'
         | (dep::tl) -> 
           let ((argname', _, _), taskname') = dep in
