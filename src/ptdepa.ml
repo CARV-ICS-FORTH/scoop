@@ -5,6 +5,7 @@ open Printf
 module PT = Ptatype
 module LF = Labelflow
 module E = Errormsg
+module CF = Controlflow
 
 let do_graph_out = ref false
 
@@ -156,6 +157,33 @@ let print_task_dependencies (task: task_dep_node) : unit = begin
 
 end
 
+
+let hasDependencies (args: arg_dep_node list) (argname: string) : bool = 
+  let rec hasDependencies' = function
+    [] -> false
+  | (arg_n::tl) -> let ((argname', _, _), deps) = arg_n in
+    if(argname'=argname) then 
+    begin
+      match deps with
+        [] -> true
+      | _ -> false
+    end
+    else 
+      hasDependencies' tl
+  in hasDependencies' args
+
+(* return true if the argument has no dependencies  *)
+let isSafeArg (task: fundec) (argname: string) : bool =
+  let taskname = task.svar.vname in 
+  let rec search_list = function 
+    [] -> false
+  | (task_n::tl) -> let ((_, taskname'), args) = task_n in 
+    if(taskname' = taskname) then 
+      hasDependencies args argname
+    else 
+      search_list tl
+  in search_list task_dep_l
+
 (* writes dependencies in graphiz format *)
 let plot_task_dep_graph (outf: out_channel) : unit = begin 
   let rec plot_task edges = function
@@ -171,7 +199,7 @@ let plot_task_dep_graph (outf: out_channel) : unit = begin
       | (arg::tl) ->  
         let ((argname, _, _), dependencies) = arg in
 	Printf.fprintf outf "\t\t%s_%s [label = \"%s\"];\n" taskname argname argname;
-	let rec plot_dependencies edges' = function
+	let rec  edges' = function
           [] -> edges'
         | (dep::tl) -> 
           let ((argname', _, _), taskname') = dep in
@@ -187,20 +215,19 @@ end
 
 (* Static analysis for task dependencies *)
 let find_dependencies (f: file) : unit = begin	
-  Rmtmps.removeUnusedTemps f;
-  Rmalias.removeAliasAttr f;
-  PT.generate_constraints f;
-  (* LF.done_adding (); *)
-(*  if !do_graph_out then begin
-    Dotpretty.init_file "graph-begin.dot" "initial constraints";
-    Labelflow.print_graph !Dotpretty.outf;
-    (*
-    Semiunification.print_graph !Dotpretty.outf;
-    Lockstate.print_graph !Dotpretty.outf;u
-    *)
-    Dotpretty.close_file ();
-  end; *)
+  (*Rmtmps.removeUnusedTemps f;
+  Rmalias.removeAliasAttr f;*)
   ignore(E.log "looking for dependencies\n");
+  ignore(PT.generate_constraints f);
+  (* LF.done_adding (); *)
+    Dotpretty.init_file "graph-begin.dot" "initial constraints";
+    (*Labelflow.print_graph !Dotpretty.outf;*)
+    
+    (*Semiunification.print_graph !Dotpretty.outf;*)
+    Lockstate.print_graph !Dotpretty.outf;
+ (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
+    Dotpretty.close_file (); 
+  
   List.iter find_task_dependencies !tasks_l;
   ignore(E.log "dependencies found!\n");
   List.iter print_task_dependencies !task_dep_l;
