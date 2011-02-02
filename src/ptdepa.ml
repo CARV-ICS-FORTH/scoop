@@ -13,11 +13,11 @@ let do_task_graph_out = ref false
 let options = [
   "--save-graph",
   Arg.Set(do_graph_out),
-  " Write constraints in \"graph.dot\".";
+  "PtDepa: Write constraints in \"graph.dot\".";
 
   "--save-dependencies-graph",
   Arg.Set(do_task_graph_out),
-  " Write task dependecies in \"task-dep.dot\"";
+  "PtDepa: Write task dependecies in \"task-dep.dot\"";
 ]
 
              (* argname * in/out type * fundec *)
