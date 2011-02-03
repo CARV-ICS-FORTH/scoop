@@ -215,15 +215,18 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
 end
 
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
-let rec ptdepa_process_args typ args : unit =
+let rec ptdepa_process_args typ args : unit = begin
   if ( args <> []) then begin
+    begin
     match (L.hd args) with
       AIndex(ACons(varname, []), varsize) -> begin 
         Ptdepa.addArg (varname, typ, !currentFunction);
       end
       | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ);
+  end;
     ptdepa_process_args typ (L.tl args)
   end
+end
 
 let rec ptdepa_process io : unit = begin
   match io with 
@@ -232,8 +235,8 @@ let rec ptdepa_process io : unit = begin
         AStr("highpriority") -> (* simply ignore it *) ();
         | ACons(arg_typ, args) -> ptdepa_process_args arg_typ args
         | _ -> ignore(E.log "Syntax error in #pragma tpc task");
-      ptdepa_process rest
-    end
+    end;
+    ptdepa_process rest
     | _ -> ();
 end
 
@@ -693,7 +696,7 @@ let feature : featureDescr =
         ;
 
         (* kasas was here :P *)
-(*         Ptdepa.find_dependencies f; *)
+        Ptdepa.find_dependencies f;
 
         Cil.iterGlobals !ppc_file 
           (function
