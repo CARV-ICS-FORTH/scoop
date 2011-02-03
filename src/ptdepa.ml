@@ -9,7 +9,9 @@ module CF = Controlflow
 
 let do_graph_out = ref false
 
-let do_task_graph_out = ref false
+let do_task_graph_out = ref true 
+
+let do_verbose_output = ref true
 
 let options = [
   "--save-graph",
@@ -18,7 +20,11 @@ let options = [
 
   "--save-dependencies-graph",
   Arg.Set(do_task_graph_out),
-  "PtDepa: Write task dependecies in \"task-dep.dot\"";
+  "PtDepa: Write task dependecies in \"task-dep.dot\".";
+
+  "--verbose-output",
+  Arg.Set(do_verbose_output),
+  "PtDepa: Verbose output.";
 ]
 
              (* argname * in/out type * fundec *)
@@ -49,13 +55,16 @@ let addTask (taskname: string) (scope: fundec) : unit =
   tasks_l := ((scope,  taskname), !args_l)::!tasks_l;
   args_l := []
 
-let addArg (arg: arg_type) : unit = 
+let addArg (arg: arg_type) : unit =
+  let (argname, typ, taskdec) = arg in
+  let taskname = taskdec.svar.vname in
   args_l := arg::!args_l
 
 (* return true if arg_t is In or SIn *)
 let is_in_arg (arg: string): bool = 
   match arg with 
-      "in" -> true
+      "input" -> true (* for css tags  *)
+    | "in" -> true    (* for tpc legacy tags *)
     | _ -> false
 
 (* return rhoSet for the specific arg (argument is argname * function descriptor) *)
@@ -82,13 +91,13 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
     let set1 = get_rhoSet arg1 in
     let set2 = get_rhoSet arg2 in
     let final_set = LF.RhoSet.inter set1 set2 in
-    (*
-    let (argname1, _, _) = arg1 in
-    let (argname2, _, _) = arg2 in
-    ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
-    ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
-    ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
-    *)
+    if !do_verbose_output then begin
+      let (argname1, _, _) = arg1 in
+      let (argname2, _, _) = arg2 in
+      ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
+      ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
+      ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+    end;
     not (LF.RhoSet.is_empty final_set)
 
 
@@ -157,7 +166,11 @@ let print_task_dependencies (task: task_dep_node) : unit = begin
 
 end
 
-
+(* 
+ * Traverses the an argument list and checks if the dependence list is empty,
+ * in which case it return false, no dependences, or true if the list is not
+ * empty.
+*)
 let hasDependencies (args: arg_dep_node list) (argname: string) : bool = 
   let rec hasDependencies' = function
     [] -> false
@@ -165,8 +178,8 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
     if(argname'=argname) then 
     begin
       match deps with
-        [] -> true
-      | _ -> false
+        [] -> false
+      | _ -> true
     end
     else 
       hasDependencies' tl
@@ -180,7 +193,7 @@ let isSafeArg (task: fundec) (argname: string) : bool =
     | (task_n::tl) -> begin
       let ((_, taskname'), args) = task_n in 
       if(taskname' = taskname) then 
-        hasDependencies args argname
+        not (hasDependencies args argname)
       else 
         search_list tl
     end
@@ -216,24 +229,40 @@ let plot_task_dep_graph (outf: out_channel) : unit = begin
   Printf.fprintf outf "%s" (plot_task "" !task_dep_l)
 end
 
+(* prints argument  *)
+let print_arg (arg: arg_type) : unit = begin
+  let (argname, typ, _) = arg in
+  ignore(E.log "\targ:%s, type:%s\n" argname typ);
+end
+
+(* print taks and argument list  *)
+let print_task (task: task_type) : unit = begin
+   let ((_, taskname), args) = task in
+   ignore(E.log "task:%s\n" taskname);
+   List.iter print_arg args;
+end
+
 (* Static analysis for task dependencies *)
 let find_dependencies (f: file) : unit = begin	
-  (*Rmtmps.removeUnusedTemps f;
-  Rmalias.removeAliasAttr f;*)
-  ignore(E.log "looking for dependencies\n");
-  ignore(PT.generate_constraints f);
+  (* List.iter print_task !tasks_l; *)
+  ignore(E.log "Ptdepa: Generating and solving flow constraints\n");
+  Rmtmps.removeUnusedTemps f;
+  Rmalias.removeAliasAttr f;
+  PT.generate_constraints f;
   (* LF.done_adding (); *)
-    Dotpretty.init_file "graph-begin.dot" "initial constraints";
+    (*Dotpretty.init_file "graph-begin.dot" "initial constraints";*)
     (*Labelflow.print_graph !Dotpretty.outf;*)
     
     (*Semiunification.print_graph !Dotpretty.outf;*)
-    Lockstate.print_graph !Dotpretty.outf;
- (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
-    Dotpretty.close_file (); 
-  
+    (*Lockstate.print_graph !Dotpretty.outf;*)
+    (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
+    (*Dotpretty.close_file (); *)
+  ignore(E.log "Ptdepa: Checking for argument dependencies\n");
   List.iter find_task_dependencies !tasks_l;
-  ignore(E.log "dependencies found!\n");
-  List.iter print_task_dependencies !task_dep_l;
+  if !do_verbose_output then begin
+    ignore(E.log "Ptdepa: Dependencies found!\n");
+    List.iter print_task_dependencies !task_dep_l;
+  end;
   if !do_task_graph_out then begin
     Dotpretty.init_file "task-dep.dot" "task dependencies";
     plot_task_dep_graph !Dotpretty.outf;
