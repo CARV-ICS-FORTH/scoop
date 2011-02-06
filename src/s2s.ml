@@ -252,9 +252,9 @@ class findTaggedCals = object
           match sub with
             AStr("task") -> begin
               match s.skind with 
-                Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+                Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> begin
                   ptdepa_process rest;
-                  Ptdepa.addTask vi.vname !currentFunction;
+                  Ptdepa.addTask vi.vname !currentFunction loc;
                   prevstmt := s; DoChildren
                 end
                 | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); prevstmt := s; DoChildren
@@ -264,7 +264,7 @@ class findTaggedCals = object
         end
         | (Attr("tpc", args), _) -> begin
           match s.skind with 
-            Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+            Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> begin
 (*               let funname = vi.vname in *)
                 ignore(List.map (fun arg -> match arg with
                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
@@ -275,7 +275,7 @@ class findTaggedCals = object
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args);
-                Ptdepa.addTask vi.vname !currentFunction;
+                Ptdepa.addTask vi.vname !currentFunction loc;
                 prevstmt := s; DoChildren
               end
             | Block(b) -> ignore(E.unimp "Ignoring block pragma"); prevstmt := s; DoChildren

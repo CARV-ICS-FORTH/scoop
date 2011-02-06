@@ -28,15 +28,17 @@ let options = [
 ]
 
              (* argname * in/out type * fundec *)
-type arg_type = (string * string * fundec)
-      (* (task scope * taskname) * argument list *)
-and task_type = ((fundec * string) * arg_type list) 
-                      (* taskname *)
-and dep_node = arg_type * string
+type arg_type = (string * string * fundec) (* FIXME:fundec is the global one, note the function it belogs to *)
+          (* (taskname * (callsiteloc * taskscope)) *) 
+and task_descr = (string * (location * fundec))
+          (* (task scope * taskname) * argument list *)
+and task_type = (task_descr * arg_type list) 
+                      (* parent task_descr  *)
+and dep_node = arg_type * task_descr
 
 and arg_dep_node = (arg_type * dep_node list)
 
-and task_dep_node = ((fundec * string) * arg_dep_node list)
+and task_dep_node = (task_descr * arg_dep_node list)
 
 (* each node is a task, with a list of tasks that are not depended with each other *)
 let tasks_l : task_type list ref = ref []
@@ -45,19 +47,52 @@ let args_l : arg_type list ref = ref []
 (* each node is a task with its arguments, for each argument there is a list
   of depended arguments *)
 let task_dep_l : task_dep_node list ref = ref []
+(* dependence list with marked callsites for multiple calls to the same function *)
+(* let inst_task_dep_l : task_dep_node list ref = ref [] *)
+
+(*
+(* Map calls to call site (index) for graphviz output *)
+module CallMap = Map.Make(String)
+
+let graph_calls = ref CallMap.empty
+
+(* return last call site of given task *)
+let callsite_no (taskname: string) : int =
+  let callsite = begin 
+    try begin
+      CallMap.find taskname !graph_calls
+    end  
+    with Not_found -> 0
+  end in
+  graph_calls := CallMap.add taskname (callsite+1) !graph_calls;
+  callsite
+(* 
+ * copies task_dep_list and adds an callsite index for 
+ * every different callsite of a task
+ *)
+let instantiate_depList (a: unit): unit = begin
+  ignore(E.log "instantiating tasks\n");
+  List.iter 
+    (fun tasknode -> 
+      let ((scope, taskname), args) = tasknode in
+      let inst_taskname = taskname^(string_of_int (callsite_no taskname)) in
+      ignore(E.log "renaming %s to %s\n" taskname inst_taskname);
+      inst_task_dep_l := ((scope, inst_taskname), args)::!inst_task_dep_l)
+    !task_dep_l
+end
+*)   
 
 (*
  * first collect all task arguments, then 
  * call addTask to add a new task with 
  * its arguments
  *)
-let addTask (taskname: string) (scope: fundec) : unit =
-  tasks_l := ((scope,  taskname), !args_l)::!tasks_l;
+let addTask (taskname: string) (scope: fundec) (callsite: location): unit =
+  ignore(E.log "add task");
+  tasks_l := ((taskname, (callsite, scope)), !args_l)::!tasks_l;
   args_l := []
 
 let addArg (arg: arg_type) : unit =
-  let (argname, typ, taskdec) = arg in
-  let taskname = taskdec.svar.vname in
   args_l := arg::!args_l
 
 (* return true if arg_t is In or SIn *)
@@ -100,7 +135,7 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
     end;
     not (LF.RhoSet.is_empty final_set)
 
-
+(*
 (* 
  * traverses a list of arguments and check if arg1 aliases 
  * with any of them.
@@ -108,16 +143,16 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
  *)
 let rec check_args (arg1: arg_type) 
                   (args: arg_type list) 
-                  (taskname: string) 
+                  (taskinf: string) 
                   (dep_args: dep_node list) : dep_node list = 
   match args with 
     [] -> dep_args
   | (arg2::tl) -> if(is_aliased arg1 arg2) then 
-                    check_args arg1 tl taskname ((arg2, taskname)::dep_args)
+                    check_args arg1 tl taskinf ((arg2, taskinf)::dep_args)
                   else 
-                    check_args arg1 tl taskname dep_args
+                    check_args arg1 tl taskinf dep_args
 
-                    
+*)                  
 (*
  * traverses a list of arguments (args), for each, it calls 
  * check_arg to check for any dependencies with args'.
@@ -127,11 +162,11 @@ let rec check_args (arg1: arg_type)
 let rec check_arg (arg: arg_type) (tasks: task_type list) : dep_node list =
   let rec check_task dep_args = function
     [] -> dep_args
-  | (task::tl) -> let ((_, taskname'), args) = task in
+  | (task::tl) -> let (taskinf', args) = task in
                   let rec check_arg' dep_args' = function
                     [] -> dep_args'
                   | (arg'::tl) -> if(is_aliased arg arg') then 
-                                    check_arg' ((arg', taskname')::dep_args') tl
+                                    check_arg' ((arg', taskinf')::dep_args') tl
                                   else 
                                     check_arg' dep_args' tl
                   in check_task (dep_args@(check_arg' [] args)) tl
@@ -140,34 +175,34 @@ let rec check_arg (arg: arg_type) (tasks: task_type list) : dep_node list =
 
 (* checks for any dependencies with task *)
 let find_task_dependencies (task: task_type) : unit = begin
-  let ((scope1, taskname1), args) = task in
+  let (taskinf, args) = task in
   let rec find_task_dependencies' arg_dep = function 
     [] -> arg_dep  
   | (arg::tl) -> find_task_dependencies' ((arg, (check_arg arg !tasks_l))::arg_dep) tl
   in    
-  let task_dep = ((scope1, taskname1), (find_task_dependencies' [] args)) in 
+  let task_dep = (taskinf, (find_task_dependencies' [] args)) in 
   task_dep_l := (task_dep::!task_dep_l)
 end
 
 (* prints dependencies list *)
 let print_task_dependencies (task: task_dep_node) : unit = begin
-  let ((_, taskname), args) = task in
-  ignore(E.log "%s\n" taskname); 
+  let ((taskname,(loc, _)), args) = task in
+  ignore(E.log "%s.%s:%d\n" taskname loc.file loc.line); 
   List.iter 
     (fun arg ->
       let ((argname, _, _), dependencies) = arg in 
       ignore(E.log "\t%s\n" argname);
       List.iter 
         (fun dep -> 
-          let ((argname, _, _), taskname) = dep in
-            ignore(E.log "\tdep:%s in task:%s\n" argname taskname)
+          let ((argname, _, _), (taskname, (loc, _))) = dep in
+            ignore(E.log "\tdep:%s in task:%s.%s:%d\n" argname taskname loc.file loc.line)
         ) dependencies
     ) args
 
 end
 
 (* 
- * Traverses the an argument list and checks if the dependence list is empty,
+ * Traverses the argument list and checks if the dependence list is empty,
  * in which case it return false, no dependences, or true if the list is not
  * empty.
 *)
@@ -191,7 +226,7 @@ let isSafeArg (task: fundec) (argname: string) : bool =
   let rec search_list = function 
       [] -> false
     | (task_n::tl) -> begin
-      let ((_, taskname'), args) = task_n in 
+      let ((taskname', _), args) = task_n in 
       if(taskname' = taskname) then 
         not (hasDependencies args argname)
       else 
@@ -200,26 +235,33 @@ let isSafeArg (task: fundec) (argname: string) : bool =
   in
   search_list (!task_dep_l)
 
+let taskId (taskinf: task_descr) : string = 
+  let (taskname, (loc, _)) = taskinf in
+  taskname^"_"^(string_of_int loc.line);
+  taskname
+
 (* writes dependencies in graphiz format *)
 let plot_task_dep_graph (outf: out_channel) : unit = begin 
   let rec plot_task edges = function
     [] -> edges
   | (task::tl) -> 
-      let((_, taskname), args) = task in
-      Printf.fprintf outf "\tsubgraph cluster_%s {\n" taskname;
-      Printf.fprintf outf "\t\tlabel = \"%s\"\n" taskname;
+      let(taskinf, args) = task in
+      let tasknode = (taskId taskinf) in
+      Printf.fprintf outf "\tsubgraph cluster_%s {\n" tasknode;
+      Printf.fprintf outf "\t\tlabel = \"%s\"\n" tasknode;
       Printf.fprintf outf "\t\tcolor=blue;\n";
       let rec plot_args edges = function
         [] -> Printf.fprintf outf "\t}\n";
               edges
       | (arg::tl) ->  
         let ((argname, _, _), dependencies) = arg in
-	Printf.fprintf outf "\t\t%s_%s [label = \"%s\"];\n" taskname argname argname;
+	Printf.fprintf outf "\t\t%s_%s [label = \"%s\"];\n" tasknode argname argname;
 	let rec plot_dependencies edges' = function
           [] -> edges'
         | (dep::tl) -> 
-          let ((argname', _, _), taskname') = dep in
-          let edge = ("\t\t"^taskname^"_"^argname^" -> "^taskname'^"_"^argname'^"\n") in
+          let ((argname', _, _), taskinf') = dep in
+          let tasknode' = (taskId taskinf') in
+          let edge = ("\t\t"^tasknode^"_"^argname^" -> "^tasknode'^"_"^argname'^"\n") in
           plot_dependencies  (edges'^edge) tl	    
         in 
         plot_args (edges^(plot_dependencies "" dependencies)) tl
@@ -237,7 +279,7 @@ end
 
 (* print taks and argument list  *)
 let print_task (task: task_type) : unit = begin
-   let ((_, taskname), args) = task in
+   let ((taskname, _), args) = task in
    ignore(E.log "task:%s\n" taskname);
    List.iter print_arg args;
 end
@@ -264,6 +306,9 @@ let find_dependencies (f: file) : unit = begin
     List.iter print_task_dependencies !task_dep_l;
   end;
   if !do_task_graph_out then begin
+    ignore(E.log "Creating dot file\n");
+    (* instantiate_depList ();  
+    List.iter print_task_dependencies !inst_task_dep_l; *)
     Dotpretty.init_file "task-dep.dot" "task dependencies";
     plot_task_dep_graph !Dotpretty.outf;
     Dotpretty.close_file ();
