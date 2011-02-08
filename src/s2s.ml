@@ -55,7 +55,8 @@ let unaligned_args = ref false
 let out_name = ref "final"
 let block_size = ref 0
 let arch = ref "unknown"
-let includePath = ref ""
+let tpcIncludePath = ref ""
+let cflags = ref ""
 let currentFunction = ref dummyFunDec
 let prevstmt = ref dummyStmt
 
@@ -72,11 +73,15 @@ let options =
       Arg.String(fun s -> arch := s),
       " S2S: Define the target architecture (x86/cell).";
 
-    "--include",
-      Arg.String(fun s -> includePath := s),
-      " S2S: Define the include path for any custom headers of yours.";
+    "--cflags",
+      Arg.String(fun s -> cflags := s),
+      " S2S: Define the flags you want to pass to gcc.";
 
-    "--debug",
+    "--tpcIncludePath",
+      Arg.String(fun s -> tpcIncludePath := s),
+      " S2S: Define the include path for the tpc runtime.";
+
+    "--debugS2S",
       Arg.Set(debug),
       " S2S: Print debugging information.";
 
@@ -215,18 +220,15 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
 end
 
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
-let rec ptdepa_process_args typ args : unit = begin
+let rec ptdepa_process_args typ args : unit =
   if ( args <> []) then begin
-    begin
     match (L.hd args) with
       AIndex(ACons(varname, []), varsize) -> begin 
         Ptdepa.addArg (varname, typ, !currentFunction);
       end
       | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ);
-  end;
     ptdepa_process_args typ (L.tl args)
   end
-end
 
 let rec ptdepa_process io : unit = begin
   match io with 
@@ -235,8 +237,8 @@ let rec ptdepa_process io : unit = begin
         AStr("highpriority") -> (* simply ignore it *) ();
         | ACons(arg_typ, args) -> ptdepa_process_args arg_typ args
         | _ -> ignore(E.log "Syntax error in #pragma tpc task");
-    end;
-    ptdepa_process rest
+      ptdepa_process rest
+    end
     | _ -> ();
 end
 
@@ -341,21 +343,27 @@ class findSPUDeclVisitor cgraph = object
       Instr(Call(_, Lval((Var(vi), _)), args, _)::_) ->
         L.iter (fun a -> ignore(E.log "arg= %a\n" d_exp a)) args;
       | _ -> (););*)
+(*     print_endline ("Now in "^(!currentFunction).svar.vname); *)
+(* if ((!currentFunction).svar.vname="ComputeLikelihood") then *)
+(*     (dumpStmt defaultCilPrinter stdout 2 s); *)
+(*     print_endline (""); *)
     let prags = s.pragmas in
-    if (prags <> []) then begin
+    if (prags <> []) then (
       match (List.hd prags) with
-        (Attr("css", AStr("wait")::rest), loc) -> begin
+        (Attr("css", AStr("wait")::rest), loc) -> (
           (* Support #pragma css wait on(...) *)
           match rest with 
               ACons("on", exps)::_ -> (* wait on *) DoChildren
-            | AStr("all")::_ -> begin
+            | AStr("all")::_ -> (
                 let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
                 let instr = Call (None, Lval (var twa), [], locUnknown) in
-                ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ])))
+                let s' = {s with pragmas = List.tl s.pragmas} in
+                ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+(*                 ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
                 (* wait all *)
-            end
+            )
             | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
-        end
+        )
         | _ -> ();
       match s.skind with 
         Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
@@ -488,7 +496,7 @@ class findSPUDeclVisitor cgraph = object
           end
         | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
         | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
-    end else
+    ) else 
       DoChildren
 end
 
@@ -667,24 +675,25 @@ let feature : featureDescr =
   (*       let spu_glist = ref [] in *)
 
         let def = ref (" -DMAX_QUEUE_ENTRIES="^(!queue_size)) in
+        def := " "^(!cflags)^" "^(!def);
         if (!stats) then
           def := " -DSTATISTICS=1"^(!def);
         if(!arch = "cell") then begin
           (* copy all code from file f to file_ppc *)
-          ignore(E.warn "Path = %s\n" !includePath);
+(*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
           
-          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
-                                      !arch !includePath;
+          preprocessAndMergeWithHeader !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
+                                      !arch !tpcIncludePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader !spu_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
-                                      !arch !includePath;
+          preprocessAndMergeWithHeader !spu_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
+                                      !arch !tpcIncludePath;
         end else
-          preprocessAndMergeWithHeader !ppc_file ((!includePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
-                                      !arch !includePath;
+          preprocessAndMergeWithHeader !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
+                                      !arch !tpcIncludePath;
 
         Cil.iterGlobals !ppc_file 
           (function
@@ -696,7 +705,7 @@ let feature : featureDescr =
         ;
 
         (* kasas was here :P *)
-        Ptdepa.find_dependencies f;
+(*         Ptdepa.find_dependencies f; *)
 
         Cil.iterGlobals !ppc_file 
           (function

@@ -476,7 +476,6 @@ let preprocessAndMergeWithHeader (f: file) (header: string) (def: string)
     (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
     ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"))
   end;
-(* print_endline ("gcc -E -D"^def^"=1 -DMAX_QUEUE_ENTRIES="^(!queue_size)^"U "^(!statistics)^" -I./include/ppu -I./include/spu "^(header)); *)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;

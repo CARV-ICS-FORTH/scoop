@@ -72,6 +72,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
   let (arg_name,_,_,_,_) = arg in
   if (Ptdepa.isSafeArg fd arg_name) then begin
+    print_endline "SAFE";
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;
