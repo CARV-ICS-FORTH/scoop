@@ -1,21 +1,19 @@
 open Cil
 
-             (* argname * in/out type * fundec *)
-type arg_type = (string * string * fundec)
-      (* (task scope * taskname) * argument list *)
-and task_type = ((fundec * string) * arg_type list) 
-                      (* taskname *)
-and dep_node = arg_type * string
+           (* argname * in/out type * fundec *)
+type arg_type = (string * string * fundec) (* FIXME:fundec is the global one, note the function it belogs to *)
+          (* (taskname * (callsiteloc * taskscope)) *) 
+and task_descr = (string * (location * fundec))
+          (* (task scope * taskname) * argument list *)
+and task_type = (task_descr * arg_type list) 
+                      (* parent task_descr  *)
+and dep_node = arg_type * task_descr
 
 and arg_dep_node = (arg_type * dep_node list)
 
-and task_dep_node = ((fundec * string) * arg_dep_node list)
-
-
+and task_dep_node = (task_descr * arg_dep_node list)
 
 val options : (string * Arg.spec * string) list
-
-val task_dep_l : task_dep_node list ref
 
 (*
  * first collect all task arguments, then 
@@ -23,7 +21,7 @@ val task_dep_l : task_dep_node list ref
  * the collected arguments (args will then
  * be then reset)
  *)
-val addTask : string -> fundec -> unit
+val addTask : string -> fundec -> location -> unit
 
  
 (* use to collect arguments *)
