@@ -34,5 +34,4 @@
  *)
 
 val doArgument_cell : int -> Cil.lval -> Cil.lval -> Cil.lval -> Cil.fundec ->
-    (string * S2s_util.arg_t * Cil.exp * Cil.exp * Cil.exp) -> bool ->
-    Cil.file -> Cil.instr list
+    S2s_util.arg_descr -> bool -> Cil.file -> Cil.instr list

@@ -37,7 +37,7 @@ open Cil
 open S2s_util
 
 let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
- (arg: (string * arg_t * exp * exp * exp)) (stats: bool) (spu_file: file): instr list = begin
+ (arg: arg_descr) (stats: bool) (spu_file: file): instr list = begin
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
   let arg_type = get_arg_type arg in

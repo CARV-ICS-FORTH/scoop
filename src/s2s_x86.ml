@@ -38,7 +38,7 @@ open S2s_util
 module L = List
 
 let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
- (arg: (string * arg_t * exp * exp * exp)) (spu_file: file) (unaligned_args: bool)
+ (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
  (block_size: int) (ppc_file: file) : stmt list = begin
   let closure = mkPtrFieldAccess this "closure" in
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
@@ -70,7 +70,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  let (arg_name,_,_,_,_) = arg in
+  let (arg_name,(_,_,_,_)) = arg in
   if (Ptdepa.isSafeArg fd arg_name) then begin
     print_endline "SAFE";
     (* if(TPC_IS_SAFEARG(arg_flag)){

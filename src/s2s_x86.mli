@@ -34,5 +34,4 @@
  *)
 
 val doArgument_x86 : int -> Cil.lval -> Cil.lval -> Cil.lval -> Cil.fundec ->
-        (string * S2s_util.arg_t * Cil.exp * Cil.exp * Cil.exp) -> Cil.file ->
-        bool -> int -> Cil.file -> Cil.stmt list 
+        S2s_util.arg_descr -> Cil.file -> bool -> int -> Cil.file -> Cil.stmt list 

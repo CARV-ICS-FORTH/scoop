@@ -39,13 +39,15 @@
 (*                          Types                                             *)
 (******************************************************************************)
 
-type  arg_t =
+type arg_t =
     In
   | Out
   | InOut
   | SIn
   | SOut
   | SInOut
+
+and arg_descr = (string * (arg_t * Cil.exp * Cil.exp * Cil.exp))
 
 (******************************************************************************)
 (*                          Globals                                           *)
@@ -141,7 +143,7 @@ val attrParamToExp : Cil.attrparam -> Cil.fundec -> Cil.file -> Cil.exp
 
 (* returns the argument type from an argument description 
   (string * arg_t * string * string *string ) *)
-val get_arg_type : (string * arg_t * Cil.exp * Cil.exp * Cil.exp ) -> arg_t
+val get_arg_type : (string * (arg_t * Cil.exp * Cil.exp * Cil.exp )) -> arg_t
 
 (* change the return type of a function *)
 val setFunctionReturnType : Cil.fundec -> Cil.typ -> unit

@@ -54,6 +54,8 @@ type arg_t =
   | SOut
   | SInOut
 
+and arg_descr = (string * (arg_t * exp * exp * exp))
+
 (******************************************************************************)
 (*                          Globals                                           *)
 (******************************************************************************)
@@ -294,9 +296,9 @@ end
 
 (* returns the argument type from an argument description 
   (string * arg_t * string * string *string ) *)
-let get_arg_type (arg: (string * arg_t * exp * exp * exp )) : arg_t =
+let get_arg_type (arg: (string * (arg_t * exp * exp * exp ))) : arg_t =
   match arg with
-    (_, arg_type ,_ ,_ ,_) -> arg_type
+    (_, (arg_type ,_ ,_ ,_)) -> arg_type
 
 (* change the return type of a function *)
 let setFunctionReturnType (f: fundec) (t: typ) : unit = begin

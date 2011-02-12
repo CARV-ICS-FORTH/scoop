@@ -132,7 +132,7 @@ let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) list) : fundec = begin
+let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list) : fundec = begin
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
@@ -148,7 +148,7 @@ let make_tpc_func (func_vi: varinfo) (args: (string * arg_t * exp * exp * exp ) 
           number of arguments in the function declaration"); assert false
   end;
   for i = 0 to args_num do
-    let (_, arg_type, _, _, _) = List.nth args i in
+    let (_, (arg_type, _, _, _)) = List.nth args i in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
     if (is_strided arg_type) then begin
       ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
@@ -315,11 +315,11 @@ let rec s2s_process_args typ args =
 (*         AIndex(ACons(varname, []), ACons(varsize, [])) -> *)
         AIndex(ACons(varname, []), varsize) ->
           let tmp_size = attrParamToExp varsize !currentFunction !ppc_file in
-          (varname, (translate_arg typ false),
-              tmp_size, tmp_size, tmp_size)::(s2s_process_args typ rest)
+          (varname, ((translate_arg typ false),
+              tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
 (* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
 (*         | handle strided... *)
-        | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ); []
+        | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)" typ); []
     end
     | _ -> []
 
@@ -329,7 +329,7 @@ let rec s2s_process io =
       match cur with
         AStr("highpriority") -> s2s_process rest
         | ACons(arg_typ, args) -> (s2s_process_args arg_typ args)@(s2s_process rest)
-        | _ -> ignore(E.log "Syntax error in #pragma tpc task"); []
+        | _ -> ignore(E.log "Syntax error in #pragma css task"); []
     end
     | _ -> []
 
@@ -375,17 +375,17 @@ class findSPUDeclVisitor cgraph = object
 (*                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> *)
                     ACons(varname, ACons(arg_typ, [])::varsize::[]) ->
                       (* give all the arguments to Dtdepa*)
-                      (varname, (translate_arg arg_typ false),
+                      (varname, ((translate_arg arg_typ false),
                           attrParamToExp varsize !currentFunction !ppc_file,
                           attrParamToExp varsize !currentFunction !ppc_file,
-                          attrParamToExp varsize !currentFunction !ppc_file)
+                          attrParamToExp varsize !currentFunction !ppc_file))
 (*                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) -> *)
                   | ACons(varname, ACons(arg_typ, [])::varsize::elsize::elnum::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
-                      (varname, (translate_arg arg_typ true),
+                      (varname, ((translate_arg arg_typ true),
                         attrParamToExp varsize !currentFunction !ppc_file,
                         attrParamToExp elsize !currentFunction !ppc_file,
-                        attrParamToExp elnum !currentFunction !ppc_file)
+                        attrParamToExp elnum !currentFunction !ppc_file))
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
               ignore(E.log "Found task \"%s\"\n" funname);
@@ -394,11 +394,11 @@ class findSPUDeclVisitor cgraph = object
                 let call_args = ref [] in
                 let args_num = (List.length args')-1 in
                 for i = 0 to args_num do
-                  let (vname, _, _, _, _) = List.nth args' i in
+                  let (vname, (_, _, _, _)) = List.nth args' i in
                   call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
                 done;
                 for i = 0 to args_num do
-                  let (_, arg_type, vsize, velsz, vels) = List.nth args' i in
+                  let (_, (arg_type, vsize, velsz, vels)) = List.nth args' i in
 (*                   call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
                   call_args := vsize::!call_args;
                   if (is_strided arg_type) then
@@ -446,12 +446,37 @@ class findSPUDeclVisitor cgraph = object
                       let rest new_fd = 
                         (* add arguments to the call *)
                         let call_args = ref (L.rev oargs) in
-                        let args_num = (List.length args)-1 in(*
+(*                         let args_num = (List.length args)-1 in *)
+                        
+                        (* push call args from the start...
                         for i = 0 to args_num do
                           let (vname, _, _, _, _) = List.nth args i in
                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
                         done;*)
-                        for i = 0 to args_num do
+
+                        (* for each actual argument of the call find it's (pragma)
+                           declared size and push it to the argument list of them
+                           new call *)
+                        let rec getSize ex = match ex with
+                          Lval((Var(vi),_)) -> (
+                            let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
+                            call_args := vsize::!call_args;
+                          )
+                          | CastE (_, ex') -> getSize ex';
+                          | Const _ -> raise (Invalid_argument "Const");
+                          | SizeOf _ -> raise (Invalid_argument "Sizeof");
+                          | SizeOfE _ -> raise (Invalid_argument "SizeofE");
+                          | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+                          | AlignOf _ -> raise (Invalid_argument "Alignof");
+                          | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
+                          | UnOp _ -> raise (Invalid_argument "UnOp");
+                          | BinOp _ -> raise (Invalid_argument "BinOp");
+                          | AddrOf _ -> raise (Invalid_argument "AddrOf");
+                          | StartOf _ -> raise (Invalid_argument "StartOf");
+                        in
+                        L.iter getSize oargs;
+
+(*                        for i = 0 to args_num do
                           let (_, arg_type, vsize, velsz, vels) = List.nth args i in
 (*                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
                           call_args := vsize::!call_args;
@@ -459,7 +484,7 @@ class findSPUDeclVisitor cgraph = object
                             (*call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
                               Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
                             call_args := vels::velsz::!call_args;
-                        done;
+                        done;*)
                         let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
                         let call = mkStmtOneInstr instr in
                         ChangeTo(call) in
@@ -501,7 +526,7 @@ class findSPUDeclVisitor cgraph = object
 end
 
 let make_case execfun (task: varinfo) (task_info: varinfo)
-              (ex_task: varinfo) (args: (string * arg_t * exp * exp * exp) list): stmt = begin
+              (ex_task: varinfo) (args: arg_descr list): stmt = begin
   let res = ref [] in
   assert(isFunctionType task.vtype);
   let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
@@ -583,7 +608,7 @@ end
 
 (* Make the execute_func function that branches on the task id and
  * calls the actual task function on the spe *)
-let make_exec_func (f: file) (tasks: (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list) : global = begin
+let make_exec_func (f: file) (tasks: (fundec * varinfo * arg_descr list) list) : global = begin
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
@@ -723,7 +748,7 @@ let feature : featureDescr =
 
 
         (* tasks  (new_tpc * old_original * args) *)
-        let tasks : (fundec * varinfo * (string * arg_t * exp * exp * exp) list) list = List.map
+        let tasks : (fundec * varinfo * arg_descr list) list = List.map
           (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
           (L.rev !spu_tasks)
         in
