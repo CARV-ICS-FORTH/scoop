@@ -77,19 +77,8 @@ let boolType = TInt(IBool, [])
 (******************************************************************************)
 
 
-(* find the function definition of variable <name> in file f *)
-exception Found_fundec of fundec
-let find_function_fundec (f: file) (name: string) : fundec =
-  let findit = function
-    | GFun(fd, _) when fd.svar.vname = name -> raise (Found_fundec fd)
-    | _ -> ()
-  in
-  try
-    iterGlobals f findit;
-    raise Not_found
-  with Found_fundec v -> v
-
 (* searches a global list for a function definition with name <name> *)
+exception Found_fundec of fundec
 let find_function_fundec_g (g: global list) (name: string) : fundec =
   let findit = function
     | GFun(fd, _) when fd.svar.vname = name -> raise (Found_fundec fd)
@@ -99,6 +88,10 @@ let find_function_fundec_g (g: global list) (name: string) : fundec =
     List.iter findit g;
     raise Not_found
   with Found_fundec v -> v
+
+(* find the function definition of variable <name> in file f *)
+let find_function_fundec (f: file) (name: string) : fundec =
+  find_function_fundec_g f.globals name
 
 (* find the function signature for <name> function *)
 exception Found_sign of varinfo

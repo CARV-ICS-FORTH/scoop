@@ -439,7 +439,7 @@ class findSPUDeclVisitor cgraph = object
                 (* Support #pragma css task... *)
                 AStr("task")-> begin
                   match s.skind with 
-                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> begin
+                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
                       let funname = vi.vname in
                       let args = s2s_process rest in
                       ignore(E.log "Found task \"%s\"\n" funname);
@@ -458,11 +458,17 @@ class findSPUDeclVisitor cgraph = object
                            declared size and push it to the argument list of them
                            new call *)
                         let rec getSize ex = match ex with
-                          Lval((Var(vi),_)) -> (
-                            let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
-                            call_args := vsize::!call_args;
+                          Lval ((Var(vi),_))
+                          | StartOf ((Var(vi),_)) -> (
+                            try
+                              let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
+                              call_args := vsize::!call_args;
+                            with Not_found ->
+                              ignore(E.error "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname);
+                              assert false
                           )
                           | CastE (_, ex') -> getSize ex';
+                          (* The following are not supported yet *)
                           | Const _ -> raise (Invalid_argument "Const");
                           | SizeOf _ -> raise (Invalid_argument "Sizeof");
                           | SizeOfE _ -> raise (Invalid_argument "SizeofE");
@@ -472,7 +478,7 @@ class findSPUDeclVisitor cgraph = object
                           | UnOp _ -> raise (Invalid_argument "UnOp");
                           | BinOp _ -> raise (Invalid_argument "BinOp");
                           | AddrOf _ -> raise (Invalid_argument "AddrOf");
-                          | StartOf _ -> raise (Invalid_argument "StartOf");
+                          | _ -> raise (Invalid_argument "Uknown");
                         in
                         L.iter getSize oargs;
 
@@ -492,7 +498,7 @@ class findSPUDeclVisitor cgraph = object
                         (* check if we have seen this function before *)
                         let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
                         rest new_fd
-                      with Not_found -> begin
+                      with Not_found -> (
                         let rest2 var_i = 
                           let new_fd = make_tpc_func var_i args in
                           add_after_s !ppc_file var_i.vname new_fd;
@@ -506,12 +512,12 @@ class findSPUDeclVisitor cgraph = object
                           deep_copy_function funname callgraph !spu_file !ppc_file;
                           rest2 task.svar
                         (* else try to find the function signature/prototype *)
-                        with Not_found -> begin
+                        with Not_found -> (
                           let task = find_function_sign (!ppc_file) funname in
                           rest2 task
-                        end
-                      end
-                    end
+                        )
+                      )
+                    )
                     | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
                     | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
                 end
