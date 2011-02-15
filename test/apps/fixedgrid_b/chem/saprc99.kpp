@@ -1,8 +1,0 @@
-#MODEL      saprc99
-#LANGUAGE   C 
-#DOUBLE     on
-#INTEGRATOR rosenbrock
-#DRIVER     general 
-#JACOBIAN   SPARSE_LU_ROW
-#HESSIAN    OFF
-#STOICMAT   OFF
