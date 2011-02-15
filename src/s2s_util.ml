@@ -466,23 +466,6 @@ let writeFile f = begin
   close_out oc
 end
 
-(* Preprocess the header file <header> and merges it with f.  The
- * given header should be in the gcc include path.  Modifies f
- *) (* the original can be found in lockpick.ml *)
-let preprocessAndMergeWithHeader (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = begin
-  if (arch="cell") then begin
-    (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
-    ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"))
-  end else begin
-    (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
-    ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"))
-  end;
-  let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
-  let f' = Mergecil.merge [add_h; f] "stdout" in
-  f.globals <- f'.globals;
-end
-
 
 (******************************************************************************)
 (*                                BOOLEAN                                     *)

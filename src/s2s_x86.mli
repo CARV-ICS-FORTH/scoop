@@ -35,3 +35,6 @@
 
 val doArgument_x86 : int -> Cil.lval -> Cil.lval -> Cil.lval -> Cil.fundec ->
         S2s_util.arg_descr -> Cil.file -> bool -> int -> Cil.file -> Cil.stmt list 
+
+val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> string ->
+                                  string -> unit

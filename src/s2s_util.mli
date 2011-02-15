@@ -180,12 +180,6 @@ val writeNewFile : Cil.file -> string -> Cil.global list -> unit
 (* write out file <f> *)
 val writeFile : Cil.file -> unit
 
-(* Preprocess the header file <header> and merges it with f.  The
- * given header should be in the gcc include path.  Modifies f
- *) (* the original can be found in lockpick.ml *)
-val preprocessAndMergeWithHeader : Cil.file -> string -> string -> string ->
-                                  string -> unit
-
 
 (******************************************************************************)
 (*                                BOOLEAN                                     *)

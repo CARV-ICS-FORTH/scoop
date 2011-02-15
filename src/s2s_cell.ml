@@ -103,3 +103,15 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
   !il
 end
+
+(* Preprocess the header file <header> and merges it with f.  The
+ * given header should be in the gcc include path.  Modifies f
+ *) (* the original can be found in lockpick.ml *)
+let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
+    (arch: string) (incPath: string) : unit = begin
+  (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
+  ignore (Sys.command ("echo | ppu32-gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"));
+  let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
+  let f' = Mergecil.merge [add_h; f] "stdout" in
+  f.globals <- f'.globals;
+end

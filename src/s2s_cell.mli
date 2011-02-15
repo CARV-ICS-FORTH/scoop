@@ -35,3 +35,6 @@
 
 val doArgument_cell : int -> Cil.lval -> Cil.lval -> Cil.lval -> Cil.fundec ->
     S2s_util.arg_descr -> bool -> Cil.file -> Cil.instr list
+
+val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string -> string ->
+                                  string -> unit
