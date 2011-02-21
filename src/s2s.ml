@@ -759,8 +759,17 @@ let feature : featureDescr =
           (L.rev !spu_tasks)
         in
         (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
+
+        (* eliminate dead code *)
+(*        Cfg.computeFileCFG !ppc_file;
+        Deadcodeelim.dce !ppc_file;
+        Cfg.computeFileCFG !spu_file;
+        Deadcodeelim.dce !spu_file;*)
+
         (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
         (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
+
+(*         S2s_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
   (*       !spu_file.globals <- !spu_glist; *)
         writeFile !spu_file;
