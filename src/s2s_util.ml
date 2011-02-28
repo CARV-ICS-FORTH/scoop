@@ -71,6 +71,10 @@ let ulongType = TInt(IULong,[])
 let charType = TInt(IChar, [])
 let boolType = TInt(IBool, [])
 
+let currentFunction = ref dummyFunDec
+
+let stats = ref false
+
 
 (******************************************************************************)
 (*                          Search Functions                                  *)
@@ -389,19 +393,19 @@ let mkPtrFieldAccess lv fieldname =
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
 exception NotAnExpression of attrparam
-let attrParamToExp (a: attrparam) (currentFunction: fundec) (ppc_file: file) : exp= 
+let attrParamToExp (a: attrparam) ?(currFunction: fundec = !currentFunction) (ppc_file: file) : exp= 
   let rec subAttr2Exp (a: attrparam) : exp= begin
     match a with
         AInt(i) -> integer i                    (** An integer constant *)
       | AStr(s) -> Const(CStr s)                (** A string constant *)
       | ACons(name, []) ->                      (** An id *)
-        Lval (Var (find_scoped_var currentFunction ppc_file name) , NoOffset)
+        Lval (Var (find_scoped_var currFunction ppc_file name) , NoOffset)
       (* We don't support function calls as argument size *)
       (*| ACons(name, args) ->                    (** A function call *)
         let args' = L.map (fun a -> attrParamToExp a) args in
         let instr = Call (None, Lval (var find_function_sign ppc_file name), args', locUnknown) in
         let call = mkStmtOneInstr instr in
-        Lval (var (find_scoped_var !currentFunction ppc_file name) , NoOffset)*)
+        Lval (var (find_scoped_var !currFunction ppc_file name) , NoOffset)*)
       | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
       | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
       | AAlignOf(t) -> AlignOf t
@@ -525,3 +529,21 @@ let is_typedef (g: global) : bool = match g with
 let isCompType = function
     TComp _ -> true
   | _ -> false
+
+
+(******************************************************************************)
+(*                                 MISC                                       *)
+(******************************************************************************)
+
+class changeStmtVisitor (name: string) (stl: stmt list) : cilVisitor =
+  object (self)
+    inherit nopCilVisitor
+    method vstmt (s: stmt) = match s.skind with
+      Instr(Call(_, Lval((Var(vi), _)), _, _)::res) when vi.vname = name ->
+        ChangeTo (mkStmt (Block (mkBlock (stl@[mkStmt (Instr(res))]))))
+    | _ -> SkipChildren
+  end
+
+let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
+  let v = new changeStmtVisitor fake stl in
+  visitCilStmt v s

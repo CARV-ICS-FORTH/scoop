@@ -35,6 +35,11 @@
 
 open Cil
 open S2s_util
+module E = Errormsg
+module L = List
+
+(* keeps the current funcid for the new tpc_function *)
+let func_id = ref 0
 
 let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: arg_descr) (stats: bool) (spu_file: file): instr list = begin
@@ -114,4 +119,65 @@ let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
+end
+
+(* make a tpc_ version of the function (for use on the ppc side)
+ * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
+ *)
+let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
+    (f: file ref) (spu_file: file ref) : fundec = begin
+  print_endline ("Creating tpc_function_" ^ func_vi.vname);
+  let skeleton = S2s_util.find_function_fundec (!f) "tpc_call_tpcAD65" in
+  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
+  f_new.sformals <- [];
+  (* set the formals to much the original function's arguments *)
+  setFunctionTypeMakeFormals f_new func_vi.vtype;
+  setFunctionReturnType f_new intType;
+  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
+  let args_num = (List.length f_new.sformals)-1 in
+  if ( args_num > (List.length args) ) then (
+    ignore(E.error "Number of arguments described in #pragma doesn't much the\
+          number of arguments in the function declaration");
+    assert false
+  );
+  for i = 0 to args_num do
+    let (_, (arg_type, _, _, _)) = List.nth args i in
+    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
+    if (is_strided arg_type) then (
+      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
+      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
+    );
+  done;
+
+  let avail_task = var (findLocal f_new "avail_task") in
+  let instrs : instr list ref = ref [] in
+  (* avail_task->funcid = (uint8_t)funcid; *)
+  instrs := Set (mkPtrFieldAccess avail_task "funcid",
+  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown):: !instrs;
+  (* avail_task->total_arguments = (uint8_t)arguments.size() *)
+  instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
+  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
+  
+  (* if we have arguments *)
+  if (f_new.sformals <> []) then (
+    (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+    let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
+    let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
+    (* struct tpc_arg_element local_arg *)
+    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
+    for i = 0 to args_num do
+      let arg = List.nth args i in
+      (* local_arg <- argument description *)
+      instrs := (doArgument_cell i local_arg avail_task tmpvec f_new arg 
+                  !S2s_util.stats !spu_file )@(!instrs);
+    done;
+  );
+
+  (* insert instrs before avail_task->active = ACTIVE;
+    we place a Foo_32412312231() call just above avail_task->active = ACTIVE
+    to achieve that for cell *)
+  f_new.sbody.bstmts <- List.map (fun s -> Lockutil.replace_fake_call s "Foo_32412312231" (L.rev !instrs)) f_new.sbody.bstmts;
+
+  incr func_id;
+  f_new
 end

@@ -36,6 +36,13 @@
 open Cil
 open S2s_util
 module L = List
+module E = Errormsg
+
+(* keeps the current funcid for the new tpc_function *)
+let func_id = ref 0
+
+let unaligned_args = ref false
+let block_size = ref 0
 
 let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
  (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
@@ -170,4 +177,64 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
+end
+
+(* make a tpc_ version of the function (for use on the ppc side)
+ * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
+ *)
+let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
+    (f:file ref) (spu_file:file ref) : fundec = begin
+  print_endline ("Creating tpc_function_" ^ func_vi.vname);
+  let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
+  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
+  f_new.sformals <- [];
+  (* set the formals to much the original function's arguments *)
+  setFunctionTypeMakeFormals f_new func_vi.vtype;
+  setFunctionReturnType f_new intType;
+  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
+  let args_num = (List.length f_new.sformals)-1 in
+  if ( args_num > (List.length args) ) then (
+    ignore(E.error "Number of arguments described in #pragma doesn't much the\
+          number of arguments in the function declaration");
+    assert false
+  );
+  for i = 0 to args_num do
+    let (_, (arg_type, _, _, _)) = List.nth args i in
+    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
+    if (is_strided arg_type) then (
+      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
+      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
+    );
+  done;
+
+  let this = var (findLocal f_new "this") in
+  let stmts : stmt list ref = ref [] in
+  (* this->closure.funcid = (uint8_t)funcid; *)
+  let this_closure = mkPtrFieldAccess this "closure" in
+  let funcid_set = Set (mkFieldAccess this_closure "funcid",
+  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
+  (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
+  instrs := Set (mkFieldAccess this_closure "total_arguments",
+  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
+  
+  (* uint32_t limit *)
+  let limit = makeLocalVar f_new "limit" (find_type !spu_file "uint32_t") in
+  (* uint32_t e_addr; *)
+  let e_addr = var (makeLocalVar f_new "e_addr" (find_type !spu_file "uint32_t")) in
+
+  (* for each argument*)
+  for i = 0 to args_num do
+    let arg = List.nth args i in
+
+    (* local_arg <- argument description *)
+    stmts := (doArgument_x86 i this e_addr (var limit) f_new arg !spu_file
+            !unaligned_args !block_size !f)@[mkStmtOneInstr funcid_set];
+  done;
+
+  (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
+    for x86*)
+  f_new.sbody.bstmts <- List.map (fun s -> S2s_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
+
+  incr func_id;
+  f_new
 end

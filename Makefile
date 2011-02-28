@@ -25,6 +25,7 @@ LOCKSMITH_MODULES = \
 	s2s_util \
 	s2s_x86 \
 	s2s_cell \
+	s2s_rmtmps \
 #	lockpick \
 #	locksmith \
 #	stmizer

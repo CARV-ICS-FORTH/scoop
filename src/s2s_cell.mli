@@ -36,5 +36,9 @@
 val doArgument_cell : int -> Cil.lval -> Cil.lval -> Cil.lval -> Cil.fundec ->
     S2s_util.arg_descr -> bool -> Cil.file -> Cil.instr list
 
-val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string -> string ->
-                                  string -> unit
+val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
+    string -> string -> unit
+
+val make_tpc_func : Cil.varinfo ->
+    (string * (S2s_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
+    Cil.file ref -> Cil.file ref -> Cil.fundec

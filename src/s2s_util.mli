@@ -62,6 +62,8 @@ val longType : Cil.typ
 val ulongType : Cil.typ
 val charType : Cil.typ
 val boolType : Cil.typ
+val currentFunction : Cil.fundec ref
+val stats : bool ref
 
 
 (******************************************************************************)
@@ -135,7 +137,7 @@ val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -
 
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
-val attrParamToExp : Cil.attrparam -> Cil.fundec -> Cil.file -> Cil.exp
+val attrParamToExp : Cil.attrparam -> ?currFunction:Cil.fundec -> Cil.file -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
@@ -216,3 +218,10 @@ val mkFieldAccess : Cil.lval -> string -> Cil.lval
 
 (* for a struct instance   pointer creates the struct->field *)
 val mkPtrFieldAccess : Cil.lval -> string -> Cil.lval
+
+
+(******************************************************************************)
+(*                                 MISC                                       *)
+(******************************************************************************)
+
+val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stmt

@@ -47,17 +47,13 @@ module L = List
 module CG = Callgraph
 module Lprof = Lockprofile
 
-let stats = ref false
 let queue_size = ref "0"
 let debug = ref false
 let thread = ref false
-let unaligned_args = ref false
 let out_name = ref "final"
-let block_size = ref 0
 let arch = ref "unknown"
 let tpcIncludePath = ref ""
 let cflags = ref ""
-let currentFunction = ref dummyFunDec
 let prevstmt = ref dummyStmt
 
 (* create a ref to the input file *)
@@ -69,9 +65,9 @@ let ppc_file = ref dummyFile
 
 let options =
   [
-    "--arch",
+    "--runtime",
       Arg.String(fun s -> arch := s),
-      " S2S: Define the target architecture (x86/cell).";
+      " S2S: Define the target runtime/architecture (x86/cell/cellgod).";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -94,7 +90,7 @@ let options =
       " S2S: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
 
     "--block-size",
-      Arg.Int(fun s -> block_size := s),
+      Arg.Int(fun s -> S2s_x86.block_size := s),
       " S2S: Specify the block size for x86. Defined in the Makefile as BLOCK_SZ";
 
     "--with-stats",
@@ -102,7 +98,7 @@ let options =
       " S2S: Enable code for statistics, for use with -DSTATISTICS";
 
     "--with-unaligned-arguments",
-      Arg.Set(unaligned_args),
+      Arg.Set(S2s_x86.unaligned_args),
       " S2S: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
 
     "--threaded",
@@ -112,112 +108,6 @@ let options =
 
 (* create 1 global list (the spe output file) *)
 let spu_tasks = ref []
-(* keeps the current funcid for the new tpc_function *)
-let func_id = ref 0
-
-class changeStmtVisitor (name: string) (stl: stmt list) : cilVisitor =
-  object (self)
-    inherit nopCilVisitor
-    method vstmt (s: stmt) = match s.skind with
-      Instr(Call(_, Lval((Var(vi), _)), _, _)::res) when vi.vname = name ->
-        ChangeTo (mkStmt (Block (mkBlock (stl@[mkStmt (Instr(res))]))))
-    | _ -> SkipChildren
-  end
-
-let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
-  let v = new changeStmtVisitor fake stl in
-  visitCilStmt v s
-
-
-(* make a tpc_ version of the function (for use on the ppc side)
- * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
- *)
-let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list) : fundec = begin
-  print_endline ("Creating tpc_function_" ^ func_vi.vname);
-  let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
-  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
-  f_new.sformals <- [];
-  (* set the formals to much the original function's arguments *)
-  setFunctionTypeMakeFormals f_new func_vi.vtype;
-  setFunctionReturnType f_new intType;
-  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
-  let args_num = (List.length f_new.sformals)-1 in
-  if ( args_num > (List.length args) ) then
-  begin
-    ignore(E.error "Number of arguments described in #pragma doesn't much the\
-          number of arguments in the function declaration"); assert false
-  end;
-  for i = 0 to args_num do
-    let (_, (arg_type, _, _, _)) = List.nth args i in
-    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-    if (is_strided arg_type) then begin
-      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
-      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
-    end;
-  done;
-
-  if (!arch="cell") then begin
-    let avail_task = var (findLocal f_new "avail_task") in
-    let instrs : instr list ref = ref [] in
-    (* avail_task->funcid = (uint8_t)funcid; *)
-    instrs := Set (mkPtrFieldAccess avail_task "funcid",
-    CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown):: !instrs;
-    (* avail_task->total_arguments = (uint8_t)arguments.size() *)
-    instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
-    CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
-    
-    (* if we have arguments *)
-    if (f_new.sformals <> []) then begin
-      (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
-      let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
-      let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
-      (* struct tpc_arg_element local_arg *)
-      let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
-      for i = 0 to args_num do
-        let arg = List.nth args i in
-        (* local_arg <- argument description *)
-        instrs := (doArgument_cell i local_arg avail_task tmpvec f_new arg 
-                    !stats !spu_file )@(!instrs);
-      done;
-    end;
-
-    (* insert instrs before avail_task->active = ACTIVE;
-      we place a Foo_32412312231() call just above avail_task->active = ACTIVE
-      to achieve that for cell *)
-    f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call s "Foo_32412312231" (L.rev !instrs)) f_new.sbody.bstmts;
-  end else begin
-    let this = var (findLocal f_new "this") in
-    let stmts : stmt list ref = ref [] in
-    (* this->closure.funcid = (uint8_t)funcid; *)
-    let this_closure = mkPtrFieldAccess this "closure" in
-    let funcid_set = Set (mkFieldAccess this_closure "funcid",
-    CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
-    (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
-    instrs := Set (mkFieldAccess this_closure "total_arguments",
-    CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
-    
-    (* uint32_t limit *)
-    let limit = makeLocalVar f_new "limit" (find_type !spu_file "uint32_t") in
-    (* uint32_t e_addr; *)
-    let e_addr = var (makeLocalVar f_new "e_addr" (find_type !spu_file "uint32_t")) in
-
-    (* for each argument*)
-    for i = 0 to args_num do
-      let arg = List.nth args i in
-
-      (* local_arg <- argument description *)
-      stmts := (doArgument_x86 i this e_addr (var limit) f_new arg !spu_file
-              !unaligned_args !block_size !ppc_file)@[mkStmtOneInstr funcid_set];
-    done;
-
-    (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
-      for x86*)
-    f_new.sbody.bstmts <- List.map (fun s -> replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
-  end;
-
-  incr func_id;
-  f_new
-end
 
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
 let rec ptdepa_process_args typ args : unit =
@@ -314,7 +204,7 @@ let rec s2s_process_args typ args =
       match arg with
 (*         AIndex(ACons(varname, []), ACons(varsize, [])) -> *)
         AIndex(ACons(varname, []), varsize) ->
-          let tmp_size = attrParamToExp varsize !currentFunction !ppc_file in
+          let tmp_size = attrParamToExp varsize !ppc_file in
           (varname, ((translate_arg typ false),
               tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
 (* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
@@ -364,11 +254,34 @@ class findSPUDeclVisitor cgraph = object
             )
             | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
         )
+        | (Attr("css", ACons("start", exp::_)::_), loc) -> (
+          (* Support #pragma css start(processes) *)
+          let ts = find_function_sign (!ppc_file) "tpc_init" in
+          let arg = attrParamToExp exp !ppc_file in
+          let instr = Call (None, Lval (var ts), [arg], locUnknown) in
+          let s' = {s with pragmas = List.tl s.pragmas} in
+          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+(*            ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
+        )
+        | (Attr("css", AStr("finish")::rest), loc) -> (
+          (* Support #pragma css finish*)
+          let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
+          let instr = Call (None, Lval (var ts), [], locUnknown) in
+          let s' = {s with pragmas = List.tl s.pragmas} in
+          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+(*            ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
+        )
         | _ -> ();
       match s.skind with 
-        Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> begin
+        Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> (
+          (* select the function to create the custom tpc_calls *)
+          let make_tpc_funcf = match !arch with
+              "cell" -> S2s_cell.make_tpc_func
+(*             | "cellgod" -> S2s_cellgod.make_tpc_func *)
+            | _ ->  S2s_x86.make_tpc_func in
+
           match (List.hd prags) with 
-            (Attr("tpc", args), _) -> begin
+            (Attr("tpc", args), _) -> (
               let funname = vi.vname in
               let args' =
                 List.map (fun arg -> match arg with
@@ -376,16 +289,16 @@ class findSPUDeclVisitor cgraph = object
                     ACons(varname, ACons(arg_typ, [])::varsize::[]) ->
                       (* give all the arguments to Dtdepa*)
                       (varname, ((translate_arg arg_typ false),
-                          attrParamToExp varsize !currentFunction !ppc_file,
-                          attrParamToExp varsize !currentFunction !ppc_file,
-                          attrParamToExp varsize !currentFunction !ppc_file))
+                          attrParamToExp varsize !ppc_file,
+                          attrParamToExp varsize !ppc_file,
+                          attrParamToExp varsize !ppc_file))
 (*                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) -> *)
                   | ACons(varname, ACons(arg_typ, [])::varsize::elsize::elnum::[]) ->
                       (* give all the arguments to Dtdepa don't care for strided  *)
                       (varname, ((translate_arg arg_typ true),
-                        attrParamToExp varsize !currentFunction !ppc_file,
-                        attrParamToExp elsize !currentFunction !ppc_file,
-                        attrParamToExp elnum !currentFunction !ppc_file))
+                        attrParamToExp varsize !ppc_file,
+                        attrParamToExp elsize !ppc_file,
+                        attrParamToExp elnum !ppc_file))
                   | _ -> ignore(E.error "impossible"); assert false
                 ) args in
               ignore(E.log "Found task \"%s\"\n" funname);
@@ -413,9 +326,9 @@ class findSPUDeclVisitor cgraph = object
                 (* check if we have seen this function before *)
                 let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
                 rest new_fd
-              with Not_found -> begin
+              with Not_found -> (
                 let rest2 var_i = 
-                  let new_fd = make_tpc_func var_i args' in
+                  let new_fd = make_tpc_funcf var_i args' ppc_file spu_file in
                   add_after_s !ppc_file var_i.vname new_fd;
                   spu_tasks := (funname, (new_fd, var_i, args'))::!spu_tasks;
                   rest new_fd in
@@ -427,17 +340,17 @@ class findSPUDeclVisitor cgraph = object
                   deep_copy_function funname callgraph !spu_file !ppc_file;
                   rest2 task.svar
                 (* else try to find the function signature/prototype *)
-                with Not_found -> begin
+                with Not_found -> (
                   let task = find_function_sign (!ppc_file) funname in
                   rest2 task
-                end
-              end
-            end
+                )
+              )
+            )
             (* Support for CellSs syntax *)
-            | (Attr("css", sub::rest), loc) -> begin
+            | (Attr("css", sub::rest), loc) -> (
               match sub with
                 (* Support #pragma css task... *)
-                AStr("task")-> begin
+                AStr("task")-> (
                   match s.skind with 
                     Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
                       let funname = vi.vname in
@@ -500,7 +413,7 @@ class findSPUDeclVisitor cgraph = object
                         rest new_fd
                       with Not_found -> (
                         let rest2 var_i = 
-                          let new_fd = make_tpc_func var_i args in
+                          let new_fd = make_tpc_funcf var_i args ppc_file spu_file in
                           add_after_s !ppc_file var_i.vname new_fd;
                           spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
                           rest new_fd in
@@ -520,11 +433,11 @@ class findSPUDeclVisitor cgraph = object
                     )
                     | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
                     | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
-                end
+                )
                 | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
-            end
+            )
             | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
-          end
+        )
         | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
         | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
     ) else 
