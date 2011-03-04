@@ -44,11 +44,19 @@ module E = Errormsg
 module H = Hashtbl
 module S = Str
 module L = List
+module T = Trace
 module CG = Callgraph
 module Lprof = Lockprofile
 
+(* defining some Trace shortcuts *)
+let trace = T.trace "rmtmps"
+let tracei = T.tracei "rmtmps"
+let traceu = T.traceu "rmtmps"
+
+(* defining globals *)
 let queue_size = ref "0"
 let debug = ref false
+let dotrace = ref false
 let thread = ref false
 let out_name = ref "final"
 let arch = ref "unknown"
@@ -81,6 +89,10 @@ let options =
       Arg.Set(debug),
       " S2S: Print debugging information.";
 
+    "--trace",
+      Arg.Set(dotrace),
+      " S2S: Trace s2s compiler.";
+
     "--out-name",
       Arg.String(fun s -> out_name := s),
       " S2S: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
@@ -111,26 +123,29 @@ let spu_tasks = ref []
 
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
 let rec ptdepa_process_args typ args : unit =
-  if ( args <> []) then begin
+  if ( args <> []) then (
     match (L.hd args) with
-      AIndex(ACons(varname, []), varsize) -> begin 
+      AIndex(ACons(varname, []), varsize) -> (
+        trace (dprintf "pushing %s\n" varname);
         Ptdepa.addArg (varname, typ, !currentFunction);
-      end
-      | _ -> ignore(E.log "Syntax error in #pragma tpc task %s(...)" typ);
+      )
+      | _ -> ignore(E.warn "Syntax error in #pragma tpc task %s(...)" typ);
     ptdepa_process_args typ (L.tl args)
-  end
+  )
 
-let rec ptdepa_process io : unit = begin
-  match io with 
-    (cur::rest) -> begin
-      match cur with
-        AStr("highpriority") -> (* simply ignore it *) ();
-        | ACons(arg_typ, args) -> ptdepa_process_args arg_typ args
-        | _ -> ignore(E.log "Syntax error in #pragma tpc task");
-      ptdepa_process rest
-    end
-    | _ -> ();
-end
+let rec ptdepa_process = function
+  | (cur::rest) -> (
+    match cur with
+      AStr("highpriority") -> (* simply ignore it *) ();
+      | ACons(arg_typ, args) -> (
+        tracei (dprintf "pushing args of function %s to ptdepa!\n" (!currentFunction).svar.vname);
+        ptdepa_process_args arg_typ args;
+        T.traceOutdent "rmtmps"
+      )
+      | _ -> ignore(E.warn "Syntax error in #pragma tpc task");
+    ptdepa_process rest
+  )
+  | _ -> ()
 
 (* populates the calls list for Ptdepa module *)
 class findTaggedCals = object
@@ -138,90 +153,78 @@ class findTaggedCals = object
   (* visits all stmts and checks for pragma directives *)
   method vstmt (s: stmt) : stmt visitAction =
     let prags = s.pragmas in
-    if (prags <> []) then begin
+    if (prags <> []) then (
       match (List.hd prags) with
-        (Attr("css", sub::rest), loc) -> begin
+        (Attr("css", sub::rest), loc) -> (
           match sub with
-            AStr("task") -> begin
+            AStr("task") -> (
               match s.skind with 
-                Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> begin
+                Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> (
                   ptdepa_process rest;
+                  trace (dprintf "adding task %s to ptdepa\n" vi.vname);
                   Ptdepa.addTask vi.vname !currentFunction loc;
-                  prevstmt := s; DoChildren
-                end
-                | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); prevstmt := s; DoChildren
-                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); prevstmt := s; DoChildren
-            end
-            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc); prevstmt := s; DoChildren
-        end
-        | (Attr("tpc", args), _) -> begin
+                )
+                | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc);
+                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc);
+            )
+            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc);
+        )
+        | (Attr("tpc", args), _) -> (
           match s.skind with 
-            Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> begin
-(*               let funname = vi.vname in *)
+            Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> (
+                tracei (dprintf "pushing args of function %s to ptdepa!\n" vi.vname);
                 ignore(List.map (fun arg -> match arg with
-                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
-                      (* give all the arguments to Dtdepa*)
-                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
-                  | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::_) -> 
                       (* give all the arguments to Dtdepa don't care for strided  *)
+                      trace (dprintf "pushing %s\n" varname);
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
-                  | _ -> ignore(E.error "impossible"); assert false
+                  | _ -> ignore(E.error "You have done something wrong at %a\n" d_loc loc); assert false
                 ) args);
+                T.traceOutdent "rmtmps";
+                trace (dprintf "adding task %s to ptdepa\n" vi.vname);
                 Ptdepa.addTask vi.vname !currentFunction loc;
-                prevstmt := s; DoChildren
-              end
-            | Block(b) -> ignore(E.unimp "Ignoring block pragma"); prevstmt := s; DoChildren
-            | _ -> ignore(E.warn "Ignoring pragma"); prevstmt := s; DoChildren
-          end
-        | _ -> ignore(E.warn "Unrecognized pragma"); prevstmt := s; DoChildren
-     end else begin
+              )
+            | Block(b) -> ignore(E.unimp "Ignoring block pragma");
+            | _ -> ignore(E.warn "Ignoring pragma");
+        )
+        | _ -> ignore(E.log "Unrecognized pragma");
+     ) else (
        (* Get info about array indices from loops *)
        match s.skind with
-          Loop(b_code, _, _, _) -> begin
+          Loop(b_code, _, _, _) -> (
             (* Check if there is any task inside the loop *)
             let tagged_stmts = L.filter tpc_call_with_arrray b_code.bstmts in
-            if (tagged_stmts<>[]) then
+            if (tagged_stmts<>[]) then (
               let successor = get_loop_successor s in
               let upper = get_loop_condition s in
               let lower = get_loop_lower s !prevstmt in
-              ignore(E.log "\tlower=%a\n" d_exp lower);
-              ignore(E.log "\tupper=%a\n" d_exp upper);
-              ignore(E.log "\tsucc=%a\n"  d_exp successor);
+              ignore(E.log "\tlower=%a\n\tupper=%a\n\tsucc=%a\n" d_exp lower d_exp upper d_exp successor);
               (*for each call
                 let indice = get_indice tagged_stmt in*)
               (* visit the b_code.bstmts to find the Upper and the successor function *)
-              prevstmt := s; DoChildren else begin
-            prevstmt := s; DoChildren end
-          end
-        | _ -> prevstmt := s; DoChildren
-    end
+            )
+          )
+          | _ -> ()
+    );
+    prevstmt := s;
+    DoChildren
 end
 
-(* parses the #pragma css task arguments and pushes them to ptdepa *)
+(* parses the #pragma css task arguments *)
 let rec s2s_process_args typ args =
   match args with
-    (arg::rest) -> begin
-      match arg with
-(*         AIndex(ACons(varname, []), ACons(varsize, [])) -> *)
-        AIndex(ACons(varname, []), varsize) ->
-          let tmp_size = attrParamToExp varsize !ppc_file in
-          (varname, ((translate_arg typ false),
-              tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
+    (AIndex(ACons(varname, []), varsize)::rest) ->
+      let tmp_size = attrParamToExp varsize !ppc_file in
+      (varname, ((translate_arg typ false),
+          tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
 (* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
 (*         | handle strided... *)
-        | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)" typ); []
-    end
-    | _ -> []
+    | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)" typ); []
 
-let rec s2s_process io =
-  match io with 
-    (cur::rest) -> begin
-      match cur with
-        AStr("highpriority") -> s2s_process rest
-        | ACons(arg_typ, args) -> (s2s_process_args arg_typ args)@(s2s_process rest)
-        | _ -> ignore(E.log "Syntax error in #pragma css task"); []
-    end
-    | _ -> []
+let rec s2s_process = function
+  | (AStr("highpriority")::rest) -> s2s_process rest
+  | (ACons(arg_typ, args)::rest) -> (s2s_process_args arg_typ args)@(s2s_process rest)
+  | _ -> ignore(E.warn "Syntax error in #pragma css task"); []
 
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
@@ -244,13 +247,11 @@ class findSPUDeclVisitor cgraph = object
           (* Support #pragma css wait on(...) *)
           match rest with 
               ACons("on", exps)::_ -> (* wait on *) DoChildren
-            | AStr("all")::_ -> (
+            | AStr("all")::_ -> ( (* wait all *)
                 let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
                 let instr = Call (None, Lval (var twa), [], locUnknown) in
                 let s' = {s with pragmas = List.tl s.pragmas} in
                 ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-(*                 ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
-                (* wait all *)
             )
             | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
         )
@@ -261,7 +262,6 @@ class findSPUDeclVisitor cgraph = object
           let instr = Call (None, Lval (var ts), [arg], locUnknown) in
           let s' = {s with pragmas = List.tl s.pragmas} in
           ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-(*            ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
         )
         | (Attr("css", AStr("finish")::rest), loc) -> (
           (* Support #pragma css finish*)
@@ -269,7 +269,6 @@ class findSPUDeclVisitor cgraph = object
           let instr = Call (None, Lval (var ts), [], locUnknown) in
           let s' = {s with pragmas = List.tl s.pragmas} in
           ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-(*            ChangeTo (mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s ]))) *)
         )
         | _ -> ();
       match s.skind with 
@@ -595,7 +594,9 @@ let feature : featureDescr =
     @ Ptdepa.options
     ;
     fd_doit = 
-    (function (f: file) -> 
+    (function (f: file) ->
+      if !dotrace then
+        Trace.traceAddSys "rmtmps";
       ignore(E.log "Welcome to S2S!!!\n");
       if (!arch = "unknown") then
         ignore(E.error "No architecture specified. Exiting!\n")

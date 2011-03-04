@@ -88,7 +88,7 @@ end
  * its arguments
  *)
 let addTask (taskname: string) (scope: fundec) (callsite: location): unit =
-  ignore(E.log "add task");
+  ignore(E.log "add task\n");
   tasks_l := ((taskname, (callsite, scope)), !args_l)::!tasks_l;
   args_l := []
 

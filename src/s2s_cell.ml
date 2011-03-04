@@ -42,13 +42,13 @@ module L = List
 let func_id = ref 0
 
 let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
- (arg: arg_descr) (stats: bool) (spu_file: file): instr list = begin
+ (arg: arg_descr) (stats: bool) (spu_file: file): instr list = (
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
   let arg_type = get_arg_type arg in
   let il = ref [] in
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
-  if (stats) then begin
+  if (stats) then (
     let total_bytes = var (find_local_var fd "total_bytes") in
     let arg_bytes = var (find_local_var fd "arg_bytes") in
     if (is_strided arg_type) then
@@ -56,20 +56,20 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
       let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
       (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
       il := Set(arg_bytes, BinOp(Mult, arg_els, arg_elsz, intType), locUnknown)::!il
-    else begin
+    else (
       (* arg_bytes = arg_size; *)
       il := Set(arg_bytes, arg_size, locUnknown)::!il
-    end;
+    );
     (* total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag)); *)
     let total_size = 
-      if (is_out_arg arg_type) then begin
+      if (is_out_arg arg_type) then (
         BinOp(PlusA, Lval(total_bytes), BinOp(Mult, integer 2, Lval(arg_bytes), intType), intType)
-      end else begin
+      ) else (
         BinOp(PlusA, Lval(total_bytes), Lval(arg_bytes), intType)
-      end
+      )
     in
     il := Set(total_bytes, total_size, locUnknown)::!il
-  end;
+  );
   let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
   let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
   let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
@@ -87,7 +87,7 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
   let eal = mkFieldAccess local_arg "eal" in
   il := Set(eal, CastE(find_type spu_file "uint32_t", arg_addr), locUnknown)::!il;
   let size = mkFieldAccess local_arg "size" in
-  if (is_strided arg_type) then begin
+  if (is_strided arg_type) then (
     let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
     let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
     (* #define TPC_BUILD_STRIDEARG(elems, elemsz)    (((elems)<<16U) | (elemsz)) *)
@@ -97,7 +97,7 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
     (* local_arg.stride = arg_size; *)
     let stride = mkFieldAccess local_arg "stride" in
     il := Set(stride, arg_size, locUnknown)::!il;
-  end else
+  ) else
     (* local_arg.size = arg_size; *)
     il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
@@ -107,19 +107,19 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
   let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
   !il
-end
+)
 
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = begin
+    (arch: string) (incPath: string) : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
   ignore (Sys.command ("echo | ppu32-gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
-end
+)
 
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
