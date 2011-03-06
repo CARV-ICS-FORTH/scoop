@@ -623,10 +623,14 @@ let feature : featureDescr =
         def := " "^(!cflags)^" "^(!def);
         if (!stats) then
           def := " -DSTATISTICS=1"^(!def);
-        if(!arch = "cell") then begin
+        if(!arch = "x86") then (
+          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
+                                      !arch !tpcIncludePath;
+        ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
 (*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
           
+          (* Defined in s2s_util *)
           preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
                                       !arch !tpcIncludePath;
 
@@ -636,9 +640,7 @@ let feature : featureDescr =
           (!spu_file).globals <- new_types_l;
           preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
                                       !arch !tpcIncludePath;
-        end else
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
-                                      !arch !tpcIncludePath;
+        );
 
         Cil.iterGlobals !ppc_file 
           (function

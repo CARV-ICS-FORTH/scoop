@@ -41,7 +41,7 @@ module L = List
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
+let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: arg_descr) (stats: bool) (spu_file: file): instr list = (
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
   let arg_addr = Lval( var (List.nth fd.sformals i)) in
@@ -109,18 +109,6 @@ let doArgument_cell (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval)
   !il
 )
 
-(* Preprocess the header file <header> and merges it with f.  The
- * given header should be in the gcc include path.  Modifies f
- *) (* the original can be found in lockpick.ml *)
-let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = (
-  (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
-  ignore (Sys.command ("echo | ppu32-gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"));
-  let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
-  let f' = Mergecil.merge [add_h; f] "stdout" in
-  f.globals <- f'.globals;
-)
-
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
@@ -168,7 +156,7 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
     for i = 0 to args_num do
       let arg = List.nth args i in
       (* local_arg <- argument description *)
-      instrs := (doArgument_cell i local_arg avail_task tmpvec f_new arg 
+      instrs := (doArgument i local_arg avail_task tmpvec f_new arg 
                   !S2s_util.stats !spu_file )@(!instrs);
     done;
   );

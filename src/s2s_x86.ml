@@ -48,7 +48,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
  (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
  (block_size: int) (ppc_file: file) : stmt list = begin
   let closure = mkPtrFieldAccess this "closure" in
-  let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
+  let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
   let arg_type = get_arg_type arg in
   let stl = ref [] in
@@ -69,7 +69,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
   il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
   (* limit=(((uint32_t)arg_addr64)+arg_size); *)
-  let plus = (BinOp(PlusA, CastE(uint32_t, Lval arg_addr), arg_size, uint32_t)) in
+  let plus = (BinOp(PlusA, CastE(uint32_t, Lval arg_addr), Lval arg_size, uint32_t)) in
   il := Set(limit, plus, locUnknown)::!il;
 
   let size = mkFieldAccess idxlv "size" in
@@ -92,7 +92,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
       }
       #define TPC_START_ARG   0x10
     *)
-    il := Set(size, arg_size, locUnknown)::!il;
+    il := Set(size, Lval arg_size, locUnknown)::!il;
     il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
     let eal_in = mkFieldAccess idxlv "eal_in" in
     il := Set(eal_in, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
@@ -117,6 +117,8 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
       il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
       let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, Lval arg_addr), intType) in
       il := Set(stride, new_stride, locUnknown)::!il;
+      let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in
+      il := Set(arg_size, add, locUnknown)::!il;
       il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
     end;
 
