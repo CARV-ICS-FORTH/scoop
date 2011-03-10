@@ -148,7 +148,7 @@ let rec ptdepa_process = function
   | _ -> ()
 
 (* populates the calls list for Ptdepa module *)
-class findTaggedCals = object
+class findTaggedCalls = object
   inherit nopCilVisitor
   (* visits all stmts and checks for pragma directives *)
   method vstmt (s: stmt) : stmt visitAction =
@@ -614,7 +614,7 @@ let feature : featureDescr =
 
         (* find tpc_decl pragmas *)
         let fspuVisitor = new findSPUDeclVisitor callgraph in
-        let ftagVisitor = new findTaggedCals in
+        let ftagVisitor = new findTaggedCalls in
     
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
@@ -675,6 +675,11 @@ let feature : featureDescr =
           (L.rev !spu_tasks)
         in
         (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
+
+        if (!arch = "x86") then (
+          (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
+          (!spu_file).globals <- (make_task_table tasks)::(!spu_file).globals;
+        );
 
         (* eliminate dead code *)
 (*        Cfg.computeFileCFG !ppc_file;

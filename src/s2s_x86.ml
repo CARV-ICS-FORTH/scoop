@@ -46,7 +46,7 @@ let block_size = ref 0
 
 let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
  (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
- (block_size: int) (ppc_file: file) : stmt list = begin
+ (block_size: int) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
@@ -78,7 +78,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
   let (arg_name,(_,_,_,_)) = arg in
-  if (Ptdepa.isSafeArg fd arg_name) then begin
+  if (Ptdepa.isSafeArg fd arg_name) then (
     print_endline "SAFE";
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
@@ -99,7 +99,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
     let eal_out = mkFieldAccess idxlv "eal_out" in
     il := Set(eal_out, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
     stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];
-  end else begin
+  ) else (
 
     (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
         uint32_t tmp_addr=(uint32_t)arg_addr64;
@@ -109,7 +109,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
         //      limit +=this->closure.arguments[ this->closure.total_arguments ].stride;
         e_addr=(uint32_t)arg_addr64;
       #endif*)
-    if (unaligned_args) then begin
+    if (unaligned_args) then (
       let tmp_addr = var (makeLocalVar fd "tmp_addr" uint32_t) in
       il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
       let div = BinOp(Div, Lval tmp_addr, integer block_size, uint32_t) in
@@ -120,7 +120,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
       let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in
       il := Set(arg_size, add, locUnknown)::!il;
       il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
-    end;
+    );
 
     (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
       this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
@@ -163,29 +163,29 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
     let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
     let flag = mkFieldAccess idxlv "flag" in
     stl := mkStmtOneInstr(Set(flag, integer 0x10, locUnknown))::!stl;
-  end;
+  );
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
   !stl
-end
+)
 
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = begin
+    (arch: string) (incPath: string) : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
   ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
-end
+)
 
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
 let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
-    (f:file ref) (spu_file:file ref) : fundec = begin
+    (f:file ref) (spu_file:file ref) : fundec = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
@@ -239,4 +239,41 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
 
   incr func_id;
   f_new
-end
+)
+
+(* Defines the Task_table for the spu file *)
+let make_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
+  let etype = TPtr( TVoid([]), []) in
+  let type' = TArray (etype, None, []) in
+  let vi = makeGlobalVar "Task_table" type' in
+  let n = L.length tasks in
+  let init' = 
+      let rec loopElems acc i =
+        if i < 0 then acc
+        else (
+          let (_, task_vi, _) = L.nth tasks i in
+          loopElems ( (Index(integer i, NoOffset), SingleInit(Lval (Var(task_vi), NoOffset))) :: acc) (i - 1)
+        )
+      in
+      CompoundInit(etype, loopElems [] (n - 1))
+  in
+  let ii = {init = Some init'} in
+  GVar(vi, ii, locUnknown)
+)
+
+(* Defines the Task_table for the ppu file *)
+let make_null_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
+  let etype = TPtr( TVoid([]), []) in
+  let type' = TArray (etype, None, []) in
+  let vi = makeGlobalVar "Task_table" type' in
+  let n = L.length tasks in
+  let init' = 
+      let rec loopElems acc i = 
+        if i < 0 then acc
+        else loopElems ((Index(integer i, NoOffset), makeZeroInit etype) :: acc) (i - 1) 
+      in
+      CompoundInit(etype, loopElems [] (n - 1))
+  in
+  let ii = {init = Some init'} in
+  GVar(vi, ii, locUnknown)
+)
