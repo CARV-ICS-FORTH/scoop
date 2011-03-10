@@ -46,9 +46,3 @@ val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string ->
 val make_tpc_func : Cil.varinfo ->
     (string * (S2s_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
     Cil.file ref -> Cil.file ref -> Cil.fundec
-
-val make_task_table :
-    (Cil.fundec * Cil.varinfo * S2s_util.arg_descr list) list -> Cil.global
-
-val make_null_task_table :
-    (Cil.fundec * Cil.varinfo * S2s_util.arg_descr list) list -> Cil.global

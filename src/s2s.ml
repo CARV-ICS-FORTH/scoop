@@ -103,7 +103,7 @@ let options =
 
     "--block-size",
       Arg.Int(fun s -> S2s_x86.block_size := s),
-      " S2S: Specify the block size for x86. Defined in the Makefile as BLOCK_SZ";
+      " S2S: Specify the block size for the ADAM runtime. Defined in the Makefile as BLOCK_SZ";
 
     "--with-stats",
       Arg.Set(stats),
