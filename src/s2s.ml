@@ -49,9 +49,9 @@ module CG = Callgraph
 module Lprof = Lockprofile
 
 (* defining some Trace shortcuts *)
-let trace = T.trace "rmtmps"
-let tracei = T.tracei "rmtmps"
-let traceu = T.traceu "rmtmps"
+let trace = T.trace "s2s"
+let tracei = T.tracei "s2s"
+let traceu = T.traceu "s2s"
 
 (* defining globals *)
 let queue_size = ref "0"
@@ -140,7 +140,7 @@ let rec ptdepa_process = function
       | ACons(arg_typ, args) -> (
         tracei (dprintf "pushing args of function %s to ptdepa!\n" (!currentFunction).svar.vname);
         ptdepa_process_args arg_typ args;
-        T.traceOutdent "rmtmps"
+        T.traceOutdent "s2s"
       )
       | _ -> ignore(E.warn "Syntax error in #pragma tpc task");
     ptdepa_process rest
@@ -180,7 +180,7 @@ class findTaggedCalls = object
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "You have done something wrong at %a\n" d_loc loc); assert false
                 ) args);
-                T.traceOutdent "rmtmps";
+                T.traceOutdent "s2s";
                 trace (dprintf "adding task %s to ptdepa\n" vi.vname);
                 Ptdepa.addTask vi.vname !currentFunction loc;
               )
@@ -255,11 +255,16 @@ class findSPUDeclVisitor cgraph = object
             )
             | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
         )
-        | (Attr("css", ACons("start", exp::_)::_), loc) -> (
+        | (Attr("css", ACons("start", exp::rest)::_), loc) -> (
           (* Support #pragma css start(processes) *)
           let ts = find_function_sign (!ppc_file) "tpc_init" in
-          let arg = attrParamToExp exp !ppc_file in
-          let instr = Call (None, Lval (var ts), [arg], locUnknown) in
+          let args = 
+            if (!arch="cell") then
+              [attrParamToExp exp !ppc_file]
+            else
+              attrParamToExp exp !ppc_file::[attrParamToExp (L.hd rest) !ppc_file]
+          in
+          let instr = Call (None, Lval (var ts), args, locUnknown) in
           let s' = {s with pragmas = List.tl s.pragmas} in
           ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
         )
@@ -596,11 +601,11 @@ let feature : featureDescr =
     fd_doit = 
     (function (f: file) ->
       if !dotrace then
-        Trace.traceAddSys "rmtmps";
+        Trace.traceAddSys "s2s";
       ignore(E.log "Welcome to S2S!!!\n");
       if (!arch = "unknown") then
         ignore(E.error "No architecture specified. Exiting!\n")
-      else if (!queue_size = "0") then
+      else if (!arch = "cell" && !queue_size = "0") then
         ignore(E.error "No queue_size specified. Exiting!\n")
       else begin
         (* create two copies of the initial file *)
@@ -619,17 +624,22 @@ let feature : featureDescr =
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
 
-        let def = ref (" -DMAX_QUEUE_ENTRIES="^(!queue_size)) in
+        let def = ref "" in
         def := " "^(!cflags)^" "^(!def);
         if (!stats) then
           def := " -DSTATISTICS=1"^(!def);
-        if(!arch = "x86") then (
+        if (!arch = "x86") then (
           preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
                                       !arch !tpcIncludePath;
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
 (*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
-          
+          if (!arch = "cellgod") then (
+            def := " -DADAM=1"^(!def);
+          ) else (
+            def := " -DMAX_QUEUE_ENTRIES="^(!queue_size)^(!def);
+          );
+
           (* Defined in s2s_util *)
           preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
                                       !arch !tpcIncludePath;
@@ -676,9 +686,9 @@ let feature : featureDescr =
         in
         (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
 
-        if (!arch = "x86") then (
+        if (not (!arch = "cell") ) then (
           (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
-          (!spu_file).globals <- (make_task_table tasks)::(!spu_file).globals;
+          (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
         );
 
         (* eliminate dead code *)
