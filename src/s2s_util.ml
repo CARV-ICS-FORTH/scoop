@@ -74,6 +74,7 @@ let boolType = TInt(IBool, [])
 let currentFunction = ref dummyFunDec
 
 let stats = ref false
+let unaligned_args = ref false
 
 
 (******************************************************************************)
@@ -572,17 +573,28 @@ let isCompType = function
 (*                                 MISC                                       *)
 (******************************************************************************)
 
-class changeStmtVisitor (name: string) (stl: stmt list) : cilVisitor =
+class changeStmtVisitor (s: stmt) (name: string) (stl: stmt list) : cilVisitor =
   object (self)
     inherit nopCilVisitor
     method vstmt (s: stmt) = match s.skind with
-      Instr(Call(_, Lval((Var(vi), _)), _, _)::res) when vi.vname = name ->
-        ChangeTo (mkStmt (Block (mkBlock (stl@[mkStmt (Instr(res))]))))
-    | _ -> SkipChildren
+      (*Instr(Call(_, Lval((Var(vi), _)), _, _)::res) when vi.vname = name ->
+        ChangeTo (mkStmt (Block (mkBlock (stl@[mkStmt (Instr(res))]))))*)
+      Instr(instrs) ->
+        let first = ref [] in
+        let second = ref [] in
+        let found = ref false in
+        let iter_fun = (
+          fun i -> match i with
+            Call(_, Lval((Var(vi), _)), _, _) when vi.vname = name -> found := true;
+          | _ -> if (!found) then (second := i::!second) else (first := i::!first);
+        ) in
+        L.iter iter_fun instrs;
+        ChangeTo (mkStmt (Block (mkBlock (mkStmt (Instr(L.rev !first))::stl@[mkStmt (Instr(L.rev !second))]))))
+    | _ -> DoChildren
   end
 
 let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
-  let v = new changeStmtVisitor fake stl in
+  let v = new changeStmtVisitor s fake stl in
   visitCilStmt v s
 
 

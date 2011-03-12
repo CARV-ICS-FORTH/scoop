@@ -110,7 +110,7 @@ let options =
       " S2S: Enable code for statistics, for use with -DSTATISTICS";
 
     "--with-unaligned-arguments",
-      Arg.Set(S2s_x86.unaligned_args),
+      Arg.Set(unaligned_args),
       " S2S: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
 
     "--threaded",
@@ -281,7 +281,7 @@ class findSPUDeclVisitor cgraph = object
           (* select the function to create the custom tpc_calls *)
           let make_tpc_funcf = match !arch with
               "cell" -> S2s_cell.make_tpc_func
-(*             | "cellgod" -> S2s_cellgod.make_tpc_func *)
+            | "cellgod" -> S2s_cellgod.make_tpc_func
             | _ ->  S2s_x86.make_tpc_func in
 
           match (List.hd prags) with 

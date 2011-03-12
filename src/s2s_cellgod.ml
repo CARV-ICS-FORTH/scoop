@@ -41,15 +41,13 @@ module L = List
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let unaligned_args = ref false
 let block_size = ref 0
 
-let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
- (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
+let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
+ (fd: fundec) (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
  (block_size: int) (ppc_file: file) : stmt list = begin
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
-  let bis = var (makeLocalVar fd "block_index_start" uint32_t) in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
   let arg_type = get_arg_type arg in
@@ -125,7 +123,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
     (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
       this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
       this->closure.arguments[  this->closure.total_arguments ].size = BLOCK_SZ;
-      AddAttribute_Task( this, (void* )(e_addr), arg_flag,BLOCK_SZ);
+      AddAttribute_Task( this, (void* )(e_addr), arg_flag,BLOCK_SZ,&(this->closure.arguments[  this->closure.total_arguments ]));
       this -> closure.total_arguments++;
       this->closure.arguments[ this->closure.total_arguments ].stride=0;
     }*)
@@ -133,7 +131,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
     let ilt = ref [closure_flag] in
     ilt := Set(size, integer block_size, locUnknown)::!ilt;
     let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; integer block_size ] in
+    let addrOf_args = AddrOf(idxlv) in
+    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; integer block_size; addrOf_args ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
     let start = [mkStmtOneInstr (Set(e_addr, Lval arg_addr, locUnknown))] in
@@ -146,13 +145,13 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
     (*if(limit-e_addr){
       this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
       this->closure.arguments[  this->closure.total_arguments ].size = limit-e_addr;
-      AddAttribute_Task( this, (void* )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
+      AddAttribute_Task( this, (void* )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size,&(this->closure.arguments[  this->closure.total_arguments ]));
       this -> closure.total_arguments++;
     }*)
     let sub = (BinOp(MinusA, Lval limit, Lval e_addr, boolType)) in
     ilt := [closure_flag];
     ilt := Set(size, sub, locUnknown)::!ilt;
-    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; Lval size] in
+    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval size; addrOf_args ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
     let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
@@ -206,24 +205,28 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
   CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
-  
+
+  let uint32_t = (find_type !spu_file "uint32_t") in
+  (* uint32_t block_index_start *)
+  let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
   (* uint32_t limit *)
-  let limit = makeLocalVar f_new "limit" (find_type !spu_file "uint32_t") in
+  let limit = makeLocalVar f_new "limit" uint32_t in
   (* uint32_t e_addr; *)
-  let e_addr = var (makeLocalVar f_new "e_addr" (find_type !spu_file "uint32_t")) in
+  let e_addr = var (makeLocalVar f_new "e_addr" uint32_t) in
 
   (* for each argument*)
   for i = 0 to args_num do
     let arg = List.nth args i in
 
     (* local_arg <- argument description *)
-    stmts := (doArgument i this e_addr (var limit) f_new arg !spu_file
+    stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
             !unaligned_args !block_size !f)@[mkStmtOneInstr funcid_set];
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
     for x86*)
-  f_new.sbody.bstmts <- List.map (fun s -> S2s_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
+  let map_fun = (fun s -> S2s_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) in
+  f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
 
   incr func_id;
   f_new

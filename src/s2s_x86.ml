@@ -41,13 +41,13 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let unaligned_args = ref false
 let block_size = ref 0
 
-let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: fundec)
- (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
+let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
+ (fd: fundec) (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
  (block_size: int) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
+  let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
   let arg_type = get_arg_type arg in
@@ -64,8 +64,6 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
   il := Set(stride, (integer 0), locUnknown)::!il;
 
   (* uint32_t block_index_start=this->closure.total_arguments; *)
-  let uint32_t = (find_type spu_file "uint32_t") in
-  let bis = var (makeLocalVar fd "block_index_start" uint32_t) in
   il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
   (* limit=(((uint32_t)arg_addr64)+arg_size); *)
@@ -133,7 +131,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
     let ilt = ref [closure_flag] in
     ilt := Set(size, integer block_size, locUnknown)::!ilt;
     let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; integer block_size ] in
+    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; integer block_size ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
     let start = [mkStmtOneInstr (Set(e_addr, Lval arg_addr, locUnknown))] in
@@ -152,7 +150,7 @@ let doArgument_x86 (i: int) (this: lval) (e_addr: lval) (limit: lval) (fd: funde
     let sub = (BinOp(MinusA, Lval limit, Lval e_addr, boolType)) in
     ilt := [closure_flag];
     ilt := Set(size, sub, locUnknown)::!ilt;
-    let args = [Lval this; Lval e_addr; arg_t2integer arg_type; Lval size] in
+    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval size] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
     let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
@@ -218,18 +216,21 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
   CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
-  
+
+  let uint32_t = (find_type !spu_file "uint32_t") in
+  (* uint32_t block_index_start *)
+  let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
   (* uint32_t limit *)
-  let limit = makeLocalVar f_new "limit" (find_type !spu_file "uint32_t") in
+  let limit = makeLocalVar f_new "limit" uint32_t in
   (* uint32_t e_addr; *)
-  let e_addr = var (makeLocalVar f_new "e_addr" (find_type !spu_file "uint32_t")) in
+  let e_addr = var (makeLocalVar f_new "e_addr" uint32_t) in
 
   (* for each argument*)
   for i = 0 to args_num do
     let arg = List.nth args i in
 
     (* local_arg <- argument description *)
-    stmts := (doArgument_x86 i this e_addr (var limit) f_new arg !spu_file
+    stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
             !unaligned_args !block_size !f)@[mkStmtOneInstr funcid_set];
   done;
 

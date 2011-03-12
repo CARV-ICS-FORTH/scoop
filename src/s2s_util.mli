@@ -64,6 +64,7 @@ val charType : Cil.typ
 val boolType : Cil.typ
 val currentFunction : Cil.fundec ref
 val stats : bool ref
+val unaligned_args : bool ref
 
 
 (******************************************************************************)
