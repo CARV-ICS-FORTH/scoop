@@ -45,13 +45,12 @@ let block_size = ref 0
 
 let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
  (fd: fundec) (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
- (block_size: int) (ppc_file: file) : stmt list = begin
+ (block_size: int) (ppc_file: file) : stmt = begin
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
   let arg_type = get_arg_type arg in
-  let stl = ref [] in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
   let arguments = mkFieldAccess closure "arguments" in
@@ -70,7 +69,6 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
   let (arg_name,(_,_,_,_)) = arg in
   if (Ptdepa.isSafeArg fd arg_name) then (
-    print_endline "SAFE";
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;
@@ -89,8 +87,14 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
     il := Set(eal_in, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
     il := Set(eal_out, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
-    stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];
+    (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];*)
   ) else (
+
+    (**************************************************************************
+    * OLD CODE from general tpc_call ******************************************
+    **************************************************************************)
+
+    (*
     (* uint32_t block_index_start=this->closure.total_arguments; *)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
@@ -161,11 +165,60 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       tpc_common.h:20:#define TPC_START_ARG   0x10 *)
     let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
     let flag = mkFieldAccess idxlv "flag" in
-    stl := mkStmtOneInstr(Set(flag, integer 0x10, locUnknown))::!stl;
+    let bor = BinOp(BOr, Lval flag, integer 0x10, intType) in
+    stl := mkStmtOneInstr(Set(flag, bor, locUnknown))::!stl;
+  *)
+
+
+    (**************************************************************************
+    * NEW CODE from tpc_callN *************************************************
+    **************************************************************************)
+
+    (*
+      #ifdef BLOCKING
+        unsigned int firstBlock;
+        firstBlock = Task->closure.total_arguments;
+        DivideArgumentToBlocks( Task, Address, Size, Flag);
+        CLOSURE.arguments[ firstBlock ].flag|=TPC_START_ARG;
+      #else
+        CURRENT_ARGUMENT.flag = Flag|TPC_START_ARG;
+        CURRENT_ARGUMENT.size = Size;
+        CURRENT_ARGUMENT.stride = 0;
+        AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT));
+        CLOSURE.total_arguments++;
+      #endif
+    *)
+    if (!blocking) then (
+      (* firstBlock = Task->closure.total_arguments; *)
+      il := Set(bis, Lval total_arguments, locUnknown)::!il;
+      (* DivideArgumentToBlocks( Task, Address, Size, Flag); *)
+      let divideArgumentToBlocks = find_function_sign ppc_file "DivideArgumentToBlocks" in
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); Lval arg_size; arg_t2integer arg_type ] in
+      il := Call(None, Lval (var divideArgumentToBlocks), args, locUnknown)::!il;
+      (* CLOSURE.arguments[ firstBlock ].flag|=TPC_START_ARG;
+      tpc_common.h:20:#define TPC_START_ARG   0x10 *)
+      let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
+      let flag = mkFieldAccess idxlv "flag" in
+      let bor = BinOp(BOr, Lval flag, integer 0x10, intType) in
+      il := Set(flag, bor, locUnknown)::!il;
+    ) else (
+      (* CURRENT_ARGUMENT.flag = Flag|TPC_START_ARG; *)
+      il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
+      (* CURRENT_ARGUMENT.size = Size; *)
+      il := Set(size, Lval arg_size, locUnknown)::!il;
+      (* CURRENT_ARGUMENT.stride = 0; Allready done a few lines above *)
+      (* AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT)); *)
+      let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
+      let addrOf_args = AddrOf(idxlv) in
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
+      il := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!il;
+      (* CLOSURE.total_arguments++; *)
+      il := Set(total_arguments, pplus, locUnknown)::!il;
+    )
   );
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
-  !stl
+  mkStmt(Instr (L.rev !il));
 end
 
 (* make a tpc_ version of the function (for use on the ppc side)
@@ -197,11 +250,11 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
   done;
 
   let this = var (findLocal f_new "this") in
-  let stmts : stmt list ref = ref [] in
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkPtrFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
   CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
+  let stmts = ref [mkStmtOneInstr funcid_set] in
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
   CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
@@ -220,7 +273,7 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
 
     (* local_arg <- argument description *)
     stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
-            !unaligned_args !block_size !f)@[mkStmtOneInstr funcid_set];
+            !unaligned_args !block_size !f)::!stmts;
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 

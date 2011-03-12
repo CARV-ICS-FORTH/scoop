@@ -113,6 +113,10 @@ let options =
       Arg.Set(unaligned_args),
       " S2S: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
 
+    "--with-blocking",
+      Arg.Set(blocking),
+      " S2S: Enable bocking arguemts. for use with -DBLOCKING";
+
     "--threaded",
       Arg.Set(thread),
       " S2S: Generate thread safe code, for use with -DTPC_MULTITHREADED";

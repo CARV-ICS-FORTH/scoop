@@ -75,6 +75,7 @@ let currentFunction = ref dummyFunDec
 
 let stats = ref false
 let unaligned_args = ref false
+let blocking = ref false
 
 
 (******************************************************************************)
@@ -589,7 +590,10 @@ class changeStmtVisitor (s: stmt) (name: string) (stl: stmt list) : cilVisitor =
           | _ -> if (!found) then (second := i::!second) else (first := i::!first);
         ) in
         L.iter iter_fun instrs;
-        ChangeTo (mkStmt (Block (mkBlock (mkStmt (Instr(L.rev !first))::stl@[mkStmt (Instr(L.rev !second))]))))
+        if (!found = false) then
+          DoChildren
+        else
+          ChangeTo (mkStmt (Block (mkBlock (mkStmt (Instr(L.rev !first))::stl@[mkStmt (Instr(L.rev !second))]))))
     | _ -> DoChildren
   end
 

@@ -208,11 +208,11 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
   done;
 
   let this = var (findLocal f_new "this") in
-  let stmts : stmt list ref = ref [] in
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkPtrFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
   CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
+  let stmts = ref [mkStmtOneInstr funcid_set] in
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
   CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
@@ -231,7 +231,7 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
 
     (* local_arg <- argument description *)
     stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
-            !unaligned_args !block_size !f)@[mkStmtOneInstr funcid_set];
+            !unaligned_args !block_size !f)@(!stmts);
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
