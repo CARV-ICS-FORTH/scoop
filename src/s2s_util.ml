@@ -389,7 +389,7 @@ let mkPtrFieldAccess lv fieldname =
 
 (* Defines the Task_table for the spu file *)
 let make_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
-  let etype = TPtr( TVoid([]), []) in
+  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar "Task_table" type' in
   let n = L.length tasks in
@@ -409,7 +409,7 @@ let make_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global 
 
 (* Defines the Task_table for the ppu file *)
 let make_null_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
-  let etype = TPtr( TVoid([]), []) in
+  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar "Task_table" type' in
   let n = L.length tasks in
