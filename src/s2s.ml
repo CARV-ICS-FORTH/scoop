@@ -133,7 +133,7 @@ let rec ptdepa_process_args typ args : unit =
         trace (dprintf "pushing %s\n" varname);
         Ptdepa.addArg (varname, typ, !currentFunction);
       )
-      | _ -> ignore(E.warn "Syntax error in #pragma tpc task %s(...)" typ);
+      | _ -> ignore(E.warn "Syntax error in #pragma tpc task %s(...)\n" typ);
     ptdepa_process_args typ (L.tl args)
   )
 
@@ -146,7 +146,7 @@ let rec ptdepa_process = function
         ptdepa_process_args arg_typ args;
         T.traceOutdent "s2s"
       )
-      | _ -> ignore(E.warn "Syntax error in #pragma tpc task");
+      | _ -> ignore(E.warn "Syntax error in #pragma tpc task\n");
     ptdepa_process rest
   )
   | _ -> ()
@@ -223,12 +223,14 @@ let rec s2s_process_args typ args =
           tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
 (* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
 (*         | handle strided... *)
-    | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)" typ); []
+    | [] -> []
+    | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)\n" typ); []
 
 let rec s2s_process = function
   | (AStr("highpriority")::rest) -> s2s_process rest
   | (ACons(arg_typ, args)::rest) -> (s2s_process_args arg_typ args)@(s2s_process rest)
-  | _ -> ignore(E.warn "Syntax error in #pragma css task"); []
+  | [] -> []
+  | _ -> ignore(E.warn "Syntax error in #pragma css task\n"); []
 
 (* populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
@@ -688,9 +690,9 @@ let feature : featureDescr =
           (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
           (L.rev !spu_tasks)
         in
-        (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
-
-        if (not (!arch = "cell") ) then (
+        if (!arch = "cell") then (
+          (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
+        ) else (
           (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
           (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
         );

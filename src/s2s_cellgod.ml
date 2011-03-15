@@ -43,8 +43,8 @@ let func_id = ref 0
 
 let block_size = ref 0
 
-let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
- (fd: fundec) (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
+let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
+  (spu_file: file) (unaligned_args: bool)
  (block_size: int) (ppc_file: file) : stmt = begin
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
@@ -193,7 +193,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       il := Set(bis, Lval total_arguments, locUnknown)::!il;
       (* DivideArgumentToBlocks( Task, Address, Size, Flag); *)
       let divideArgumentToBlocks = find_function_sign ppc_file "DivideArgumentToBlocks" in
-      let args = [Lval this; CastE(voidPtrType, Lval e_addr); Lval arg_size; arg_t2integer arg_type ] in
+      let args = [Lval this; CastE(voidPtrType, Lval arg_addr); Lval arg_size; arg_t2integer arg_type ] in
       il := Call(None, Lval (var divideArgumentToBlocks), args, locUnknown)::!il;
       (* CLOSURE.arguments[ firstBlock ].flag|=TPC_START_ARG;
       tpc_common.h:20:#define TPC_START_ARG   0x10 *)
@@ -210,7 +210,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       (* AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT)); *)
       let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
       let addrOf_args = AddrOf(idxlv) in
-      let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
+      let args = [Lval this; CastE(voidPtrType, Lval arg_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
       il := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!il;
       (* CLOSURE.total_arguments++; *)
       il := Set(total_arguments, pplus, locUnknown)::!il;
@@ -262,17 +262,13 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
   let uint32_t = (find_type !spu_file "uint32_t") in
   (* uint32_t block_index_start *)
   let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
-  (* uint32_t limit *)
-  let limit = makeLocalVar f_new "limit" uint32_t in
-  (* uint32_t e_addr; *)
-  let e_addr = var (makeLocalVar f_new "e_addr" uint32_t) in
 
   (* for each argument*)
   for i = 0 to args_num do
     let arg = List.nth args i in
 
     (* local_arg <- argument description *)
-    stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
+    stmts := (doArgument i this bis f_new arg !spu_file
             !unaligned_args !block_size !f)::!stmts;
   done;
 
