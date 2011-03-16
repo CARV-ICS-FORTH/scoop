@@ -210,6 +210,8 @@ val isNotSkeleton : Cil.global -> bool
 (* Checks if <g> is a typedef, enum, struct or union *)
 val is_typedef : Cil.global -> bool
 
+(* Checks if <vi> is a scalar *)
+val isScalar : Cil.varinfo -> bool
 
 (******************************************************************************)
 (*                          Constructors                                      *)

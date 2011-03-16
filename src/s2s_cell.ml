@@ -44,7 +44,13 @@ let func_id = ref 0
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: arg_descr) (stats: bool) (spu_file: file): instr list = (
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
-  let arg_addr = Lval( var (List.nth fd.sformals i)) in
+  let actual_arg = List.nth fd.sformals i in
+  let arg_addr = (
+    if (isScalar actual_arg) then
+      AddrOf( var actual_arg)
+    else
+      Lval( var actual_arg)
+  ) in
   let arg_type = get_arg_type arg in
   let il = ref [] in
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)

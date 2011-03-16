@@ -569,6 +569,13 @@ let isCompType = function
     TComp _ -> true
   | _ -> false
 
+let isScalar (vi: varinfo) =  match vi.vtype with
+    TVoid _
+  | TPtr _
+  | TArray _
+  | TFun _ -> false
+  | _ -> true
+  
 
 (******************************************************************************)
 (*                                 MISC                                       *)

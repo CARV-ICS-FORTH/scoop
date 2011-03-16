@@ -49,7 +49,13 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
-  let arg_addr = var (List.nth fd.sformals i) in
+  let actual_arg = List.nth fd.sformals i in
+  let arg_addr = (
+    if (isScalar actual_arg) then
+      AddrOf( var actual_arg)
+    else
+      Lval( var actual_arg)
+  ) in
   let arg_type = get_arg_type arg in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
@@ -84,9 +90,9 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     il := Set(size, Lval arg_size, locUnknown)::!il;
     il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
     let eal_in = mkFieldAccess idxlv "eal_in" in
-    il := Set(eal_in, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    il := Set(eal_in, CastE(uint32_t, arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
-    il := Set(eal_out, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    il := Set(eal_out, CastE(uint32_t, arg_addr), locUnknown)::!il;
     (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];*)
   ) else (
 
@@ -99,11 +105,11 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
     (* limit=(((uint32_t)arg_addr64)+arg_size); *)
-    let plus = (BinOp(PlusA, CastE(uint32_t, Lval arg_addr), Lval arg_size, uint32_t)) in
+    let plus = (BinOp(PlusA, CastE(uint32_t, arg_addr), Lval arg_size, uint32_t)) in
     il := Set(limit, plus, locUnknown)::!il;
 
     (* e_addr=(uint32_t)arg_addr64; *)
-    il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+    il := Set(e_addr, CastE(uint32_t, arg_addr), locUnknown)::!il;
 
     (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
         uint32_t tmp_addr=(uint32_t)arg_addr64;
@@ -114,11 +120,11 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
       #endif*)
     if (unaligned_args) then (
       let tmp_addr = var (makeLocalVar fd "tmp_addr" uint32_t) in
-      il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
+      il := Set(tmp_addr, arg_addr, locUnknown)::!il; 
       let div = BinOp(Div, Lval tmp_addr, integer block_size, uint32_t) in
       let mul = BinOp(Mult, CastE(uint32_t, div), integer block_size, voidPtrType) in
       il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
-      let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, Lval arg_addr), intType) in
+      let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, arg_addr), intType) in
       il := Set(stride, new_stride, locUnknown)::!il;
       let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in
       il := Set(arg_size, add, locUnknown)::!il;
@@ -139,7 +145,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; integer block_size; addrOf_args ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
-    let start = [mkStmtOneInstr (Set(e_addr, Lval arg_addr, locUnknown))] in
+    let start = [mkStmtOneInstr (Set(e_addr, arg_addr, locUnknown))] in
     let e_addr_plus = BinOp(PlusA, Lval e_addr, integer block_size, intType) in
     let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
     let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
@@ -193,7 +199,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
       il := Set(bis, Lval total_arguments, locUnknown)::!il;
       (* DivideArgumentToBlocks( Task, Address, Size, Flag); *)
       let divideArgumentToBlocks = find_function_sign ppc_file "DivideArgumentToBlocks" in
-      let args = [Lval this; CastE(voidPtrType, Lval arg_addr); Lval arg_size; arg_t2integer arg_type ] in
+      let args = [Lval this; CastE(voidPtrType, arg_addr); Lval arg_size; arg_t2integer arg_type ] in
       il := Call(None, Lval (var divideArgumentToBlocks), args, locUnknown)::!il;
       (* CLOSURE.arguments[ firstBlock ].flag|=TPC_START_ARG;
       tpc_common.h:20:#define TPC_START_ARG   0x10 *)
@@ -210,7 +216,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
       (* AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT)); *)
       let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
       let addrOf_args = AddrOf(idxlv) in
-      let args = [Lval this; CastE(voidPtrType, Lval arg_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
+      let args = [Lval this; CastE(voidPtrType, arg_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
       il := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!il;
       (* CLOSURE.total_arguments++; *)
       il := Set(total_arguments, pplus, locUnknown)::!il;
