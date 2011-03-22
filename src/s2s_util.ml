@@ -240,14 +240,6 @@ let translate_arg (arg: string) (strided: bool) : arg_t =
       | _ -> ignore(E.error "Only input/output/inout are allowed"); assert false
 
 
-let arg_t2integer = function
-    | In -> integer 1
-    | Out -> integer 2
-    | InOut -> integer 3
-    | SIn -> integer 5
-    | SOut -> integer 6
-    | SInOut -> integer 7
-
 let arg_t2int = function
     | In -> 1
     | Out -> 2
@@ -255,6 +247,9 @@ let arg_t2int = function
     | SIn -> 5
     | SOut -> 6
     | SInOut -> 7
+
+let arg_t2integer = function
+    | t -> integer (arg_t2int t)
 
 
 (******************************************************************************)
@@ -295,9 +290,8 @@ end
 
 (* returns the argument type from an argument description 
   (string * arg_t * string * string *string ) *)
-let get_arg_type (arg: (string * (arg_t * exp * exp * exp ))) : arg_t =
-  match arg with
-    (_, (arg_type ,_ ,_ ,_)) -> arg_type
+let get_arg_type = function
+  | (_, (arg_type ,_ ,_ ,_)) -> arg_type
 
 (* change the return type of a function *)
 let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
@@ -323,6 +317,22 @@ let getCompinfo = function
     TComp (ci, _) -> ci
   (* if it's not a struct, die. too bad. *)
   | _ -> assert false
+
+let getNameOfExp = function
+  Lval ((Var(vi),_)) -> vi.vname
+  (* The following are not supported yet *)
+  | StartOf _ -> raise (Invalid_argument "StartOf");
+  | CastE _ -> raise (Invalid_argument "CastE");
+  | Const _ -> raise (Invalid_argument "Const");
+  | SizeOf _ -> raise (Invalid_argument "Sizeof");
+  | SizeOfE _ -> raise (Invalid_argument "SizeofE");
+  | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+  | AlignOf _ -> raise (Invalid_argument "Alignof");
+  | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
+  | UnOp _ -> raise (Invalid_argument "UnOp");
+  | BinOp _ -> raise (Invalid_argument "BinOp");
+  | AddrOf _ -> raise (Invalid_argument "AddrOf");
+  | _ -> raise (Invalid_argument "Uknown");
 
 
 (******************************************************************************)

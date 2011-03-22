@@ -179,7 +179,7 @@ class findTaggedCalls = object
                 tracei (dprintf "pushing args of function %s to ptdepa!\n" vi.vname);
                 ignore(List.map (fun arg -> match arg with
                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::_) -> 
-                      (* give all the arguments to Dtdepa don't care for strided  *)
+                      (* give all the arguments to Ptdepa don't care for strided  *)
                       trace (dprintf "pushing %s\n" varname);
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "You have done something wrong at %a\n" d_loc loc); assert false
@@ -283,7 +283,7 @@ class findSPUDeclVisitor cgraph = object
         )
         | _ -> ();
       match s.skind with 
-        Instr(Call(_, Lval((Var(vi), _)), _, _)::_) -> (
+        Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
           (* select the function to create the custom tpc_calls *)
           let make_tpc_funcf = match !arch with
               "cell" -> S2s_cell.make_tpc_func
@@ -297,14 +297,12 @@ class findSPUDeclVisitor cgraph = object
                 List.map (fun arg -> match arg with
 (*                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> *)
                     ACons(varname, ACons(arg_typ, [])::varsize::[]) ->
-                      (* give all the arguments to Dtdepa*)
                       (varname, ((translate_arg arg_typ false),
                           attrParamToExp varsize !ppc_file,
                           attrParamToExp varsize !ppc_file,
                           attrParamToExp varsize !ppc_file))
 (*                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) -> *)
                   | ACons(varname, ACons(arg_typ, [])::varsize::elsize::elnum::[]) ->
-                      (* give all the arguments to Dtdepa don't care for strided  *)
                       (varname, ((translate_arg arg_typ true),
                         attrParamToExp varsize !ppc_file,
                         attrParamToExp elsize !ppc_file,
@@ -338,7 +336,7 @@ class findSPUDeclVisitor cgraph = object
                 rest new_fd
               with Not_found -> (
                 let rest2 var_i = 
-                  let new_fd = make_tpc_funcf var_i args' ppc_file spu_file in
+                  let new_fd = make_tpc_funcf var_i oargs args' ppc_file spu_file in
                   add_after_s !ppc_file var_i.vname new_fd;
                   spu_tasks := (funname, (new_fd, var_i, args'))::!spu_tasks;
                   rest new_fd in
@@ -366,7 +364,7 @@ class findSPUDeclVisitor cgraph = object
                       let funname = vi.vname in
                       let args = s2s_process rest in
                       ignore(E.log "Found task \"%s\"\n" funname);
-                      let rest new_fd = 
+                      let rest_f new_fd = 
                         (* add arguments to the call *)
                         let call_args = ref (L.rev oargs) in
 (*                         let args_num = (List.length args)-1 in *)
@@ -420,24 +418,24 @@ class findSPUDeclVisitor cgraph = object
                       try
                         (* check if we have seen this function before *)
                         let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
-                        rest new_fd
+                        rest_f new_fd
                       with Not_found -> (
-                        let rest2 var_i = 
-                          let new_fd = make_tpc_funcf var_i args ppc_file spu_file in
+                        let rest_f2 var_i = 
+                          let new_fd = make_tpc_funcf var_i oargs args ppc_file spu_file in
                           add_after_s !ppc_file var_i.vname new_fd;
                           spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
-                          rest new_fd in
+                          rest_f new_fd in
                         (* try to find the function definition *)
                         try
                           (* checking for the function definition *)
                           let task = find_function_fundec (!ppc_file) funname in
                           (* copy itself and the callees *)
                           deep_copy_function funname callgraph !spu_file !ppc_file;
-                          rest2 task.svar
+                          rest_f2 task.svar
                         (* else try to find the function signature/prototype *)
                         with Not_found -> (
                           let task = find_function_sign (!ppc_file) funname in
-                          rest2 task
+                          rest_f2 task
                         )
                       )
                     )

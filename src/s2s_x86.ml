@@ -182,7 +182,8 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
+let make_tpc_func (func_vi: varinfo) (oargs: exp list)
+    (args: (string * (arg_t * exp * exp * exp )) list)
     (f:file ref) (spu_file:file ref) : fundec = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in

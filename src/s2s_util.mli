@@ -155,6 +155,9 @@ val setFunctionReturnType : Cil.fundec -> Cil.typ -> unit
 (* returns the compiler added variables of the function *)
 val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list
 
+(* returns the name of the variable in the expration *)
+val getNameOfExp : Cil.exp -> string
+
 
 (******************************************************************************)
 (*                                   LOOP                                     *)

@@ -66,7 +66,6 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
      due to not supporting stride args*)
   let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
   let stride = mkFieldAccess idxlv "stride" in
-  il := Set(stride, (integer 0), locUnknown)::!il;
 
   let size = mkFieldAccess idxlv "size" in
   let flag = mkFieldAccess idxlv "flag" in
@@ -212,7 +211,8 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
       il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
       (* CURRENT_ARGUMENT.size = Size; *)
       il := Set(size, Lval arg_size, locUnknown)::!il;
-      (* CURRENT_ARGUMENT.stride = 0; Allready done a few lines above *)
+      (* CURRENT_ARGUMENT.stride = 0;*)
+      il := Set(stride, (integer 0), locUnknown)::!il;
       (* AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT)); *)
       let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
       let addrOf_args = AddrOf(idxlv) in
@@ -230,7 +230,8 @@ end
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
+let make_tpc_func (func_vi: varinfo) (oargs: exp list)
+    (args: (string * (arg_t * exp * exp * exp )) list)
     (f:file ref) (spu_file:file ref) : fundec = begin
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
@@ -271,11 +272,12 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
 
   (* for each argument*)
   for i = 0 to args_num do
-    let arg = List.nth args i in
-
-    (* local_arg <- argument description *)
-    stmts := (doArgument i this bis f_new arg !spu_file
-            !unaligned_args !block_size !f)::!stmts;
+    let ex_arg = (List.nth oargs i) in
+    let name = getNameOfExp ex_arg in
+    let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
+      (* local_arg <- argument description *)
+      stmts := (doArgument i this bis f_new arg !spu_file
+                  !unaligned_args !block_size !f)::!stmts;
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 

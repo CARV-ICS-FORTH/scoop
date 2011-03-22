@@ -118,7 +118,8 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )) list)
+let make_tpc_func (func_vi: varinfo) (oargs: exp list)
+    (args: (string * (arg_t * exp * exp * exp )) list)
     (f: file ref) (spu_file: file ref) : fundec = begin
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = S2s_util.find_function_fundec (!f) "tpc_call_tpcAD65" in
@@ -160,10 +161,12 @@ let make_tpc_func (func_vi: varinfo) (args: (string * (arg_t * exp * exp * exp )
     (* struct tpc_arg_element local_arg *)
     let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
     for i = 0 to args_num do
-      let arg = List.nth args i in
-      (* local_arg <- argument description *)
-      instrs := (doArgument i local_arg avail_task tmpvec f_new arg 
-                  !S2s_util.stats !spu_file )@(!instrs);
+      let ex_arg = (List.nth oargs i) in
+      let name = getNameOfExp ex_arg in
+      let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
+        (* local_arg <- argument description *)
+        instrs := (doArgument i local_arg avail_task tmpvec f_new arg 
+                    !S2s_util.stats !spu_file )@(!instrs);
     done;
   );
 
