@@ -318,20 +318,20 @@ let getCompinfo = function
   (* if it's not a struct, die. too bad. *)
   | _ -> assert false
 
-let getNameOfExp = function
-  Lval ((Var(vi),_)) -> vi.vname
+let rec getNameOfExp = function
+  Lval ((Var(vi),_))
+  | AddrOf ((Var(vi),_))
+  | StartOf ((Var(vi),_)) -> vi.vname
+  | CastE (_, ex)
+  | AlignOfE ex
+  | SizeOfE ex -> getNameOfExp ex
   (* The following are not supported yet *)
-  | StartOf _ -> raise (Invalid_argument "StartOf");
-  | CastE _ -> raise (Invalid_argument "CastE");
   | Const _ -> raise (Invalid_argument "Const");
   | SizeOf _ -> raise (Invalid_argument "Sizeof");
-  | SizeOfE _ -> raise (Invalid_argument "SizeofE");
   | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
   | AlignOf _ -> raise (Invalid_argument "Alignof");
-  | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
   | UnOp _ -> raise (Invalid_argument "UnOp");
   | BinOp _ -> raise (Invalid_argument "BinOp");
-  | AddrOf _ -> raise (Invalid_argument "AddrOf");
   | _ -> raise (Invalid_argument "Uknown");
 
 
