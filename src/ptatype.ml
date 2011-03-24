@@ -45,6 +45,7 @@ module LF = Labelflow
 module VS = Usedef.VS
 
 open Cil
+open Sdam
 open Printf
 open Pretty
 open Lockutil
@@ -61,6 +62,8 @@ type phi = CF.phi
 
 let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
+
+let currentFunction = ref dummyFunDec
 
 (* wrappers *)
 let join_phi (p1: phi) (p2: phi) (k: CF.phi_kind) : phi =
@@ -2420,6 +2423,72 @@ and type_offcinit (c: cinfo)
 
 (*****************************************************************************)
 
+let handle_tpc_task il args loc: unit = begin
+	match il with 
+  	Call(_, Lval((Var(vi), _)), _, loc') ->
+    	ignore(List.map (fun arg -> match arg with
+      	ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
+        	(* give all the arguments to Dtdepa*)
+        	Sdam.addArg (varname, arg_typ, !currentFunction);
+        | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
+        	(* give all the arguments to Dtdepa don't care for strided  *)
+         	Sdam.addArg (varname, arg_typ, !currentFunction);
+        | _ -> ignore(E.error "SDAM:%a:Task annotation error!\n" d_loc loc);
+        ) args);
+      Sdam.addTask vi.vname !currentFunction loc';
+			| _ -> ignore(E.error "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);
+end
+
+let rec css_task_process_args typ args loc : unit = begin
+	match args with 
+		[] -> ()
+	| (curr::rest) -> begin 
+		match curr with
+    	AIndex(ACons(varname, []), varsize) -> Sdam.addArg (varname, typ, !currentFunction); 		
+
+    | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
+	end;	
+	css_task_process_args typ rest loc
+end
+
+let rec css_task_process io loc : unit = begin
+	match io with 
+  	(curr::rest) -> begin
+      match curr with
+        AStr("highpriority") -> (* simply ignore it *) ();
+        | ACons(arg_typ, args) -> css_task_process_args arg_typ args loc
+        | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
+    end;
+    css_task_process rest loc
+    | _ -> ();
+end
+
+let handle_css_task il args loc : unit =  begin
+	match il with 
+  	Call(_, Lval((Var(vi), _)), _, loc) -> begin
+			css_task_process args loc;
+      Sdam.addTask vi.vname !currentFunction loc;
+		end
+  | _ -> ignore(E.warn "SDAM:%a:Ignoring pragma" d_loc loc);
+end
+
+let handle_barrier stmt 
+									 (input_env: env)
+                 	 (input_phi: phi)
+                 	 (input_effect: effect) : gamma = begin
+	ignore(E.log "handle_barrier: under construction\n");
+(*let phi_before = input_phi in
+  let phi_barrier = make_phi "Barrier" CF.PhiBarrier in
+  let phi_after = make_phi "afterBarrier" CF.PhiVar in
+  CF.phi_flows phi_barrier phi_before;
+  CF.phi_flows phi_before phi_after;
+  CF.phi_flows phi_before phi_barrier; 
+	(input_env, phi_after, input_effect) *)
+	(input_env, input_phi, input_effect)     
+end
+
+(*****************************************************************************)
+
 let handle_exit (_: exp list)
                 (_: lval option)
                 (args: (tau*uniq) list)
@@ -2978,9 +3047,36 @@ and type_stmt (env, phi, eff) stmt : gamma =
   set_goto_target env phi eff stmt;
   let (env,phi,eff) = Hashtbl.find env.goto_tbl stmt in
   match stmt.skind with
-    Instr(il) ->
-      List.fold_left
+  	Instr(il) -> begin
+			let (env', phi', eff') = 
+			(match stmt.pragmas with
+				[]	->	List.fold_left
         (type_instr ) (env, phi, eff) il
+			|	(pragma::rest) -> begin 
+				match pragma with 
+					(Attr("tpc_wait_all", _), _) -> begin 
+						ignore(E.log "Ptdepa: Barrier found!\n"); 
+						(*handle_barrier stmt env phi eff;*)
+						let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+						CF.phi_flows phi barrier_phi;
+						(env, barrier_phi, eff)					
+					end
+				| (Attr("tpc", args), loc) -> handle_tpc_task (List.hd il) args loc; (* this is for legacy tpc support *)
+																			(env, phi, eff)
+				|	(Attr("css", args), loc) -> begin
+					match (List.hd args) with 
+						AStr("task") ->	handle_css_task (List.hd il) args loc
+					| _ -> ignore(E.warn "Ptdepa:%a:Ignoring pragma!\n" d_loc loc);
+					end;
+					let task_phi = make_phi "Task" CF.PhiTask in
+					CF.phi_flows phi task_phi;
+					(env, task_phi, eff)
+				| (_, loc) -> ignore(E.warn "Ptdepa:%a:Ignoring pragma!\n" d_loc loc);
+					(env, phi, eff)
+			end) in
+      List.fold_left
+        (type_instr ) (env', phi', eff') il		
+		end	
   | Return(e, loc) ->
       currentLoc := loc;
       let ((sret,_), env, phi, eff) =
@@ -3568,6 +3664,7 @@ class constraintVisitor = object
     | GFun(fd, loc) ->
         begin
           currentLoc := loc;
+					currentFunction := fd;
           if (Strset.mem fd.svar.vname !undef_functions) then
             undef_functions := Strset.remove fd.svar.vname !undef_functions;
           if (Strset.mem fd.svar.vname !def_functions) then (

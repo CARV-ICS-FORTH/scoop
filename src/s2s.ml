@@ -125,6 +125,7 @@ let options =
 (* create 1 global list (the spe output file) *)
 let spu_tasks = ref []
 
+(*
 (* parses the #pragma css task arguments and pushes them to ptdepa *)
 let rec ptdepa_process_args typ args : unit =
   if ( args <> []) then (
@@ -213,6 +214,7 @@ class findTaggedCalls = object
     prevstmt := s;
     DoChildren
 end
+*)
 
 (* parses the #pragma css task arguments *)
 let rec s2s_process_args typ args =
@@ -623,7 +625,7 @@ let feature : featureDescr =
 
         (* find tpc_decl pragmas *)
         let fspuVisitor = new findSPUDeclVisitor callgraph in
-        let ftagVisitor = new findTaggedCalls in
+        (* let ftagVisitor = new findTaggedCalls in *)
     
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
@@ -655,7 +657,7 @@ let feature : featureDescr =
           preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
                                       !arch !tpcIncludePath;
         );
-
+(*
         Cil.iterGlobals !ppc_file 
           (function
             GFun(fd,_) ->
@@ -664,9 +666,9 @@ let feature : featureDescr =
             | _ -> ()
           )
         ;
-
+*)
         (* kasas was here :P *)
-(*         Ptdepa.find_dependencies f; *)
+         Ptdepa.find_dependencies f;
 
         Cil.iterGlobals !ppc_file 
           (function

@@ -119,6 +119,7 @@ let print_phi_kind (outf: out_channel) phi : bool =
         (dotstring_of_phi p)
         (LF.dotstring_of_lock_effect e);
       true
+	| _ -> true
 
 let print_graph outf = print_graph outf (print_phi_kind outf)
 

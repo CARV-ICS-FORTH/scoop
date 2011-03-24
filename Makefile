@@ -20,6 +20,8 @@ LOCKSMITH_MODULES = \
 	semiunification \
 	locktype \
 	lockalloc \
+	sdam \
+	barrierstate \
 	ptatype \
 	ptdepa \
 	s2s_util \

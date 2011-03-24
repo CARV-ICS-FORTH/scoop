@@ -46,6 +46,8 @@ type phi_kind =
   | PhiVar
   | PhiForked
   | PhiPacked
+	| PhiBarrier
+	| PhiTask
   | PhiNewlock of Labelflow.lock
   | PhiAcquire of Labelflow.lock
   | PhiRelease of Labelflow.lock

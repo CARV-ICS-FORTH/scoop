@@ -1,11 +1,14 @@
 open Pretty
 open Cil
 open Printf
+open Sdam
 
+module LT = Locktype
 module PT = Ptatype
 module LF = Labelflow
 module E = Errormsg
 module CF = Controlflow
+module BS = Barrierstate
 
 let do_graph_out = ref false
 
@@ -27,26 +30,6 @@ let options = [
   "PtDepa: Verbose output.";
 ]
 
-             (* argname * in/out type * fundec *)
-type arg_type = (string * string * fundec) (* FIXME:fundec is the global one, note the function it belogs to *)
-          (* (taskname * (callsiteloc * taskscope)) *) 
-and task_descr = (string * (location * fundec))
-          (* (task scope * taskname) * argument list *)
-and task_type = (task_descr * arg_type list) 
-                      (* parent task_descr  *)
-and dep_node = arg_type * task_descr
-
-and arg_dep_node = (arg_type * dep_node list)
-
-and task_dep_node = (task_descr * arg_dep_node list)
-
-(* each node is a task, with a list of tasks that are not depended with each other *)
-let tasks_l : task_type list ref = ref []
-(* temp list, used to collect task arguments *)
-let args_l : arg_type list ref = ref []
-(* each node is a task with its arguments, for each argument there is a list
-  of depended arguments *)
-let task_dep_l : task_dep_node list ref = ref []
 (* dependence list with marked callsites for multiple calls to the same function *)
 (* let inst_task_dep_l : task_dep_node list ref = ref [] *)
 
@@ -81,19 +64,6 @@ let instantiate_depList (a: unit): unit = begin
     !task_dep_l
 end
 *)   
-
-(*
- * first collect all task arguments, then 
- * call addTask to add a new task with 
- * its arguments
- *)
-let addTask (taskname: string) (scope: fundec) (callsite: location): unit =
-  ignore(E.log "add task\n");
-  tasks_l := ((taskname, (callsite, scope)), !args_l)::!tasks_l;
-  args_l := []
-
-let addArg (arg: arg_type) : unit =
-  args_l := arg::!args_l
 
 (* return true if arg_t is In or SIn *)
 let is_in_arg (arg: string): bool = 
@@ -222,15 +192,11 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
 
 (* return true if the argument has no dependencies  *)
 let isSafeArg (task: fundec) (argname: string) : bool =
-  let taskname = task.svar.vname in 
   let rec search_list = function 
       [] -> false
     | (task_n::tl) -> begin
-      let ((taskname', _), args) = task_n in 
-      if(taskname' = taskname) then 
+      let ((_, (_, fund)), args) = task_n in 
         not (hasDependencies args argname)
-      else 
-        search_list tl
     end
   in
   search_list (!task_dep_l)
@@ -287,11 +253,14 @@ end
 (* Static analysis for task dependencies *)
 let find_dependencies (f: file) : unit = begin	
   (* List.iter print_task !tasks_l; *)
-  ignore(E.log "Ptdepa: Generating and solving flow constraints\n");
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
+  ignore(E.log "Ptdepa: Generating CFG.\n");
+  (* LT.generate_constraints f; *)
+  ignore(E.log "Ptdepa: Generating and solving flow constraints.\n");
   PT.generate_constraints f;
-  (* LF.done_adding (); *)
+  LF.done_adding ();
+	BS.solve();
     (*Dotpretty.init_file "graph-begin.dot" "initial constraints";*)
     (*Labelflow.print_graph !Dotpretty.outf;*)
     
@@ -299,10 +268,10 @@ let find_dependencies (f: file) : unit = begin
     (*Lockstate.print_graph !Dotpretty.outf;*)
     (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
     (*Dotpretty.close_file (); *)
-  ignore(E.log "Ptdepa: Checking for argument dependencies\n");
+  ignore(E.log "Ptdepa: Checking for argument dependencies.\n");
   List.iter find_task_dependencies !tasks_l;
-  if !do_verbose_output then begin
-    ignore(E.log "Ptdepa: Dependencies found!\n");
+  if !do_verbose_output then begin (* this is bocus... *)
+    ignore(E.log "Ptdepa: Dependencies resolved.\n");
     List.iter print_task_dependencies !task_dep_l;
   end;
   if !do_task_graph_out then begin
@@ -312,7 +281,12 @@ let find_dependencies (f: file) : unit = begin
     Dotpretty.init_file "task-dep.dot" "task dependencies";
     plot_task_dep_graph !Dotpretty.outf;
     Dotpretty.close_file ();
+    
+		Dotpretty.init_file "cf-graph.dot" "control flow graph";
+    Lockstate.print_graph !Dotpretty.outf;
+    Dotpretty.close_file ();
   end;
+  ignore(E.log "Ptdepa: static dependence analysis has now completed.\n");
 end
 
 

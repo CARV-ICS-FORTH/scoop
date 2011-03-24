@@ -111,6 +111,8 @@ type phi_kind =
   | PhiVar
   | PhiForked
   | PhiPacked
+	| PhiBarrier
+	| PhiTask
   | PhiNewlock of LF.lock
   | PhiAcquire of LF.lock
   | PhiRelease of LF.lock
