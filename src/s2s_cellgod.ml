@@ -92,6 +92,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     il := Set(eal_in, CastE(uint32_t, arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
     il := Set(eal_out, CastE(uint32_t, arg_addr), locUnknown)::!il;
+    il := Set(total_arguments, pplus, locUnknown)::!il;
     (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];*)
   ) else (
 
