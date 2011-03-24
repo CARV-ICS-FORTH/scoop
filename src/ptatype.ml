@@ -2433,10 +2433,10 @@ let handle_tpc_task il args loc: unit = begin
         | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
         	(* give all the arguments to Dtdepa don't care for strided  *)
          	Sdam.addArg (varname, arg_typ, !currentFunction);
-        | _ -> ignore(E.error "SDAM:%a:Task annotation error!\n" d_loc loc);
+        | _ -> ignore(E.warn "SDAM:%a:Task annotation error!\n" d_loc loc);
         ) args);
       Sdam.addTask vi.vname !currentFunction loc';
-			| _ -> ignore(E.error "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);
+			| _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);
 end
 
 let rec css_task_process_args typ args loc : unit = begin
@@ -2446,7 +2446,7 @@ let rec css_task_process_args typ args loc : unit = begin
 		match curr with
     	AIndex(ACons(varname, []), varsize) -> Sdam.addArg (varname, typ, !currentFunction); 		
 
-    | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
+    | _ -> ignore(E.warn "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
 	end;	
 	css_task_process_args typ rest loc
 end
@@ -2457,7 +2457,7 @@ let rec css_task_process io loc : unit = begin
       match curr with
         AStr("highpriority") -> (* simply ignore it *) ();
         | ACons(arg_typ, args) -> css_task_process_args arg_typ args loc
-        | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
+        | _ -> ignore(E.warn "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
     end;
     css_task_process rest loc
     | _ -> ();
