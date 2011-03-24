@@ -180,7 +180,9 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
   let rec hasDependencies' = function
     [] -> false
   | (arg_n::tl) -> let ((argname', _, _), deps) = arg_n in
-    if(argname'=argname) then 
+   ignore(E.log "arg:%s\n" argname);
+    ignore(E.log "arg':%s\n" argname');
+    if(argname' = argname) then 
     begin
       match deps with
         [] -> false
@@ -191,15 +193,47 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
   in hasDependencies' args
 
 (* return true if the argument has no dependencies  *)
+(*let isSafeArg (task: fundec) (argname: string) : bool =*)
+(*  let rec search_list = function (* FIXME: Need a way to get scope of argument? *)*)
+(*      [] -> false*)
+(*    | (task_n::tl) -> begin*)
+(*      let ((_, (_, fund)), args) = task_n in*)
+(*				List.iter (fun argument' -> *)
+(*					let ((argname', _, _), _) = argument in*)
+(*					match *)
+(*        not (hasDependencies args argname)*)
+(*    end*)
+(*  in*)
+(*  search_list (!task_dep_l)*)
+
+
 let isSafeArg (task: fundec) (argname: string) : bool =
-  let rec search_list = function 
-      [] -> false
-    | (task_n::tl) -> begin
-      let ((_, (_, fund)), args) = task_n in 
-        not (hasDependencies args argname)
-    end
-  in
-  search_list (!task_dep_l)
+	let rec find_task_deps task_deps = begin
+			match task_deps with
+				[] -> [];
+			| (task_n::rest) -> begin 
+				let (_, arg_dep_l) = task_n in
+				let rec find_argument_deps arg_dep_l = begin
+					match arg_dep_l with
+						[] -> []
+				| (arg_dep_n::rest) -> begin
+						let ((argname', _, _), arg_deps) = arg_dep_n in
+						if(argname = argname') then
+							arg_deps
+						else
+							find_argument_deps rest
+					end
+				end in
+				let arg_deps = (find_argument_deps arg_dep_l) in
+				match arg_deps with
+					[] -> find_task_deps rest
+				| _ -> arg_deps 	
+			end
+	end in
+	let arg_deps = (find_task_deps !task_dep_l) in
+	match arg_deps with
+		[] -> true
+	| _ -> false
 
 let taskId (taskinf: task_descr) : string = 
   let (taskname, (loc, _)) = taskinf in
