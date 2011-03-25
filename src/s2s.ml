@@ -467,8 +467,8 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 (*  else begin
     res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "local"), locUnknown) :: !res;
   end*)
-  let nextaddr n stride =
-    if (!arch = "cell") then begin (* Cell *)
+  let nextaddr arg_var n stride =
+    if (!arch = "cell") then ( (* Cell *)
       let lv = mkPtrFieldAccess (var ex_task) "arguments" in
       let t = typeOfLval lv in
       assert(isArrayType t);
@@ -480,22 +480,22 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
                           *(ex_task->arguments[pre].size & 0x0FFFFU)) *)
           let els = BinOp(Shiftrt, Lval(szlv), integer 16, intType) in
           let elsz = BinOp(BAnd, Lval(szlv), integer 0x0FFFF, intType) in
-          (BinOp(PlusPI, (Lval(var argaddr)), BinOp(Mult, els, elsz,intType), voidPtrType))
+          (BinOp(PlusPI, (Lval(var arg_var)), BinOp(Mult, els, elsz,intType), voidPtrType))
         else
           (* next = previous + ex_task->arguments[pre].size *)
-          (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType))
+          (BinOp(PlusPI, (Lval(var arg_var)), Lval(szlv), voidPtrType))
       in
-      Set(var argaddr, plus, locUnknown);
-    end else begin (* X86 *)
+      Set(var arg_var, plus, locUnknown)
+    ) else ( (* X86 *)
       let lv = mkPtrFieldAccess (var task_info) "local" in
       let t = typeOfLval lv in
       assert(isArrayType t);
       let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
-      Set(var argaddr, Lval(idxlv), locUnknown);
-    end
+      Set(var arg_var, Lval(idxlv), locUnknown)
+    )
   in
   let i = ref 0 in
-  let carry = ref dummyInstr in
+(*   let carry = ref dummyInstr in *)
   let arglist = List.map
     (fun (_, argt, _) ->
       let argvar = makeTempVar execfun argt in
@@ -508,13 +508,13 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
         | TNamed(_, _) -> castexp (unrollType atyp)
         | _ -> CastE(argt, Lval(var argaddr))
       in
-      let castinstr = Set(var argvar, castexp argt, locUnknown) in
+(*       let castinstr = Set(var argvar, castexp argt, locUnknown) in *)
       let arg_type = get_arg_type (List.nth args !i) in
-      let advptrinstr = nextaddr !i (is_strided arg_type) in
+      let advptrinstr = nextaddr argvar !i (is_strided arg_type) in
       incr i;
-      if !carry <> dummyInstr then res := !carry::!res;
-      carry := advptrinstr;
-      res := castinstr :: !res;
+(*       if !carry <> dummyInstr then res := !carry::!res; *)
+(*       carry := advptrinstr; *)
+      res := advptrinstr :: !res;
       Lval(var argvar)
     )
     argl

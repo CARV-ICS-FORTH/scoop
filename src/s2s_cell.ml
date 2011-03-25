@@ -56,22 +56,24 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
   if (stats) then (
     let total_bytes = var (find_local_var fd "total_bytes") in
-    let arg_bytes = var (find_local_var fd "arg_bytes") in
-    if (is_strided arg_type) then
-      let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
-      let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
-      (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
-      il := Set(arg_bytes, BinOp(Mult, arg_els, arg_elsz, intType), locUnknown)::!il
-    else (
-      (* arg_bytes = arg_size; *)
-      il := Set(arg_bytes, arg_size, locUnknown)::!il
-    );
+(*     let arg_bytes = var (find_local_var fd "arg_bytes") in *)
+    let arg_bytes =
+      if (is_strided arg_type) then (
+        let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+        let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
+        (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
+        BinOp(Mult, arg_els, arg_elsz, intType)
+      ) else (
+        (* arg_bytes = arg_size; *)
+        arg_size
+      )
+    in
     (* total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag)); *)
     let total_size = 
       if (is_out_arg arg_type) then (
-        BinOp(PlusA, Lval(total_bytes), BinOp(Mult, integer 2, Lval(arg_bytes), intType), intType)
+        BinOp(PlusA, Lval(total_bytes), BinOp(Mult, integer 2, arg_bytes, intType), intType)
       ) else (
-        BinOp(PlusA, Lval(total_bytes), Lval(arg_bytes), intType)
+        BinOp(PlusA, Lval(total_bytes), arg_bytes, intType)
       )
     in
     il := Set(total_bytes, total_size, locUnknown)::!il
