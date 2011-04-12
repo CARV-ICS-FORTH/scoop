@@ -16,6 +16,8 @@ let do_task_graph_out = ref true
 
 let do_verbose_output = ref true
 
+let debug = ref false
+
 let options = [
   "--save-graph",
   Arg.Set(do_graph_out),
@@ -29,41 +31,6 @@ let options = [
   Arg.Set(do_verbose_output),
   "PtDepa: Verbose output.";
 ]
-
-(* dependence list with marked callsites for multiple calls to the same function *)
-(* let inst_task_dep_l : task_dep_node list ref = ref [] *)
-
-(*
-(* Map calls to call site (index) for graphviz output *)
-module CallMap = Map.Make(String)
-
-let graph_calls = ref CallMap.empty
-
-(* return last call site of given task *)
-let callsite_no (taskname: string) : int =
-  let callsite = begin 
-    try begin
-      CallMap.find taskname !graph_calls
-    end  
-    with Not_found -> 0
-  end in
-  graph_calls := CallMap.add taskname (callsite+1) !graph_calls;
-  callsite
-(* 
- * copies task_dep_list and adds an callsite index for 
- * every different callsite of a task
- *)
-let instantiate_depList (a: unit): unit = begin
-  ignore(E.log "instantiating tasks\n");
-  List.iter 
-    (fun tasknode -> 
-      let ((scope, taskname), args) = tasknode in
-      let inst_taskname = taskname^(string_of_int (callsite_no taskname)) in
-      ignore(E.log "renaming %s to %s\n" taskname inst_taskname);
-      inst_task_dep_l := ((scope, inst_taskname), args)::!inst_task_dep_l)
-    !task_dep_l
-end
-*)   
 
 (* return true if arg_t is In or SIn *)
 let is_in_arg (arg: string): bool = 
@@ -99,9 +66,11 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
     if !do_verbose_output then begin
       let (argname1, _, _) = arg1 in
       let (argname2, _, _) = arg2 in
-      ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
-      ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
-      ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+			if !debug then (
+      	ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
+      	ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
+      	ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+			);
     end;
     not (LF.RhoSet.is_empty final_set)
 
@@ -129,13 +98,13 @@ let rec check_args (arg1: arg_type)
  * return a list of arguments and for each a list of 
  * dependencies
  *)
-let rec check_arg (arg: arg_type) (tasks: task_type list) : dep_node list =
+let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) : dep_node list =
   let rec check_task dep_args = function
     [] -> dep_args
   | (task::tl) -> let (taskinf', args) = task in
                   let rec check_arg' dep_args' = function
                     [] -> dep_args'
-                  | (arg'::tl) -> if(is_aliased arg arg') then 
+                  | (arg'::tl) -> if((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf') )) then 
                                     check_arg' ((arg', taskinf')::dep_args') tl
                                   else 
                                     check_arg' dep_args' tl
@@ -148,7 +117,7 @@ let find_task_dependencies (task: task_type) : unit = begin
   let (taskinf, args) = task in
   let rec find_task_dependencies' arg_dep = function 
     [] -> arg_dep  
-  | (arg::tl) -> find_task_dependencies' ((arg, (check_arg arg !tasks_l))::arg_dep) tl
+  | (arg::tl) -> find_task_dependencies' ((arg, (check_arg taskinf arg !tasks_l))::arg_dep) tl
   in    
   let task_dep = (taskinf, (find_task_dependencies' [] args)) in 
   task_dep_l := (task_dep::!task_dep_l)
@@ -156,16 +125,16 @@ end
 
 (* prints dependencies list *)
 let print_task_dependencies (task: task_dep_node) : unit = begin
-  let ((taskname,(loc, _)), args) = task in
-  ignore(E.log "%s.%s:%d\n" taskname loc.file loc.line); 
+  let ((id, taskname, (loc, _)), args) = task in
+  ignore(E.log "%d:%s:%s:%d\n" id taskname loc.file loc.line); 
   List.iter 
     (fun arg ->
       let ((argname, _, _), dependencies) = arg in 
       ignore(E.log "\t%s\n" argname);
       List.iter 
         (fun dep -> 
-          let ((argname, _, _), (taskname, (loc, _))) = dep in
-            ignore(E.log "\tdep:%s in task:%s.%s:%d\n" argname taskname loc.file loc.line)
+          let ((argname, _, _), (id, taskname, (loc, _))) = dep in
+            ignore(E.log "\tdep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
         ) dependencies
     ) args
 
@@ -235,8 +204,9 @@ let isSafeArg (task: fundec) (argname: string) : bool =
 		[] -> true
 	| _ -> false
 
+
 let taskId (taskinf: task_descr) : string = 
-  let (taskname, (loc, _)) = taskinf in
+  let (_, taskname, (loc, _)) = taskinf in
   taskname^"_"^(string_of_int loc.line);
   taskname
 
@@ -279,7 +249,7 @@ end
 
 (* print taks and argument list  *)
 let print_task (task: task_type) : unit = begin
-   let ((taskname, _), args) = task in
+   let ((_, taskname, _), args) = task in
    ignore(E.log "task:%s\n" taskname);
    List.iter print_arg args;
 end

@@ -80,6 +80,7 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
 
 (* user interface *)
 let debug = ref false
+let debug_SDAM = ref true
 let debug_void = ref false
 let debug_one_effect = ref false
 let do_typing_stats = ref false
@@ -2435,7 +2436,7 @@ let handle_tpc_task il args loc: unit = begin
          	Sdam.addArg (varname, arg_typ, !currentFunction);
         | _ -> ignore(E.warn "SDAM:%a:Task annotation error!\n" d_loc loc);
         ) args);
-      Sdam.addTask vi.vname !currentFunction loc';
+      ignore(Sdam.addTask vi.vname !currentFunction loc');
 			| _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);
 end
 
@@ -2446,7 +2447,7 @@ let rec css_task_process_args typ args loc : unit = begin
 		match curr with
     	AIndex(ACons(varname, []), varsize) -> Sdam.addArg (varname, typ, !currentFunction); 		
 
-    | _ -> ignore(E.warn "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
+    | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
 	end;	
 	css_task_process_args typ rest loc
 end
@@ -2457,19 +2458,19 @@ let rec css_task_process io loc : unit = begin
       match curr with
         AStr("highpriority") -> (* simply ignore it *) ();
         | ACons(arg_typ, args) -> css_task_process_args arg_typ args loc
-        | _ -> ignore(E.warn "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
+        | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
     end;
     css_task_process rest loc
     | _ -> ();
 end
 
-let handle_css_task il args loc : unit =  begin
+let handle_css_task il args loc : task_descr =  begin
 	match il with 
   	Call(_, Lval((Var(vi), _)), _, loc) -> begin
 			css_task_process args loc;
-      Sdam.addTask vi.vname !currentFunction loc;
+      Sdam.addTask vi.vname !currentFunction loc
 		end
-  | _ -> ignore(E.warn "SDAM:%a:Ignoring pragma" d_loc loc);
+  | _ -> ignore(E.error "SDAM:%a:Ignoring pragma" d_loc loc); (0, "", (loc, !currentFunction)) (*FIXME: handle as exception *)
 end
 
 let handle_barrier stmt 
@@ -2477,13 +2478,6 @@ let handle_barrier stmt
                  	 (input_phi: phi)
                  	 (input_effect: effect) : gamma = begin
 	ignore(E.log "handle_barrier: under construction\n");
-(*let phi_before = input_phi in
-  let phi_barrier = make_phi "Barrier" CF.PhiBarrier in
-  let phi_after = make_phi "afterBarrier" CF.PhiVar in
-  CF.phi_flows phi_barrier phi_before;
-  CF.phi_flows phi_before phi_after;
-  CF.phi_flows phi_before phi_barrier; 
-	(input_env, phi_after, input_effect) *)
 	(input_env, input_phi, input_effect)     
 end
 
@@ -3042,7 +3036,7 @@ and type_stmt_list g stmts : gamma =
   List.fold_left f g stmts
 
 and type_stmt (env, phi, eff) stmt : gamma =
-  if !debug then ignore(E.log "typing statement %a\n" d_stmt stmt);
+  if !debug then ignore(E.log "SDAM: typing statement %a\n" d_stmt stmt);
   if !do_uniq then current_uniqueness := Uniq.get_stmt_state stmt;
   set_goto_target env phi eff stmt;
   let (env,phi,eff) = Hashtbl.find env.goto_tbl stmt in
@@ -3052,28 +3046,60 @@ and type_stmt (env, phi, eff) stmt : gamma =
 			(match stmt.pragmas with
 				[]	->	List.fold_left
         (type_instr ) (env, phi, eff) il
-			|	(pragma::rest) -> begin 
+			|	(pragma::rest) -> (
 				match pragma with 
-					(Attr("tpc_wait_all", _), _) -> begin 
-						ignore(E.log "Ptdepa: Barrier found!\n"); 
-						(*handle_barrier stmt env phi eff;*)
+					(Attr("tpc_wait_all", _), _) -> (
+						if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
 						let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
 						CF.phi_flows phi barrier_phi;
+						CF.starting_phis := barrier_phi::!CF.starting_phis;
 						(env, barrier_phi, eff)					
-					end
-				| (Attr("tpc", args), loc) -> handle_tpc_task (List.hd il) args loc; (* this is for legacy tpc support *)
-																			(env, phi, eff)
-				|	(Attr("css", args), loc) -> begin
-					match (List.hd args) with 
-						AStr("task") ->	handle_css_task (List.hd il) args loc
-					| _ -> ignore(E.warn "Ptdepa:%a:Ignoring pragma!\n" d_loc loc);
-					end;
-					let task_phi = make_phi "Task" CF.PhiTask in
+					)
+				| (Attr("tpc", args), loc) -> (
+					handle_tpc_task (List.hd il) args loc; (* this is for legacy tpc support *)
+					(env, phi, eff) (* FIXME: add support for barrier analysis*)
+				)					
+				| (Attr("css", ACons("start", _)::_), loc) -> (
+					if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
+					(env, phi, eff) (* TODO: handle css start  *)  		
+				)
+				| (Attr("css", AStr("finish")::_), loc) -> (
+					if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
+					let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+					CF.phi_flows phi barrier_phi;
+					CF.starting_phis := barrier_phi::!CF.starting_phis;
+					(env, barrier_phi, eff)		
+				)
+				| (Attr("css", AStr("wait")::rest), loc) -> (
+					match rest with 
+          	ACons("on", exps)::_ -> (
+						ignore(E.warn "Wait on task analysis not supported yet...\n"); 
+						(env, phi, eff)
+					)
+        	| AStr("all")::_ -> (
+						if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+						let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+						CF.phi_flows phi barrier_phi;
+						CF.starting_phis := barrier_phi::!CF.starting_phis;
+						(env, barrier_phi, eff)	
+					| _ -> ( 
+						ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
+						(env, phi, eff)
+					)
+				) 
+				|	(Attr("css", AStr("task")::args), loc) -> (
+					if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
+					let task_d = (handle_css_task (List.hd il) args loc) in	
+					let task_phi = make_phi "Task" (CF.PhiTask task_d) in
 					CF.phi_flows phi task_phi;
+					CF.starting_phis := task_phi::!CF.starting_phis;
 					(env, task_phi, eff)
-				| (_, loc) -> ignore(E.warn "Ptdepa:%a:Ignoring pragma!\n" d_loc loc);
+				)
+				| (_, loc) -> ( 
+					ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
 					(env, phi, eff)
-			end) in
+				)
+			)) in
       List.fold_left
         (type_instr ) (env', phi', eff') il		
 		end	

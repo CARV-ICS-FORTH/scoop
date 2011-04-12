@@ -2,8 +2,8 @@ open Cil
 
            (* argname * in/out type * fundec *)
 type arg_type = (string * string * fundec) (* FIXME:fundec is the global one, note the function it belogs to *)
-          (* (taskname * (callsiteloc * taskscope)) *) 
-and task_descr = (string * (location * fundec))
+          (* (id * taskname * (callsiteloc * taskscope)) *) 
+and task_descr = (int * string * (location * fundec))
           (* (task scope * taskname) * argument list *)
 and task_type = (task_descr * arg_type list) 
                       (* parent task_descr  *)
@@ -21,6 +21,11 @@ val args_l : arg_type list ref
   of depended arguments *)
 val task_dep_l : task_dep_node list ref
 
+(** Utility functions **)
+
+(* return a string representation for a Cil.location *)
+val location_to_string : location -> string
+
 (** SDAM API **)
 (*
  * first collect all task arguments, then 
@@ -28,15 +33,10 @@ val task_dep_l : task_dep_node list ref
  * the collected arguments (args will then
  * be then reset)
  *)
-val addTask : string -> fundec -> location -> unit
+val addTask : string -> fundec -> location -> task_descr
 
  
 (* use to collect arguments *)
 val addArg : arg_type -> unit
 
 
-
-(** Utility functions **)
-
-(* return a string representation for a Cil.location *)
-val location_to_string : location -> string

@@ -47,7 +47,7 @@ type phi_kind =
   | PhiForked
   | PhiPacked
 	| PhiBarrier
-	| PhiTask
+	| PhiTask of Sdam.task_descr
   | PhiNewlock of Labelflow.lock
   | PhiAcquire of Labelflow.lock
   | PhiRelease of Labelflow.lock

@@ -112,7 +112,7 @@ type phi_kind =
   | PhiForked
   | PhiPacked
 	| PhiBarrier
-	| PhiTask
+	| PhiTask of Sdam.task_descr
   | PhiNewlock of LF.lock
   | PhiAcquire of LF.lock
   | PhiRelease of LF.lock
@@ -712,7 +712,7 @@ module MakeForwardsAnalysis =
     let get_or_create_state (p: phi) : state option =
       try
         Some (PhiHT.find A.state_before_phi p)
-      with Not_found -> A.starting_state p
+      with Not_found -> ignore(E.log "did not find a state before...\n"); A.starting_state p
 
     let set_or_merge_state (p: phi) (s: state) : unit = begin
       let s' = 
