@@ -3082,6 +3082,7 @@ and type_stmt (env, phi, eff) stmt : gamma =
 						CF.phi_flows phi barrier_phi;
 						CF.starting_phis := barrier_phi::!CF.starting_phis;
 						(env, barrier_phi, eff)	
+						)
 					| _ -> ( 
 						ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
 						(env, phi, eff)
