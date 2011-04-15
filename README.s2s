@@ -99,7 +99,7 @@ OPTIONS
 
 #FIXME# to god x86 exei queue?
   --queue-size
-          Specify the queue size for Cell. The value must much the one defined
+          Specify the queue size for Cell. The value must match the one defined
           in the Makefile as MAX_QUEUE_ENTRIES
 
   --block-size
