@@ -223,7 +223,11 @@ let rec s2s_process_args typ args =
       let tmp_size = attrParamToExp varsize !ppc_file in
       (varname, ((translate_arg typ false),
           tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
-(* TODO add support for optional sizes example inta would have size of sizeof(inta) *)
+    (* support optional sizes example int_a would have size of sizeof(int_a) *)
+    | (ACons(varname, [])::rest) ->
+      let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
+      (varname, ((translate_arg typ false),
+          tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
 (*         | handle strided... *)
     | [] -> []
     | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)\n" typ); []
@@ -657,6 +661,7 @@ let feature : featureDescr =
           preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
                                       !arch !tpcIncludePath;
         );
+
 (*
         Cil.iterGlobals !ppc_file 
           (function
@@ -667,8 +672,9 @@ let feature : featureDescr =
           )
         ;
 *)
+
         (* kasas was here :P *)
-         Ptdepa.find_dependencies f;
+        Ptdepa.find_dependencies f;
 
         Cil.iterGlobals !ppc_file 
           (function
