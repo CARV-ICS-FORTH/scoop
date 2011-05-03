@@ -34,7 +34,7 @@
  *)
 
 open Cil
-open S2s_util
+open Scoop_util
 module L = List
 module E = Errormsg
 
@@ -237,7 +237,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
     for x86*)
-  f_new.sbody.bstmts <- List.map (fun s -> S2s_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
+  f_new.sbody.bstmts <- List.map (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
 
   incr func_id;
   f_new

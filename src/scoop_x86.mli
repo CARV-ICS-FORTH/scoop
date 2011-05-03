@@ -39,5 +39,5 @@ val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string ->
     string -> string -> unit
 
 val make_tpc_func : Cil.varinfo -> Cil.exp list ->
-    (string * (S2s_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
+    (string * (Scoop_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
     Cil.file ref -> Cil.file ref -> Cil.fundec

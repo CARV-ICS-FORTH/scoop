@@ -37,9 +37,9 @@
 open Pretty
 open Cil
 open Lockutil
-open S2s_util
-open S2s_x86
-open S2s_cell
+open Scoop_util
+open Scoop_x86
+open Scoop_cell
 module E = Errormsg
 module H = Hashtbl
 module S = Str
@@ -49,9 +49,9 @@ module CG = Callgraph
 module Lprof = Lockprofile
 
 (* defining some Trace shortcuts *)
-let trace = T.trace "s2s"
-let tracei = T.tracei "s2s"
-let traceu = T.traceu "s2s"
+let trace = T.trace "scoop"
+let tracei = T.tracei "scoop"
+let traceu = T.traceu "scoop"
 
 (* defining globals *)
 let queue_size = ref "0"
@@ -75,51 +75,51 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " S2S: Define the target runtime/architecture (x86/cell/cellgod).";
+      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod).";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
-      " S2S: Define the flags you want to pass to gcc.";
+      " SCOOP: Define the flags you want to pass to gcc.";
 
     "--tpcIncludePath",
       Arg.String(fun s -> tpcIncludePath := s),
-      " S2S: Define the include path for the tpc runtime.";
+      " SCOOP: Define the include path for the tpc runtime.";
 
-    "--debugS2S",
+    "--debugSCOOP",
       Arg.Set(debug),
-      " S2S: Print debugging information.";
+      " SCOOP: Print debugging information.";
 
     "--trace",
       Arg.Set(dotrace),
-      " S2S: Trace s2s compiler.";
+      " SCOOP: Trace scoop compiler.";
 
     "--out-name",
       Arg.String(fun s -> out_name := s),
-      " S2S: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
+      " SCOOP: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
 
     "--queue-size",
       Arg.String(fun s -> queue_size := s),
-      " S2S: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
+      " SCOOP: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
 
     "--block-size",
-      Arg.Int(fun s -> S2s_x86.block_size := s),
-      " S2S: Specify the block size for the ADAM runtime. Defined in the Makefile as BLOCK_SZ";
+      Arg.Int(fun s -> Scoop_x86.block_size := s),
+      " SCOOP: Specify the block size for the ADAM runtime. Defined in the Makefile as BLOCK_SZ";
 
     "--with-stats",
       Arg.Set(stats),
-      " S2S: Enable code for statistics, for use with -DSTATISTICS";
+      " SCOOP: Enable code for statistics, for use with -DSTATISTICS";
 
     "--with-unaligned-arguments",
       Arg.Set(unaligned_args),
-      " S2S: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
+      " SCOOP: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";
 
     "--with-blocking",
       Arg.Set(blocking),
-      " S2S: Enable bocking arguemts. for use with -DBLOCKING";
+      " SCOOP: Enable bocking arguemts. for use with -DBLOCKING";
 
     "--threaded",
       Arg.Set(thread),
-      " S2S: Generate thread safe code, for use with -DTPC_MULTITHREADED";
+      " SCOOP: Generate thread safe code, for use with -DTPC_MULTITHREADED";
   ]
 
 (* create 1 global list (the spe output file) *)
@@ -145,7 +145,7 @@ let rec ptdepa_process = function
       | ACons(arg_typ, args) -> (
         tracei (dprintf "pushing args of function %s to ptdepa!\n" (!currentFunction).svar.vname);
         ptdepa_process_args arg_typ args;
-        T.traceOutdent "s2s"
+        T.traceOutdent "scoop"
       )
       | _ -> ignore(E.warn "Syntax error in #pragma tpc task\n");
     ptdepa_process rest
@@ -185,7 +185,7 @@ class findTaggedCalls = object
                       Ptdepa.addArg (varname, arg_typ, !currentFunction);
                   | _ -> ignore(E.error "You have done something wrong at %a\n" d_loc loc); assert false
                 ) args);
-                T.traceOutdent "s2s";
+                T.traceOutdent "scoop";
                 trace (dprintf "adding task %s to ptdepa\n" vi.vname);
                 Ptdepa.addTask vi.vname !currentFunction loc;
               )
@@ -217,24 +217,24 @@ end
 *)
 
 (* parses the #pragma css task arguments *)
-let rec s2s_process_args typ args =
+let rec scoop_process_args typ args =
   match args with
     (AIndex(ACons(varname, []), varsize)::rest) ->
       let tmp_size = attrParamToExp varsize !ppc_file in
       (varname, ((translate_arg typ false),
-          tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
+          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
     | (ACons(varname, [])::rest) ->
       let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
       (varname, ((translate_arg typ false),
-          tmp_size, tmp_size, tmp_size))::(s2s_process_args typ rest)
+          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest)
 (*         | handle strided... *)
     | [] -> []
     | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)\n" typ); []
 
-let rec s2s_process = function
-  | (AStr("highpriority")::rest) -> s2s_process rest
-  | (ACons(arg_typ, args)::rest) -> (s2s_process_args arg_typ args)@(s2s_process rest)
+let rec scoop_process = function
+  | (AStr("highpriority")::rest) -> scoop_process rest
+  | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args)@(scoop_process rest)
   | [] -> []
   | _ -> ignore(E.warn "Syntax error in #pragma css task\n"); []
 
@@ -292,9 +292,9 @@ class findSPUDeclVisitor cgraph = object
         Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
           (* select the function to create the custom tpc_calls *)
           let make_tpc_funcf = match !arch with
-              "cell" -> S2s_cell.make_tpc_func
-            | "cellgod" -> S2s_cellgod.make_tpc_func
-            | _ ->  S2s_x86.make_tpc_func in
+              "cell" -> Scoop_cell.make_tpc_func
+            | "cellgod" -> Scoop_cellgod.make_tpc_func
+            | _ ->  Scoop_x86.make_tpc_func in
 
           match (List.hd prags) with 
             (Attr("tpc", args), _) -> (
@@ -368,7 +368,7 @@ class findSPUDeclVisitor cgraph = object
                   match s.skind with 
                     Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
                       let funname = vi.vname in
-                      let args = s2s_process rest in
+                      let args = scoop_process rest in
                       ignore(E.log "Found task \"%s\"\n" funname);
                       let rest_f new_fd = 
                         (* add arguments to the call *)
@@ -611,8 +611,8 @@ let feature : featureDescr =
     fd_doit = 
     (function (f: file) ->
       if !dotrace then
-        Trace.traceAddSys "s2s";
-      ignore(E.log "Welcome to S2S!!!\n");
+        Trace.traceAddSys "scoop";
+      ignore(E.log "Welcome to SCOOP!!!\n");
       if (!arch = "unknown") then
         ignore(E.error "No architecture specified. Exiting!\n")
       else if (!arch = "cell" && !queue_size = "0") then
@@ -639,7 +639,7 @@ let feature : featureDescr =
         if (!stats) then
           def := " -DSTATISTICS=1"^(!def);
         if (!arch = "x86") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DX86tpc=1"^(!def))
+          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DX86tpc=1"^(!def))
                                       !arch !tpcIncludePath;
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
@@ -650,15 +650,15 @@ let feature : featureDescr =
             def := " -DMAX_QUEUE_ENTRIES="^(!queue_size)^(!def);
           );
 
-          (* Defined in s2s_util *)
-          preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DPPU=1"^(!def))
+          (* Defined in scoop_util *)
+          preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(!def))
                                       !arch !tpcIncludePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/s2s/tpc_s2s.h") (" -DSPU=1"^(!def))
+          preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(!def))
                                       !arch !tpcIncludePath;
         );
 
@@ -712,7 +712,7 @@ let feature : featureDescr =
         (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
         (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
 
-(*         S2s_rmtmps.removeUnused !ppc_file; *)
+(*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
   (*       !spu_file.globals <- !spu_glist; *)
         writeFile !spu_file;

@@ -24,11 +24,11 @@ LOCKSMITH_MODULES = \
 	barrierstate \
 	ptatype \
 	ptdepa \
-	s2s_util \
-	s2s_x86 \
-	s2s_cell \
-	s2s_cellgod \
-#	s2s_rmtmps \
+	scoop_util \
+	scoop_x86 \
+	scoop_cell \
+	scoop_cellgod \
+#	scoop_rmtmps \
 #	lockpick \
 #	locksmith \
 #	stmizer

@@ -34,7 +34,7 @@
  *)
 
 open Cil
-open S2s_util
+open Scoop_util
 module E = Errormsg
 module L = List
 
@@ -124,7 +124,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     (args: (string * (arg_t * exp * exp * exp )) list)
     (f: file ref) (spu_file: file ref) : fundec = begin
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
-  let skeleton = S2s_util.find_function_fundec (!f) "tpc_call_tpcAD65" in
+  let skeleton = Scoop_util.find_function_fundec (!f) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
@@ -168,7 +168,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
       let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
         (* local_arg <- argument description *)
         instrs := (doArgument i local_arg avail_task tmpvec f_new arg 
-                    !S2s_util.stats !spu_file )@(!instrs);
+                    !Scoop_util.stats !spu_file )@(!instrs);
     done;
   );
 

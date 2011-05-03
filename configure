@@ -3,9 +3,9 @@ ROOT=`pwd`
 cd cil
 #autoconf
 ./configure EXTRASRCDIRS="$ROOT/src" \
-  EXTRAFEATURES="s2s"
+  EXTRAFEATURES="scoop"
 cd ..
-files="locksmith lockpick s2s"
+files="locksmith lockpick scoop"
 for i in $files
 do
 	cat $i.in | sed -e "s.ROOT.$ROOT." > $i
