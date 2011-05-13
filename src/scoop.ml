@@ -674,7 +674,8 @@ let feature : featureDescr =
 *)
 
         (* kasas was here :P *)
-        Ptdepa.find_dependencies f;
+        if (!arch = "cellgod") then
+          (Ptdepa.find_dependencies f);
 
         Cil.iterGlobals !ppc_file 
           (function

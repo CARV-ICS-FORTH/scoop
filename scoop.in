@@ -4,11 +4,11 @@ export CILLY_DONT_COMPILE_AFTER_MERGE=1
 export CILLY_DONT_LINK_AFTER_MERGE=1
 flags=""
 
-if [ "$1" == "--arch=cell" ]; then
-  flags+="-I./include/ppu/ -D__powerpc64__=1"
-fi
+#if [ "$1" == "--runtime=cell" ]; then
+#  flags+="-I./include/ppu/ -D__powerpc64__=1"
+#fi
 
 ROOT/cil/bin/cilly --commPrintLn --bytecode --merge $flags $*
-# ROOT/cil/bin/cilly --commPrintLn --bytecode --merge -I./include/ppu/ -D__powerpc64__=1 --arch=cell --queue-size=16 $*
-# ROOT/cil/bin/cilly --commPrintLn --bytecode --merge --arch=x86 --queue-size=4 --block_size=16 $*
+# ROOT/cil/bin/cilly --commPrintLn --bytecode --merge -I./include/ppu/ -D__powerpc64__=1 --runtime=cell --queue-size=16 $*
+# ROOT/cil/bin/cilly --commPrintLn --bytecode --merge --runtime=x86 --queue-size=4 --block_size=16 $*
 rm /tmp/_cil_rewritten_tmp.h

@@ -47,7 +47,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let actual_arg = List.nth fd.sformals i in
   let arg_addr = (
     if (isScalar actual_arg) then
-      AddrOf( var actual_arg)
+      mkAddrOf (var actual_arg)
     else
       Lval( var actual_arg)
   ) in
@@ -81,7 +81,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
   let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
   let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
-  il := Set(tmpvec, CastE(vector_uchar_p, AddrOf(av_task_arg_idx)) , locUnknown)::!il;
+  il := Set(tmpvec, mkCast (mkAddrOf av_task_arg_idx) (vector_uchar_p) , locUnknown)::!il;
 
   (*TODO: if !stats then
      if( TPC_IS_STRIDEARG(arg_flag) ) {
@@ -91,9 +91,10 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
      }
      total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag));*)
 
+(*   let local_arg_idx = addOffsetLval (Index(integer i,NoOffset)) local_arg in *)
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
   let eal = mkFieldAccess local_arg "eal" in
-  il := Set(eal, CastE(find_type spu_file "uint32_t", arg_addr), locUnknown)::!il;
+  il := Set(eal, mkCast arg_addr (find_type spu_file "uint32_t"), locUnknown)::!il;
   let size = mkFieldAccess local_arg "size" in
   if (is_strided arg_type) then (
     let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
@@ -112,7 +113,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let flag = mkFieldAccess local_arg "flag" in
   il:= Set(flag, arg_t2integer arg_type, locUnknown)::!il;
   (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
-  let casted_la = CastE(vector_uchar_p, AddrOf(local_arg)) in
+  let casted_la = mkCast (mkAddrOf local_arg) vector_uchar_p in
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
   !il
 )
@@ -148,12 +149,14 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
 
   let avail_task = var (findLocal f_new "avail_task") in
   let instrs : instr list ref = ref [] in
+  let uint8_t = find_type !spu_file "uint8_t" in
   (* avail_task->funcid = (uint8_t)funcid; *)
   instrs := Set (mkPtrFieldAccess avail_task "funcid",
-  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown):: !instrs;
+  mkCast (integer !func_id) uint8_t, locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
+  let args_num_i = integer (args_num+1) in
   instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
-  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;
+  mkCast args_num_i uint8_t, locUnknown)::!instrs;
   
   (* if we have arguments *)
   if (f_new.sformals <> []) then (
@@ -161,7 +164,9 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
     let tmpvec = var (makeLocalVar f_new "tmpvec" vector_uchar_p) in
     (* struct tpc_arg_element local_arg *)
-    let local_arg = var (makeLocalVar f_new "local_arg" (find_tcomp !spu_file "tpc_arg_element")) in
+    let arg_typ = (find_tcomp !spu_file "tpc_arg_element") in
+(*     let arr_typ = TArray(arg_typ, Some(args_num_i), []) in *)
+    let local_arg = var (makeLocalVar f_new "local_arg" arg_typ) in
     for i = 0 to args_num do
       let ex_arg = (List.nth oargs i) in
       let name = getNameOfExp ex_arg in
