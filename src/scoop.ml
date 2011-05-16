@@ -342,9 +342,9 @@ class findSPUDeclVisitor cgraph = object
                 rest new_fd
               with Not_found -> (
                 let rest2 var_i = 
-                  let new_fd = make_tpc_funcf var_i oargs args' ppc_file spu_file in
+                  let (new_fd, args) = make_tpc_funcf var_i oargs args' ppc_file spu_file in
                   add_after_s !ppc_file var_i.vname new_fd;
-                  spu_tasks := (funname, (new_fd, var_i, args'))::!spu_tasks;
+                  spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
                   rest new_fd in
                 (* try to find the function definition *)
                 try
@@ -423,11 +423,11 @@ class findSPUDeclVisitor cgraph = object
                         ChangeTo(call) in
                       try
                         (* check if we have seen this function before *)
-                        let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
+                        let (new_fd, _, _) = List.assoc funname !spu_tasks in
                         rest_f new_fd
                       with Not_found -> (
                         let rest_f2 var_i = 
-                          let new_fd = make_tpc_funcf var_i oargs args ppc_file spu_file in
+                          let (new_fd, args) = make_tpc_funcf var_i oargs args ppc_file spu_file in
                           add_after_s !ppc_file var_i.vname new_fd;
                           spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
                           rest_f new_fd in
@@ -456,139 +456,6 @@ class findSPUDeclVisitor cgraph = object
         | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
     ) else 
       DoChildren
-end
-
-let make_case execfun (task: varinfo) (task_info: varinfo)
-              (ex_task: varinfo) (args: arg_descr list): stmt = begin
-  let res = ref [] in
-  assert(isFunctionType task.vtype);
-  let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
-  assert(not hasvararg);
-  let argl = match arglopt with None -> [] | Some l -> l in
-  let argaddr = makeTempVar execfun voidPtrType in
-  if (!arch = "cell") then
-    res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
-(*  else begin
-    res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "local"), locUnknown) :: !res;
-  end*)
-  let nextaddr n stride =
-    if (!arch = "cell") then begin (* Cell *)
-      let lv = mkPtrFieldAccess (var ex_task) "arguments" in
-      let t = typeOfLval lv in
-      assert(isArrayType t);
-      let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
-      let szlv = mkFieldAccess idxlv "size" in
-      let plus = 
-        if (stride) then
-          (* next = previous + ((ex_task->arguments[pre].size >>16U)
-                          *(ex_task->arguments[pre].size & 0x0FFFFU)) *)
-          let els = BinOp(Shiftrt, Lval(szlv), integer 16, intType) in
-          let elsz = BinOp(BAnd, Lval(szlv), integer 0x0FFFF, intType) in
-          (BinOp(PlusPI, (Lval(var argaddr)), BinOp(Mult, els, elsz,intType), voidPtrType))
-        else
-          (* next = previous + ex_task->arguments[pre].size *)
-          (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType))
-      in
-      Set(var argaddr, plus, locUnknown);
-    end else begin (* X86 *)
-      let lv = mkPtrFieldAccess (var task_info) "local" in
-      let t = typeOfLval lv in
-      assert(isArrayType t);
-      let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
-      Set(var argaddr, Lval(idxlv), locUnknown);
-    end
-  in
-  let i = ref 0 in
-  let carry = ref dummyInstr in
-  let arglist = List.map
-    (fun (_, argt, _) ->
-      let argvar = makeTempVar execfun argt in
-      let rec castexp atyp = match atyp with
-        TInt(_, _)
-        | TFloat(_, _)
-        | TEnum(_, _)
-        | TComp(_, _) -> 
-          CastE(argt, Lval(mkMem (CastE( TPtr(argt, []), Lval(var argaddr))) NoOffset))
-        | TNamed(_, _) -> castexp (unrollType atyp)
-        | _ -> CastE(argt, Lval(var argaddr))
-      in
-      let castinstr = Set(var argvar, castexp argt, locUnknown) in
-      let arg_type = get_arg_type (List.nth args !i) in
-      let advptrinstr = nextaddr !i (is_strided arg_type) in
-      incr i;
-      if !carry <> dummyInstr then res := !carry::!res;
-      carry := advptrinstr;
-      res := castinstr :: !res;
-      Lval(var argvar)
-    )
-    argl
-  in
-  res := Call (None, Lval (var task), arglist, locUnknown)::!res;
-  mkStmt (Instr (L.rev !res))
-end
-(*
-    case 0:
-      //printf("SPU: Dispatch (%p) (%d,%d,%p)\n", task_info->ls_addr,
-//          task_info->state, task_info->dmatag, task_info->dmalist);
-      arg1 = (float * )task_info->ls_addr;
-      arg2 = (float * )((void * )arg1 + ex_task->arguments[0].size);
-      arg3 = (int * )((void * )arg2 + ex_task->arguments[1].size);
-      matrix_add_row(arg1, arg2, arg3);
-      task_info->state = EXECUTED; no need for it in every case
-                                      moved it out of the swith
-      break;
-*)
-
-(* Make the execute_func function that branches on the task id and
- * calls the actual task function on the spe *)
-let make_exec_func (f: file) (tasks: (fundec * varinfo * arg_descr list) list) : global = begin
-  (* make the function *)
-  let exec_func = emptyFunction "execute_task" in
-  exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
-(*  (* make "queue_entry_t * volatile  ex_task" *)
-  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in*)
-  (* make "queue_entry_t * ex_task" *)
-  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [])) in
-  (* make "tpc_spe_task_state_t task_info" *)
-  let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
-  (* make an int variable for the return value *)
-  let lexit = makeLocalVar exec_func "exit" intType in
-  (* make a switch statement with one case per task starting from zero *)
-  let id = ref 0 in
-  let switchcases = List.map
-    (fun (tpc_call, task, fargs) ->
-      let c = Case (integer !id, locUnknown) in
-      incr id;
-      let body = make_case exec_func task task_info ex_task fargs in
-      (* add the arguments' declarations *)
-      body.labels <- [c];
-      let stmt_list = [body; mkStmt (Break locUnknown)] in
-      stmt_list
-    )
-    tasks
-  in
-  let cases = List.map List.hd switchcases in
-  (* default: exit=1; break; *)
-  let assignment = mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
-  assignment.labels <- [Default(locUnknown)];
-  let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
-  (* exit=0; *)
-  let exit0 = mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
-  (* return exit; *)
-  let retstmt = mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
-
-  (* the case expression of the switch statement (switch(expr)) *)
-  let expr = Lval(mkPtrFieldAccess (var ex_task) "funcid") in
-  let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
-  (* get the task_state enuminfo *)
-  let task_state_enum = find_enum !spu_file "task_state" in
-  (* task_info->state = EXECUTED no need for it in every case *)
-  let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
-  let executed = find_executed task_state_enum.eitems in
-  let exec_s = mkStmtOneInstr(Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)) in
-  (* the function body: exit = 0; switch (taskid); return exit; *)
-  exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
-  GFun (exec_func, locUnknown)
 end
 
 let feature : featureDescr = 
@@ -693,7 +560,7 @@ let feature : featureDescr =
 
 
         (* tasks  (new_tpc * old_original * args) *)
-        let tasks : (fundec * varinfo * arg_descr list) list = List.map
+        let tasks : (fundec * varinfo * (int * arg_descr) list) list = List.map
           (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
           (L.rev !spu_tasks)
         in

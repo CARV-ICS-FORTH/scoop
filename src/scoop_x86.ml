@@ -183,8 +183,8 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
 let make_tpc_func (func_vi: varinfo) (oargs: exp list)
-    (args: (string * (arg_t * exp * exp * exp )) list)
-    (f:file ref) (spu_file:file ref) : fundec = (
+    (args: arg_descr list) (f: file ref) (spu_file: file ref)
+    : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
@@ -240,5 +240,5 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   f_new.sbody.bstmts <- List.map (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) f_new.sbody.bstmts;
 
   incr func_id;
-  f_new
+  (f_new, [])
 )

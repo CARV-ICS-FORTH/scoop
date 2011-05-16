@@ -35,4 +35,8 @@
 
 val make_tpc_func : Cil.varinfo -> Cil.exp list ->
     (string * (Scoop_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
-    Cil.file ref -> Cil.file ref -> Cil.fundec
+    Cil.file ref -> Cil.file ref ->
+    (Cil.fundec * (int * Scoop_util.arg_descr) list)
+
+val make_exec_func : Cil.file ->
+    (Cil.fundec * Cil.varinfo * (int * Scoop_util.arg_descr) list) list -> Cil.global

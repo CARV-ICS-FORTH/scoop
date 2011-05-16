@@ -398,7 +398,7 @@ let mkPtrFieldAccess lv fieldname =
   addOffsetLval (Field (field, NoOffset)) (mkMem (Lval lv) NoOffset)
 
 (* Defines the Task_table for the spu file *)
-let make_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
+let make_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar "Task_table" type' in
@@ -418,7 +418,7 @@ let make_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global 
 )
 
 (* Defines the Task_table for the ppu file *)
-let make_null_task_table (tasks : (fundec * varinfo * arg_descr list) list) : global = (
+let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar "Task_table" type' in

@@ -41,17 +41,152 @@ module L = List
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
+let comparator (a: (int * exp)) (b: (int * exp)) : int =
+  let (a_i, _) = a in
+  let (b_i, _) = b in
+  if (a_i = b_i) then 0
+  else if (a_i > b_i) then 1
+  else (-1)
+
+let make_case execfun (task: varinfo) (task_info: varinfo)
+              (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
+  let res = ref [] in
+  assert(isFunctionType task.vtype);
+  let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
+  assert(not hasvararg);
+  let argl = match arglopt with None -> [] | Some l -> l in
+  let argaddr = makeTempVar execfun voidPtrType in
+  res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
+(*  else begin
+    res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "local"), locUnknown) :: !res;
+  end*)
+  let nextaddr n stride =
+    let lv = mkPtrFieldAccess (var ex_task) "arguments" in
+    let t = typeOfLval lv in
+    assert(isArrayType t);
+    let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
+    let szlv = mkFieldAccess idxlv "size" in
+    let plus = 
+      if (stride) then
+        (* next = previous + ((ex_task->arguments[pre].size >>16U)
+                        *(ex_task->arguments[pre].size & 0x0FFFFU)) *)
+        let els = BinOp(Shiftrt, Lval(szlv), integer 16, intType) in
+        let elsz = BinOp(BAnd, Lval(szlv), integer 0x0FFFF, intType) in
+        (BinOp(PlusPI, (Lval(var argaddr)), BinOp(Mult, els, elsz,intType), voidPtrType))
+      else
+        (* next = previous + ex_task->arguments[pre].size *)
+        (BinOp(PlusPI, (Lval(var argaddr)), Lval(szlv), voidPtrType))
+    in
+    Set(var argaddr, plus, locUnknown);
+  in
+  let i = ref 0 in
+  let carry = ref dummyInstr in
+  let args = L.rev args in
+  let arglist = List.map
+    (fun (_, argt, _) ->
+      let argvar = makeTempVar execfun voidPtrType in
+(*      let rec castexp atyp = match atyp with
+        TInt(_, _)
+        | TFloat(_, _)
+        | TEnum(_, _)
+        | TComp(_, _) -> 
+          CastE(argt, Lval(mkMem (CastE( TPtr(argt, []), Lval(var argvar))) NoOffset))
+        | TNamed(_, _) -> castexp (unrollType atyp)
+        | _ -> CastE(argt, Lval(var argvar))
+      in*)
+      let castinstr = Set(var argvar, Lval(var argaddr), locUnknown) in
+      let (place, (name, (arg_type, _, _, _))) = (List.nth args !i) in
+      let advptrinstr = nextaddr !i (is_strided arg_type) in
+      incr i;
+      if !carry <> dummyInstr then res := !carry::!res;
+      carry := advptrinstr;
+      res := castinstr :: !res;
+      (place, Lval(var argvar))
+    )
+    argl
+  in
+  let arglist = L.sort comparator arglist in
+  let (_, arglist) = L.split arglist in
+  res := Call (None, Lval (var task), arglist, locUnknown)::!res;
+  mkStmt (Instr (L.rev !res))
+)
+(*
+    case 0:
+      //printf("SPU: Dispatch (%p) (%d,%d,%p)\n", task_info->ls_addr,
+//          task_info->state, task_info->dmatag, task_info->dmalist);
+      arg1 = (float * )task_info->ls_addr;
+      arg2 = (float * )((void * )arg1 + ex_task->arguments[0].size);
+      arg3 = (int * )((void * )arg2 + ex_task->arguments[1].size);
+      matrix_add_row(arg1, arg2, arg3);
+      task_info->state = EXECUTED; no need for it in every case
+                                      moved it out of the swith
+      break;
+*)
+
+(* Make the execute_func function that branches on the task id and
+ * calls the actual task function on the spe *)
+let make_exec_func (f: file)
+  (tasks: (fundec * varinfo * (int * arg_descr) list) list) : global = (
+  (* make the function *)
+  let exec_func = emptyFunction "execute_task" in
+  exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
+(*  (* make "queue_entry_t * volatile  ex_task" *)
+  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in*)
+  (* make "queue_entry_t * ex_task" *)
+  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [])) in
+  (* make "tpc_spe_task_state_t task_info" *)
+  let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
+  (* make an int variable for the return value *)
+  let lexit = makeLocalVar exec_func "exit" intType in
+  (* make a switch statement with one case per task starting from zero *)
+  let id = ref 0 in
+  let switchcases = List.map
+    (fun (tpc_call, task, fargs) ->
+      let c = Case (integer !id, locUnknown) in
+      incr id;
+      let body = make_case exec_func task task_info ex_task fargs in
+      (* add the arguments' declarations *)
+      body.labels <- [c];
+      let stmt_list = [body; mkStmt (Break locUnknown)] in
+      stmt_list
+    )
+    tasks
+  in
+  let cases = List.map List.hd switchcases in
+  (* default: exit=1; break; *)
+  let assignment = mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
+  assignment.labels <- [Default(locUnknown)];
+  let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
+  (* exit=0; *)
+  let exit0 = mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
+  (* return exit; *)
+  let retstmt = mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
+
+  (* the case expression of the switch statement (switch(expr)) *)
+  let expr = Lval(mkPtrFieldAccess (var ex_task) "funcid") in
+  let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
+  (* get the task_state enuminfo *)
+  let task_state_enum = find_enum f "task_state" in
+  (* task_info->state = EXECUTED no need for it in every case *)
+  let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
+  let executed = find_executed task_state_enum.eitems in
+  let exec_s = mkStmtOneInstr(Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)) in
+  (* the function body: exit = 0; switch (taskid); return exit; *)
+  exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
+  GFun (exec_func, locUnknown)
+)
+
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
- (arg: arg_descr) (stats: bool) (spu_file: file): instr list = (
-  let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i)))) in
-  let actual_arg = List.nth fd.sformals i in
+ (arg: (int * arg_descr)) (stats: bool) (spu_file: file): instr list = (
+  let (i_m, (_, (arg_type, _, _, _))) = arg in
+  let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i_m)))) in
+  let actual_arg = L.nth fd.sformals i_m in
   let arg_addr = (
     if (isScalar actual_arg) then
       mkAddrOf (var actual_arg)
     else
       Lval( var actual_arg)
   ) in
-  let arg_type = get_arg_type arg in
   let il = ref [] in
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
   if (stats) then (
@@ -118,13 +253,70 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   !il
 )
 
+(* takes an arg_descr list and sorts it according to the type of the arguments
+    input @ inout @ output *)
+let sort_args a b = 
+  let (_, (arg_typa, _, _, _)) = a in
+  let (_, (arg_typb, _, _, _)) = b in
+    (* if they are equal *)
+    if (arg_typa = arg_typb) then 0
+    (* if a is Out *)
+    else if (arg_typa = Out || arg_typa = SOut) then 1
+    (* if b is Out *)
+    else if (arg_typb = Out || arg_typb = SOut) then (-1)
+    (* if neither are Out and a is In *)
+    else if (arg_typa = In || arg_typa = SIn) then (-1)
+    else 1
+(*let sort_args (list_a: arg_descr list) =
+  let inp = ref [] in
+  let op = ref [] in
+  let io = ref [] in
+  let rec sort_args_r = function
+    | (arg::rest) -> (
+      let (_, (arg_typ, _, _, _)) = arg in
+      match arg_typ with
+          In
+        | SIn ->
+          inp := arg::(!inp);
+          sort_args_r rest
+        | Out
+        | SOut ->
+          op := arg::(!op);
+          sort_args_r rest
+        | InOut
+        | SInOut ->
+          io := arg::(!io);
+          sort_args_r rest
+    )
+    | [] -> (!inp)@(!io)@(!op)
+  in sort_args_r list_a*)
+
+(* assigns to each argument description its place in the original
+          argument list *)
+let number_args (args: arg_descr list) (oargs: exp list) =
+  L.map (fun arg ->
+      let (name, _) = arg in
+      let i = ref 0 in
+      ignore(L.exists (fun e ->
+        let ename=getNameOfExp e in
+        if (ename=name) then
+          true
+        else (
+          incr i;
+          false
+        )
+      ) oargs);
+      (!i, arg)
+  ) args
+
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
 let make_tpc_func (func_vi: varinfo) (oargs: exp list)
-    (args: (string * (arg_t * exp * exp * exp )) list)
-    (f: file ref) (spu_file: file ref) : fundec = begin
+    (args: arg_descr list) (f: file ref) (spu_file: file ref)
+    : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
+  let args = L.sort sort_args (L.rev args) in
   let skeleton = Scoop_util.find_function_fundec (!f) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
   f_new.sformals <- [];
@@ -132,14 +324,18 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   setFunctionTypeMakeFormals f_new func_vi.vtype;
   setFunctionReturnType f_new intType;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
-  let args_num = (List.length f_new.sformals)-1 in
-  if ( args_num > (List.length args) ) then (
+  let args_num = (L.length f_new.sformals)-1 in
+  if ( args_num > (L.length args) ) then (
     ignore(E.error "Number of arguments described in #pragma doesn't much the\
           number of arguments in the function declaration");
     assert false
   );
   for i = 0 to args_num do
-    let (_, (arg_type, _, _, _)) = List.nth args i in
+    let ex_arg = (L.nth oargs i) in
+    let name = getNameOfExp ex_arg in
+    let (_, (arg_type, _, _, _)) = L.find 
+      ( fun (vname, _) -> if( vname = name) then true else false)
+    args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
     if (is_strided arg_type) then (
       ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
@@ -158,6 +354,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
   mkCast args_num_i uint8_t, locUnknown)::!instrs;
   
+  let args_n =
   (* if we have arguments *)
   if (f_new.sformals <> []) then (
     (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
@@ -167,21 +364,29 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     let arg_typ = (find_tcomp !spu_file "tpc_arg_element") in
 (*     let arr_typ = TArray(arg_typ, Some(args_num_i), []) in *)
     let local_arg = var (makeLocalVar f_new "local_arg" arg_typ) in
-    for i = 0 to args_num do
-      let ex_arg = (List.nth oargs i) in
+    let args_n = number_args args oargs in
+    let i_n = ref (-1) in
+    let mapped = (L.map 
+      (fun arg -> incr i_n; doArgument !i_n local_arg avail_task tmpvec f_new arg 
+                    !Scoop_util.stats !spu_file )
+      args_n) in
+    instrs := (L.flatten mapped)@(!instrs);
+(*    for i = 0 to args_num do
+      let ex_arg = (L.nth oargs i) in
       let name = getNameOfExp ex_arg in
-      let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
+      let arg = L.find ( fun (vname, _) -> if( vname = name) then true else false) args in
         (* local_arg <- argument description *)
         instrs := (doArgument i local_arg avail_task tmpvec f_new arg 
                     !Scoop_util.stats !spu_file )@(!instrs);
-    done;
-  );
+    done;*)
+    args_n
+  ) else [] in
 
   (* insert instrs before avail_task->active = ACTIVE;
     we place a Foo_32412312231() call just above avail_task->active = ACTIVE
     to achieve that for cell *)
-  f_new.sbody.bstmts <- List.map (fun s -> Lockutil.replace_fake_call s "Foo_32412312231" (L.rev !instrs)) f_new.sbody.bstmts;
+  f_new.sbody.bstmts <- L.map (fun s -> Lockutil.replace_fake_call s "Foo_32412312231" (L.rev !instrs)) f_new.sbody.bstmts;
 
   incr func_id;
-  f_new
-end
+  (f_new, args_n)
+)
