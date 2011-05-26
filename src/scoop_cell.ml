@@ -194,6 +194,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
 (*     let arg_bytes = var (find_local_var fd "arg_bytes") in *)
     let arg_bytes =
       if (is_strided arg_type) then (
+        (*FIXME not sure about i here *)
         let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
         let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
         (* arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size); *)
@@ -232,6 +233,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   il := Set(eal, mkCast arg_addr (find_type spu_file "uint32_t"), locUnknown)::!il;
   let size = mkFieldAccess local_arg "size" in
   if (is_strided arg_type) then (
+    (*FIXME not sure about i here *)
     let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
     let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
     (* #define TPC_BUILD_STRIDEARG(elems, elemsz)    (((elems)<<16U) | (elemsz)) *)
@@ -365,9 +367,9 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
 (*     let arr_typ = TArray(arg_typ, Some(args_num_i), []) in *)
     let local_arg = var (makeLocalVar f_new "local_arg" arg_typ) in
     let args_n = number_args args oargs in
-    let i_n = ref (-1) in
+    let i_n = ref (args_num+1) in
     let mapped = (L.map 
-      (fun arg -> incr i_n; doArgument !i_n local_arg avail_task tmpvec f_new arg 
+      (fun arg -> decr i_n; doArgument !i_n local_arg avail_task tmpvec f_new arg 
                     !Scoop_util.stats !spu_file )
       args_n) in
     instrs := (L.flatten mapped)@(!instrs);
