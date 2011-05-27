@@ -125,97 +125,6 @@ let options =
 (* create 1 global list (the spe output file) *)
 let spu_tasks = ref []
 
-(*
-(* parses the #pragma css task arguments and pushes them to ptdepa *)
-let rec ptdepa_process_args typ args : unit =
-  if ( args <> []) then (
-    match (L.hd args) with
-      AIndex(ACons(varname, []), varsize) -> (
-        trace (dprintf "pushing %s\n" varname);
-        Ptdepa.addArg (varname, typ, !currentFunction);
-      )
-      | _ -> ignore(E.warn "Syntax error in #pragma tpc task %s(...)\n" typ);
-    ptdepa_process_args typ (L.tl args)
-  )
-
-let rec ptdepa_process = function
-  | (cur::rest) -> (
-    match cur with
-      AStr("highpriority") -> (* simply ignore it *) ();
-      | ACons(arg_typ, args) -> (
-        tracei (dprintf "pushing args of function %s to ptdepa!\n" (!currentFunction).svar.vname);
-        ptdepa_process_args arg_typ args;
-        T.traceOutdent "scoop"
-      )
-      | _ -> ignore(E.warn "Syntax error in #pragma tpc task\n");
-    ptdepa_process rest
-  )
-  | _ -> ()
-
-(* populates the calls list for Ptdepa module *)
-class findTaggedCalls = object
-  inherit nopCilVisitor
-  (* visits all stmts and checks for pragma directives *)
-  method vstmt (s: stmt) : stmt visitAction =
-    let prags = s.pragmas in
-    if (prags <> []) then (
-      match (List.hd prags) with
-        (Attr("css", sub::rest), loc) -> (
-          match sub with
-            AStr("task") -> (
-              match s.skind with 
-                Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> (
-                  ptdepa_process rest;
-                  trace (dprintf "adding task %s to ptdepa\n" vi.vname);
-                  Ptdepa.addTask vi.vname !currentFunction loc;
-                )
-                | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc);
-                | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc);
-            )
-            | _ -> ignore(E.warn "Ptdepa: Ignoring pragma at %a" d_loc loc);
-        )
-        | (Attr("tpc", args), _) -> (
-          match s.skind with 
-            Instr(Call(_, Lval((Var(vi), _)), _, loc)::_) -> (
-                tracei (dprintf "pushing args of function %s to ptdepa!\n" vi.vname);
-                ignore(List.map (fun arg -> match arg with
-                    ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::_) -> 
-                      (* give all the arguments to Ptdepa don't care for strided  *)
-                      trace (dprintf "pushing %s\n" varname);
-                      Ptdepa.addArg (varname, arg_typ, !currentFunction);
-                  | _ -> ignore(E.error "You have done something wrong at %a\n" d_loc loc); assert false
-                ) args);
-                T.traceOutdent "scoop";
-                trace (dprintf "adding task %s to ptdepa\n" vi.vname);
-                Ptdepa.addTask vi.vname !currentFunction loc;
-              )
-            | Block(b) -> ignore(E.unimp "Ignoring block pragma");
-            | _ -> ignore(E.warn "Ignoring pragma");
-        )
-        | _ -> ignore(E.log "Unrecognized pragma");
-     ) else (
-       (* Get info about array indices from loops *)
-       match s.skind with
-          Loop(b_code, _, _, _) -> (
-            (* Check if there is any task inside the loop *)
-            let tagged_stmts = L.filter tpc_call_with_arrray b_code.bstmts in
-            if (tagged_stmts<>[]) then (
-              let successor = get_loop_successor s in
-              let upper = get_loop_condition s in
-              let lower = get_loop_lower s !prevstmt in
-              ignore(E.log "\tlower=%a\n\tupper=%a\n\tsucc=%a\n" d_exp lower d_exp upper d_exp successor);
-              (*for each call
-                let indice = get_indice tagged_stmt in*)
-              (* visit the b_code.bstmts to find the Upper and the successor function *)
-            )
-          )
-          | _ -> ()
-    );
-    prevstmt := s;
-    DoChildren
-end
-*)
-
 (* parses the #pragma css task arguments *)
 let rec scoop_process_args typ args =
   match args with
@@ -297,7 +206,7 @@ class findSPUDeclVisitor cgraph = object
             | _ ->  Scoop_x86.make_tpc_func in
 
           match (List.hd prags) with 
-            (Attr("tpc", args), _) -> (
+(*            (Attr("tpc", args), _) -> (
               let funname = vi.vname in
               let args' =
                 List.map (fun arg -> match arg with
@@ -359,7 +268,7 @@ class findSPUDeclVisitor cgraph = object
                   rest2 task
                 )
               )
-            )
+            )*)
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> (
               match sub with
@@ -484,7 +393,7 @@ let feature : featureDescr =
         ignore(E.error "No architecture specified. Exiting!\n")
       else if (!arch = "cell" && !queue_size = "0") then
         ignore(E.error "No queue_size specified. Exiting!\n")
-      else begin
+      else (
         (* create two copies of the initial file *)
   (*       in_file := f; *)
   (*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
@@ -501,44 +410,31 @@ let feature : featureDescr =
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
 
-        let def = ref "" in
-        def := " "^(!cflags)^" "^(!def);
-        if (!stats) then
-          def := " -DSTATISTICS=1"^(!def);
+        let def = " "^(!cflags)^( if (!stats) then " -DSTATISTICS=1" else " ") in
         if (!arch = "x86") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DX86tpc=1"^(!def))
+          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DX86tpc=1"^(def))
                                       !arch !tpcIncludePath;
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
 (*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
-          if (!arch = "cellgod") then (
-            def := " -DADAM=1"^(!def);
-          ) else (
-            def := " -DMAX_QUEUE_ENTRIES="^(!queue_size)^(!def);
-          );
+          let def = def^(
+            if (!arch = "cellgod") then 
+              (" -DADAM=1")
+            else
+              (" -DMAX_QUEUE_ENTRIES="^(!queue_size))
+          ) in
 
           (* Defined in scoop_util *)
-          preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(!def))
+          preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(def))
                                       !arch !tpcIncludePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(!def))
+          preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(def))
                                       !arch !tpcIncludePath;
         );
-
-(*
-        Cil.iterGlobals !ppc_file 
-          (function
-            GFun(fd,_) ->
-              currentFunction := fd;
-              ignore(visitCilFunction ftagVisitor fd);
-            | _ -> ()
-          )
-        ;
-*)
 
         (* kasas was here :P *)
         if (!arch = "cellgod") then
@@ -582,10 +478,8 @@ let feature : featureDescr =
 
 (*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
-  (*       !spu_file.globals <- !spu_glist; *)
         writeFile !spu_file;
-  (*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
-      end
+      )
     );
     fd_post_check = true;
   }

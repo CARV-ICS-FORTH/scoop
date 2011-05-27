@@ -450,11 +450,7 @@ let attrParamToExp (a: attrparam) ?(currFunction: fundec = !currentFunction) (pp
       | ACons(name, []) ->                      (** An id *)
         Lval (Var (find_scoped_var currFunction ppc_file name) , NoOffset)
       (* We don't support function calls as argument size *)
-      (*| ACons(name, args) ->                    (** A function call *)
-        let args' = L.map (fun a -> attrParamToExp a) args in
-        let instr = Call (None, Lval (var find_function_sign ppc_file name), args', locUnknown) in
-        let call = mkStmtOneInstr instr in
-        Lval (var (find_scoped_var !currFunction ppc_file name) , NoOffset)*)
+      (*| ACons(name, args) ->                    (** A function call *)*)
       | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
       | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
       | AAlignOf(t) -> AlignOf t

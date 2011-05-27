@@ -37,14 +37,10 @@
 
 #pragma support
 
-  we support 2 syntaxes
-
-  1. #pragma tpc(arg1(in/out/inout, argsize1), arg2(in/out/inout, argsize2) ...)
-
-  2. CellSS syntax
+  CellSS syntax
 
     #pragma css wait all
-    #pragma css wait on(list of expressions)
+    #pragma css wait on(list of expressions) //Not implemented yet
     #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
 
     Parameter notation:
@@ -68,11 +64,11 @@ DEPENDENCIES
   emacs
 
   for CELL
-  	you will also need the cell development package including ppu_intrinsics.h
-  	,altivec.h etc in your include path (C_INCLUDE_PATH)
-  	(e.g. export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include )
-  	and ppu32-gcc in your PATH
-	(e.g. export PATH=$PATH:/opt/cell/toolchain/bin )
+    you will also need the cell development package including ppu_intrinsics.h
+    ,altivec.h etc in your include path (C_INCLUDE_PATH)
+    (e.g. export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include )
+    and ppu32-gcc in your PATH
+    (e.g. export PATH=$PATH:/opt/cell/toolchain/bin )
 
 
 INSTALL
@@ -120,4 +116,4 @@ NOTES:
 
   scoop_alter.ml contains an alternative method without skeleton files (deprecated)
 
-                                                           last update: 03/05/11
+                                                           last update: 27/05/11

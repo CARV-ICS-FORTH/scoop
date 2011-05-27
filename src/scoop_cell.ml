@@ -189,6 +189,13 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   ) in
   let il = ref [] in
   (* tmpvec = (volatile vector unsigned char * )&avail_task->arguments[i]; *)
+
+  (*if( TPC_IS_STRIDEARG(arg_flag) ) {
+       arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size);
+     } else {
+       arg_bytes = arg_size;
+     }
+     total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag));*)
   if (stats) then (
     let total_bytes = var (find_local_var fd "total_bytes") in
 (*     let arg_bytes = var (find_local_var fd "arg_bytes") in *)
@@ -218,14 +225,6 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
   let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
   il := Set(tmpvec, mkCast (mkAddrOf av_task_arg_idx) (vector_uchar_p) , locUnknown)::!il;
-
-  (*TODO: if !stats then
-     if( TPC_IS_STRIDEARG(arg_flag) ) {
-       arg_bytes = TPC_EXTRACT_STRIDEARG_ELEMSZ(arg_size)*TPC_EXTRACT_STRIDEARG_ELEMS(arg_size);
-     } else {
-       arg_bytes = arg_size;
-     }
-     total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag));*)
 
 (*   let local_arg_idx = addOffsetLval (Index(integer i,NoOffset)) local_arg in *)
   (* local_arg.eal = (uint32_t)(arg_addr64); *)
@@ -269,29 +268,6 @@ let sort_args a b =
     (* if neither are Out and a is In *)
     else if (arg_typa = In || arg_typa = SIn) then (-1)
     else 1
-(*let sort_args (list_a: arg_descr list) =
-  let inp = ref [] in
-  let op = ref [] in
-  let io = ref [] in
-  let rec sort_args_r = function
-    | (arg::rest) -> (
-      let (_, (arg_typ, _, _, _)) = arg in
-      match arg_typ with
-          In
-        | SIn ->
-          inp := arg::(!inp);
-          sort_args_r rest
-        | Out
-        | SOut ->
-          op := arg::(!op);
-          sort_args_r rest
-        | InOut
-        | SInOut ->
-          io := arg::(!io);
-          sort_args_r rest
-    )
-    | [] -> (!inp)@(!io)@(!op)
-  in sort_args_r list_a*)
 
 (* assigns to each argument description its place in the original
           argument list *)
