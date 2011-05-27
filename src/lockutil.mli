@@ -98,12 +98,12 @@ val change_var : Cil.file -> Cil.varinfo -> Cil.varinfo -> unit
  *) 
 val preprocessAndMergeWith : Cil.file -> string -> unit
 
-(* Take a cil file, and a string with the name of a header file,
+(* Take a preprocessor, a cil file, and a string with the name of a header file,
  * preprocess it and merge with the first.  Merging modifies the first
  * argument.  If the header filename is not an absolute path, we use
  * the gcc include path.
  *) 
-val preprocessAndMergeWithHeader : Cil.file -> string -> unit
+val preprocessAndMergeWithHeader : string -> Cil.file -> string -> unit
 
 (* Given a fake function name e.g. "foo-12345" replace all invocations
  * in a stmt with the given instr list

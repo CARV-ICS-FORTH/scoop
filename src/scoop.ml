@@ -498,17 +498,17 @@ let feature : featureDescr =
       let header = (!tpc_include_path)^"/scoop/tpc_scoop.h" in
       match !arch with
         "x86" ->
-          preprocessAndMergeWithHeader !ppc_file (def ^ " -DX86tpc=1 " ^ header);
+          preprocessAndMergeWithHeader "gcc" !ppc_file (def ^ " -DX86tpc=1 " ^ header);
       | "cellgod" ->
-          preprocessAndMergeWithHeader !ppc_file (def ^ " -DADAM=1 -DPPU=1" ^ header);
+          preprocessAndMergeWithHeader "ppu32-gcc" !ppc_file (def ^ " -DADAM=1 -DPPU=1" ^ header);
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader !spu_file (def ^ " -DADAM=1 -DSPU=1" ^ header);
+          preprocessAndMergeWithHeader "ppu32-gcc" !spu_file (def ^ " -DADAM=1 -DSPU=1" ^ header);
       | "cell"  ->
-          preprocessAndMergeWithHeader !ppc_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DPPU=1" ^ header);
+          preprocessAndMergeWithHeader "ppu32-gcc" !ppc_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DPPU=1" ^ header);
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader !spu_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DSPU=1" ^ header);
+          preprocessAndMergeWithHeader "ppu32-gcc" !spu_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DSPU=1" ^ header);
       | _ -> ignore(E.error "architecture not supported");
 
       Cil.iterGlobals !ppc_file 
