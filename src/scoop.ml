@@ -60,7 +60,9 @@ let dotrace = ref false
 let thread = ref false
 let out_name = ref "final"
 let arch = ref "unknown"
-let tpcIncludePath = ref ""
+let tpc_include_path = ref (try
+  Unix.getenv "TPC_INCLUDE_PATH"
+  with Not_found -> ".")
 let cflags = ref ""
 let prevstmt = ref dummyStmt
 
@@ -81,8 +83,8 @@ let options =
       Arg.String(fun s -> cflags := s),
       " SCOOP: Define the flags you want to pass to gcc.";
 
-    "--tpcIncludePath",
-      Arg.String(fun s -> tpcIncludePath := s),
+    "--tpcIncludePath", (* FIXME: rename to used option style: --tpc-include-path *)
+      Arg.String(fun s -> tpc_include_path := s),
       " SCOOP: Define the include path for the tpc runtime.";
 
     "--debugSCOOP",
@@ -477,115 +479,67 @@ let feature : featureDescr =
     ;
     fd_doit = 
     (function (f: file) ->
-      if !dotrace then
-        Trace.traceAddSys "scoop";
-      ignore(E.log "Welcome to SCOOP!!!\n");
+      if !dotrace then Trace.traceAddSys "scoop";
+      if !debug then ignore(E.log "Welcome to SCOOP!!!\n");
       if (!arch = "unknown") then
-        ignore(E.error "No architecture specified. Exiting!\n")
-      else if (!arch = "cell" && !queue_size = "0") then
-        ignore(E.error "No queue_size specified. Exiting!\n")
-      else begin
-        (* create two copies of the initial file *)
-  (*       in_file := f; *)
-  (*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
-        spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
-        ppc_file := { f with fileName = (!out_name^".c");};
+        ignore(E.error "Specify an architecture using --runtime=<arch>, where <arch> is one of cell/cellgod/x86.\n");
+      if (!arch = "cell" && !queue_size = "0") then
+        ignore(E.error "Specify the queue_size used when compiling the TPC/ADAM libraries using --queue_size=<size>.\n");
 
-        (* create a call graph and print it *)
-        let callgraph = CG.computeGraph f in
+      spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
+      ppc_file := { f with fileName = (!out_name^".c");};
 
-        (* find tpc_decl pragmas *)
-        let fspuVisitor = new findSPUDeclVisitor callgraph in
-        (* let ftagVisitor = new findTaggedCalls in *)
+      let callgraph = CG.computeGraph f in
+      let fspuVisitor = new findSPUDeclVisitor callgraph in
     
-        (* create a global list (the spu output file) *)
-  (*       let spu_glist = ref [] in *)
-
-        let def = ref "" in
-        def := " "^(!cflags)^" "^(!def);
-        if (!stats) then
-          def := " -DSTATISTICS=1"^(!def);
-        if (!arch = "x86") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DX86tpc=1"^(!def))
-                                      !arch !tpcIncludePath;
-        ) else ( (* else cell/cellgod *)
-          (* copy all code from file f to file_ppc *)
-(*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
-          if (!arch = "cellgod") then (
-            def := " -DADAM=1"^(!def);
-          ) else (
-            def := " -DMAX_QUEUE_ENTRIES="^(!queue_size)^(!def);
-          );
-
-          (* Defined in scoop_util *)
-          preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(!def))
-                                      !arch !tpcIncludePath;
-
-          (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
-            plus the needed headers *)
+      let def =
+        (!cflags) ^ (if !stats then " -DSTATISTICS=1" else "")
+      in
+      let header = (!tpc_include_path)^"/scoop/tpc_scoop.h" in
+      match !arch with
+        "x86" ->
+          preprocessAndMergeWithHeader !ppc_file (def ^ " -DX86tpc=1 " ^ header);
+      | "cellgod" ->
+          preprocessAndMergeWithHeader !ppc_file (def ^ " -DADAM=1 -DPPU=1" ^ header);
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
-          preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(!def))
-                                      !arch !tpcIncludePath;
+          preprocessAndMergeWithHeader !spu_file (def ^ " -DADAM=1 -DSPU=1" ^ header);
+      | "cell"  ->
+          preprocessAndMergeWithHeader !ppc_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DPPU=1" ^ header);
+          let new_types_l = List.filter is_typedef (!ppc_file).globals in
+          (!spu_file).globals <- new_types_l;
+          preprocessAndMergeWithHeader !spu_file (def ^ " -DMAX_QUEUE_ENTRIES=" ^ (!queue_size) ^ " -DSPU=1" ^ header);
+      | _ -> ignore(E.error "architecture not supported");
+
+      Cil.iterGlobals !ppc_file 
+        (function
+          GFun(fd,_) ->
+            currentFunction := fd;
+            ignore(visitCilFunction fspuVisitor fd);
+        | _ -> ()
         );
 
-(*
-        Cil.iterGlobals !ppc_file 
-          (function
-            GFun(fd,_) ->
-              currentFunction := fd;
-              ignore(visitCilFunction ftagVisitor fd);
-            | _ -> ()
-          )
-        ;
-*)
+      (* kasas was here :P *)
+      if (!arch = "cellgod") then
+        (Ptdepa.find_dependencies f);
 
-        (* kasas was here :P *)
-        if (!arch = "cellgod") then
-          (Ptdepa.find_dependencies f);
+      (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
+      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
 
-        Cil.iterGlobals !ppc_file 
-          (function
-            GFun(fd,_) ->
-              currentFunction := fd;
-              ignore(visitCilFunction fspuVisitor fd);
-          | _ -> ()
-          )
-        ;
+      (* tasks  (new_tpc * old_original * args) *)
+      let tasks : (fundec * varinfo * (int * arg_descr) list) list = List.map
+        (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
+        (L.rev !spu_tasks)
+      in
+      if (!arch = "cell") then (
+        (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
+      ) else (
+        (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
+        (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
+      );
 
-        (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
-        (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
-        (* copy all globals except the function declaration of "main" *)
-  (*       spu_glist := List.filter isNotMain (!spu_file).globals; *)
-
-
-        (* tasks  (new_tpc * old_original * args) *)
-        let tasks : (fundec * varinfo * (int * arg_descr) list) list = List.map
-          (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
-          (L.rev !spu_tasks)
-        in
-        if (!arch = "cell") then (
-          (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
-        ) else (
-          (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
-          (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
-        );
-
-        (* eliminate dead code *)
-(*        Cfg.computeFileCFG !ppc_file;
-        Deadcodeelim.dce !ppc_file;
-        Cfg.computeFileCFG !spu_file;
-        Deadcodeelim.dce !spu_file;*)
-
-        (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
-        (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
-
-(*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
-  (*       !spu_file.globals <- !spu_glist; *)
         writeFile !spu_file;
-  (*       writeNewFile f (!out_name^"_func.c") !spu_glist; *)
-      end
     );
     fd_post_check = true;
   }

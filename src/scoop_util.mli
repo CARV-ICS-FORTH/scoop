@@ -240,6 +240,3 @@ val make_null_task_table :
 (******************************************************************************)
 
 val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stmt
-
-val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
-    string -> string -> unit
