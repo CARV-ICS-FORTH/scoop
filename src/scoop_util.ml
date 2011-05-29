@@ -34,6 +34,7 @@
  *
  *)
 
+(** Includes all the generic functions (utilities) *)
 
 open Cil
 module E = Errormsg
@@ -46,6 +47,7 @@ module CG = Callgraph
 (*                          Types                                             *)
 (******************************************************************************)
 
+(** the argument type supported by the annotations *)
 type arg_t =
     In
   | Out
@@ -54,27 +56,39 @@ type arg_t =
   | SOut
   | SInOut
 
+(** the argument description, extracted by the annotations *)
 and arg_descr = (string * (arg_t * exp * exp * exp))
 
 (******************************************************************************)
 (*                          Globals                                           *)
 (******************************************************************************)
 
-(* define the ppu_vector *)
+(** define the ppu_vector *)
 let ppu_vector = Attr("altivec", [ACons("vector__", [])])
 
+(** define void *)
 let voidType = TVoid([])
+(** define int *)
 let intType = TInt(IInt,[])
+(** define uint *)
 let uintType = TInt(IUInt,[])
+(** define long *)
 let longType = TInt(ILong,[])
+(** define ulong *)
 let ulongType = TInt(IULong,[])
+(** define char *)
 let charType = TInt(IChar, [])
+(** define bool *)
 let boolType = TInt(IBool, [])
 
+(** keeps the function we are in at the current point (scoping) *)
 let currentFunction = ref dummyFunDec
 
+(** keeps whether stats are enabled or not *)
 let stats = ref false
+(** keeps whether we want unaligned arguments or not *)
 let unaligned_args = ref false
+(** keeps whether we want blocking of arguments or not *)
 let blocking = ref false
 
 
@@ -82,9 +96,14 @@ let blocking = ref false
 (*                          Search Functions                                  *)
 (******************************************************************************)
 
-
-(* searches a global list for a function definition with name <name> *)
+(** Exception returning the found function declaration *)
 exception Found_fundec of fundec
+(** searches a global list for a function definition with name {e name}
+    @param g the global list to search in
+    @param name the name of the function to search
+    @raise Not_found when there is no function declaration with name
+      {e name} in {e g}
+    @return the Cil.fundec of the function named {e name} *)
 let find_function_fundec_g (g: global list) (name: string) : fundec =
   let findit = function
     | GFun(fd, _) when fd.svar.vname = name -> raise (Found_fundec fd)
@@ -95,12 +114,25 @@ let find_function_fundec_g (g: global list) (name: string) : fundec =
     raise Not_found
   with Found_fundec v -> v
 
-(* find the function definition of variable <name> in file f *)
+(** find the function definition of variable {e name} in file {e f}
+    @param f the file to look in
+    @param name the name of the function to search
+    @raise Not_found when there is no function declaration with name
+      {e name} in {e f}
+    @return the Cil.fundec of the function named {e name}
+ *)
 let find_function_fundec (f: file) (name: string) : fundec =
   find_function_fundec_g f.globals name
 
-(* find the function signature for <name> function *)
+(** Exception returning the found function signature *)
 exception Found_sign of varinfo
+(** find the function signature for {e name} function in file {e f}
+    @param f the file to look in
+    @param name the name of the function to search
+    @raise Not_found when there is no function signature with name
+      {e name} in {e f}
+    @return the Cil.varinfo of the function named {e name}
+ *)
 let find_function_sign (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_sign vi)
@@ -111,8 +143,14 @@ let find_function_sign (f: file) (name: string) : varinfo =
     raise Not_found
   with Found_sign v -> v
 
-(* find the (first) typedef for type "name" in file f *)
+(** Exception returning the found type *)
 exception Found_type of typ
+(** find the {b first} typedef for type {e name} in file {e f}
+    @param f the file to look in
+    @param name the name of the type to search
+    @raise Not_found when there is no type with name {e name} in {e f}
+    @return the Cil.typ of the function named {e name}
+ *)
 let find_type (f: file) (name: string) : typ =
   let findit = function
     | GType(ti, _) when ti.tname = name -> raise (Found_type (TNamed(ti, [])))
@@ -123,7 +161,12 @@ let find_type (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
-(* find the struct or union named struct/union <name> *)
+(** find the struct or union named struct/union {e name} in file {e f}
+    @param f the file to look in
+    @param name the name of the struct/union to search
+    @raise Not_found when there is no struct or union with name {e name} in {e f}
+    @return the Cil.typ of the function named {e name}
+ *)
 let find_tcomp (f: file) (name: string) : typ =
   let findit = function
     | GCompTag(ci, _) when ci.cname = name -> raise (Found_type (TComp(ci, [])))
@@ -134,8 +177,14 @@ let find_tcomp (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
-(* find the variable named <name> in file <f> *)
+(** Exception returning the found varinfo *)
 exception Found_var of varinfo
+(** find the global variable named {e name} in file {e f} 
+    @param f the file to look in
+    @param name the name of the global variable to search
+    @raise Not_found when there is no global variable with name {e name} in {e f}
+    @return the Cil.varinfo of the global variable {e name}
+ *)
 let find_global_var (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_var vi)
@@ -144,11 +193,15 @@ let find_global_var (f: file) (name: string) : varinfo =
   in
   try
     iterGlobals f findit;
-    ignore(E.warn  "\"%s\" is not globally defined in %s\n" name f.fileName);
     raise Not_found
   with Found_var v -> v
 
-(* find the variable named <name> in the formals of <fd> *)
+(** find the variable named {e name} in the formals of {e fd} 
+    @param fd the function declaration to look in
+    @param name the name of the formal variable to search
+    @raise Not_found when there is no formal variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the formal variable {e name}
+ *)
 let find_formal_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
@@ -156,11 +209,15 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.sformals;
-    ignore(E.warn  "\"%s\" is not a formal of %s\n" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
-(* find the variable named <name> in the locals of <fd> *)
+(** find the variable named {e name} in the locals of {e fd}  
+    @param fd the function declaration to look in
+    @param name the name of the local variable to search
+    @raise Not_found when there is no local variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the local variable {e name}
+ *)
 let find_local_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
@@ -168,31 +225,39 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
   in
   try
     List.iter findit fd.slocals;
-    ignore(E.warn "\"%s\" is not a local of %s" name fd.svar.vname);
     raise Not_found
   with Found_var v -> v
 
-(* find the variable named <name> in fundec <fd>
-   else look if it's a global of file <f> *)
+(** find the variable named {e name} in fundec {e fd}
+   else look if it's a global of file {e f}  
+    @param fd the function declaration to look in
+    @param f the file to look in
+    @param name the name of the formal variable to search
+    @raise Not_found when there is no variable with name {e name} in {e fd} of {e f}
+    @return the Cil.varinfo of the variable {e name}
+ *)
 let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
   try
     find_local_var fd name
   with Not_found -> 
       ( try
-        ignore(E.warn "Now looking in formals");
         find_formal_var fd name
       with Not_found -> 
           ( try
-            ignore(E.warn "Now looking in globals");
             find_global_var f name
           with Not_found -> (
-              ignore(E.warn "\"%s\" is not accessible from %s" name fd.svar.vname);
               raise Not_found)
           )
       )
 
-(* find the enum named <name> in file f *)
+(** Exception returning the found enum *)
 exception Found_enum of enuminfo
+(** find the enum named {e name} in file {e f}
+    @param f the file to look in
+    @param name the name of the enum to search
+    @raise Not_found when there is no enum with name {e name} in {e fd} of {e f}
+    @return the Cil.enuminfo of the enum {e name}
+ *)
 let find_enum (f: file) (name: string) : enuminfo =
   let findit = function
     | GEnumTag(ei, _) when ei.ename = name -> raise (Found_enum ei)
@@ -203,18 +268,6 @@ let find_enum (f: file) (name: string) : enuminfo =
     raise Not_found
   with Found_enum ei -> ei
 
-(* find the variable named <name> in fd's locals *)
-let findLocal (fd: fundec) (name: string) : varinfo =
-  let findit = function
-    | vi when vi.vname = name -> raise (Found_var vi)
-    | _ -> ()
-  in
-  try
-    List.iter findit fd.slocals;
-    ignore(E.error "\"%s\" is not a local of %s" name fd.svar.vname);
-    raise Not_found
-  with Found_var v -> v
-
 
 
 (******************************************************************************)
@@ -222,24 +275,26 @@ let findLocal (fd: fundec) (name: string) : varinfo =
 (******************************************************************************)
 
 
-(* Converts the strings describing the argument type to arg_t *)
+(** Converts the {e arg} describing the argument type to arg_t
+    @param arg the string (in/out/inout/input/output) describing the type of the argument
+    @param strided flag showing whether it is a strided argument
+    @return the corresponding arg_t
+ *)
 let translate_arg (arg: string) (strided: bool) : arg_t =
-  if (strided) then
-    match arg with
-        "in" -> SIn
-      | "out" -> SOut
-      | "inout" -> SInOut
-      | _ -> ignore(E.error "Only in/out/inout are allowed"); assert false
-  else
-    match arg with
-        "in" (* legacy *)
-      | "input" -> In
-      | "out" (* legacy *)
-      | "output" -> Out
-      | "inout" -> InOut
-      | _ -> ignore(E.error "Only input/output/inout are allowed"); assert false
+  match arg with
+      "in" when strided -> SIn
+    | "out" when strided -> SOut
+    | "inout" when strided -> SInOut
+    | _  when strided -> ignore(E.error "Only in/out/inout are allowed"); assert false
+    | "in" (* legacy *)
+    | "input" -> In
+    | "out" (* legacy *)
+    | "output" -> Out
+    | "inout" -> InOut
+    | _ -> ignore(E.error "Only input/output/inout are allowed"); assert false
 
-
+(** Maps the arg_t to a number as defined by the TPC headers
+    @return the corrensponding number *)
 let arg_t2int = function
     | In -> 1
     | Out -> 2
@@ -248,6 +303,8 @@ let arg_t2int = function
     | SOut -> 6
     | SInOut -> 7
 
+(** Maps the arg_t to ints as defined by the TPC headers
+    @return the corrensponding int *)
 let arg_t2integer = function
     | t -> integer (arg_t2int t)
 
@@ -256,17 +313,21 @@ let arg_t2integer = function
 (*                         Copy Function                                      *)
 (******************************************************************************)
 
-(* recursively copies a function definition and all it's callees
-   from the ppc_file to the spu_file *)
-let rec deep_copy_function (task: string) (callgraph: CG.callgraph)
-      (spu_file: file) (ppc_file: file)= begin
+(** recursively copies a function definition and all it's callees
+   from the {e ppc_file} to the {e spu_file}
+    @param func the name of the function to be copied
+    @param callgraph the callgraph of the program
+    @param spu_file the spu file
+    @param ppc_file the ppc file
+*)
+let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
+      (spu_file: file) (ppc_file: file)= (
     (* TODO copy globals? *)
 
     (* First copy the Callees *)
-    let cnode: CG.callnode = H.find callgraph task in
-    let nodeName (n: CG.nodeinfo) : string =
-      match n with
-        CG.NIVar (v, _) -> v.vname
+    let cnode: CG.callnode = H.find callgraph func in
+    let nodeName = function
+      | CG.NIVar (v, _) -> v.vname
       | CG.NIIndirect (n, _) -> n
     in
     let deep_copy _ (n: CG.callnode) : unit =
@@ -278,20 +339,15 @@ let rec deep_copy_function (task: string) (callgraph: CG.callgraph)
     (* now copy current *)
     try
       (* First check whether the function is defined *)
-      let new_fd = GFun(find_function_fundec (ppc_file) task, locUnknown) in
+      let new_fd = GFun(find_function_fundec (ppc_file) func, locUnknown) in
       spu_file.globals <- spu_file.globals@[new_fd];
       (* if not check whether we have a signature *)
-    with Not_found -> ignore(find_function_sign (ppc_file) task);
-end
+    with Not_found -> ignore(find_function_sign (ppc_file) func);
+)
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
 (******************************************************************************)
-
-(* returns the argument type from an argument description 
-  (string * arg_t * string * string *string ) *)
-let get_arg_type = function
-  | (_, (arg_type ,_ ,_ ,_)) -> arg_type
 
 (* change the return type of a function *)
 let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
@@ -500,7 +556,7 @@ let writeNewFile f fname globals = begin
   close_out oc
 end
 
-(* write out file <f> *)
+(* write out file {e f} *)
 let writeFile f = begin
   let oc = open_out f.fileName in
   Rmtmps.removeUnusedTemps f;
@@ -551,17 +607,17 @@ let tpc_call_with_arrray (st: stmt) : bool =
   end else
     false
 
-(* Checks if <g> is *not* the function declaration of "main"  *)
+(* Checks if {e g} is *not* the function declaration of "main"  *)
 let isNotMain (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
   | _ -> true
 
-(* Checks if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
+(* Checks if {e g} is *not* the function declaration of "tpc_call_tpcAD65"  *)
 let isNotSkeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
-(* Checks if <g> is a typedef, enum, struct or union *)
+(* Checks if {e g} is a typedef, enum, struct or union *)
 let is_typedef (g: global) : bool = match g with
     GType(_, _)
   | GCompTag(_, _)

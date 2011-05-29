@@ -101,10 +101,6 @@ let options =
       Arg.String(fun s -> queue_size := s),
       " SCOOP: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
 
-    "--block-size",
-      Arg.Int(fun s -> Scoop_x86.block_size := s),
-      " SCOOP: Specify the block size for the ADAM runtime. Defined in the Makefile as BLOCK_SZ";
-
     "--with-stats",
       Arg.Set(stats),
       " SCOOP: Enable code for statistics, for use with -DSTATISTICS";

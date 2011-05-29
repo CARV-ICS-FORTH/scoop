@@ -76,7 +76,7 @@ let make_tpc_func (f: fundec) (args: (string * arg_t * string * string * string 
       ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
     end;
   done;
-  let avail_task = var (findLocal f_new "avail_task") in
+  let avail_task = var (find_local_var f_new "avail_task") in
   let instrs : instr list ref = ref [] in
   (* avail_task->funcid = (uint8_t)funcid; *)
   instrs := Set (mkPtrFieldAccess avail_task "funcid",

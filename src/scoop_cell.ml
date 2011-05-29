@@ -321,7 +321,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     );
   done;
 
-  let avail_task = var (findLocal f_new "avail_task") in
+  let avail_task = var (find_local_var f_new "avail_task") in
   let instrs : instr list ref = ref [] in
   let uint8_t = find_type !spu_file "uint8_t" in
   (* avail_task->funcid = (uint8_t)funcid; *)

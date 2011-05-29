@@ -33,19 +33,19 @@
  *
  *)
 
+(** Responsible for generating code for the ADAM runtime on the
+    Cell Processor 
+    @author Foivos Zakkak, zakkak\@ics.forth.gr *)
+
 open Cil
 open Scoop_util
 module E = Errormsg
-module L = List
 
-(* keeps the current funcid for the new tpc_function *)
+(** keeps the current funcid for the new tpc_function_* *)
 let func_id = ref 0
 
-let block_size = ref 0
-
 let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
-  (spu_file: file) (unaligned_args: bool)
- (block_size: int) (ppc_file: file) : stmt = begin
+  (spu_file: file) (unaligned_args: bool) (ppc_file: file) : stmt = begin
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
@@ -56,7 +56,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     else
       Lval( var actual_arg)
   ) in
-  let arg_type = get_arg_type arg in
+  let (_, (arg_type ,_ ,_ ,_)) = arg in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
   let arguments = mkFieldAccess closure "arguments" in
@@ -93,7 +93,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     let eal_out = mkFieldAccess idxlv "eal_out" in
     il := Set(eal_out, CastE(uint32_t, arg_addr), locUnknown)::!il;
     il := Set(total_arguments, pplus, locUnknown)::!il;
-    (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];*)
+    (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (List.rev !il))];*)
   ) else (
 
     (**************************************************************************
@@ -149,8 +149,8 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     let e_addr_plus = BinOp(PlusA, Lval e_addr, integer block_size, intType) in
     let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
     let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
-    let body = [mkStmt (Instr (L.rev !ilt))] in
-    stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
+    let body = [mkStmt (Instr (List.rev !ilt))] in
+    stl := List.rev (mkStmt(Instr (List.rev !il))::(mkFor start guard next body));
 
     (*if(limit-e_addr){
       this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
@@ -164,7 +164,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
     let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval size; addrOf_args ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
-    let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
+    let bl = mkBlock [mkStmt(Instr (List.rev !ilt))] in
     stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::!stl;
 
     (* this->closure.arguments[ block_index_start ].flag|=TPC_START_ARG;
@@ -225,17 +225,24 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
   );
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
-  mkStmt(Instr (L.rev !il));
+  mkStmt(Instr (List.rev !il));
 end
 
-(* make a tpc_ version of the function (for use on the ppc side)
+(** Creates a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
+ * @param func_vi the varinfo of the original function
+ * @param oargs the original arguments given to the annotated call
+ * @param args the argument descriptions given in the annotation
+ * @param ppc_file the ppc file
+ * @param spu_file the spu file
+ * @return the new function declaration paired with a list of numbered argument
+ *         descriptors
  *)
 let make_tpc_func (func_vi: varinfo) (oargs: exp list)
-    (args: arg_descr list) (f: file ref) (spu_file: file ref)
+    (args: arg_descr list) (ppc_file: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
-  let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
+  let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
@@ -257,7 +264,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     );
   done;
 
-  let this = var (findLocal f_new "this") in
+  let this = var (find_local_var f_new "this") in
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkPtrFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
@@ -278,12 +285,12 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
       (* local_arg <- argument description *)
       stmts := (doArgument i this bis f_new arg !spu_file
-                  !unaligned_args !block_size !f)::!stmts;
+                  !unaligned_args !ppc_file)::!stmts;
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
     for x86*)
-  let map_fun = (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (L.rev !stmts)) in
+  let map_fun = (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (List.rev !stmts)) in
   f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
 
   incr func_id;

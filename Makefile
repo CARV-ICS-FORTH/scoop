@@ -55,7 +55,7 @@ endif
 OBJDIR      := cil/obj/$(ARCHOS)
 DOCDIR      := doc
 
-ODOC_FILES =        src/scoop*.ml src/scoop*.mli
+ODOC_FILES = src/scoop*.ml
 
 export LOCKSMITH_MODULES
 export LOCKSMITH_CMODULES
@@ -75,16 +75,16 @@ pdfdoc: $(DOCDIR)/in/scoopman.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	cd doc/in; echo "\def\scoopversion{1.0.0}" >scoop.version.tex
 	cd $(DOCDIR)/in; pdflatex scoopman.tex; pdflatex scoopman.tex
 	cd $(DOCDIR)/in; mv scoopman.pdf ../scoop/SCOOP.pdf
-	ocamldoc -o $(DOCDIR)/scoop-api.tex.tmp -v -stars \
+	ocamldoc -o $(DOCDIR)/scoop-api.tex.tmp -v -stars\
              -latex \
              -t "SCOOP Documentation" \
-	     -I $(OBJDIR) -hide Pervasives $(ODOC_FILES)
+	     -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
 	sed -e 's/\\usepackage\[T1\]{fontenc}/\\setlength{\\pdfpagewidth}{\\paperwidth} \\setlength{\\pdfpageheight}{\\paperheight}/' $(DOCDIR)/scoop-api.tex.tmp >$(DOCDIR)/scoop-api.tex
 	rm $(DOCDIR)/scoop-api.tex.tmp
 
 	cd $(DOCDIR) ; TEXINPUTS="$$TEXINPUTS:/usr/local/lib/ocaml/ocamldoc:/usr/lib/ocaml/ocamldoc" pdflatex scoop-api.tex
 	cd $(DOCDIR) ; mv scoop-api.pdf scoop/SCOOP-API.pdf
-	-rm -f $(DOCDIR)/*
+	-rm -f $(DOCDIR)/* $(DOCDIR)/in/*.aux $(DOCDIR)/in/*.log $(DOCDIR)/in/scoop.version.tex
 
 
 profile:

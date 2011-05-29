@@ -50,7 +50,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
-  let arg_type = get_arg_type arg in
+  let (_, (arg_type ,_ ,_ ,_)) = arg in
   let stl = ref [] in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
@@ -208,7 +208,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     );
   done;
 
-  let this = var (findLocal f_new "this") in
+  let this = var (find_local_var f_new "this") in
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkPtrFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",

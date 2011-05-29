@@ -104,9 +104,6 @@ val find_scoped_var : Cil.fundec -> Cil.file -> string -> Cil.varinfo
 (* find the enum named <name> in file f *)
 val find_enum : Cil.file -> string -> Cil.enuminfo
 
-(* find the variable named <name> in fd's locals *)
-val findLocal : Cil.fundec -> string -> Cil.varinfo
-
 
 (******************************************************************************)
 (*                                Converters                                  *)
@@ -144,10 +141,6 @@ val attrParamToExp : Cil.attrparam -> ?currFunction:Cil.fundec -> Cil.file -> Ci
 (******************************************************************************)
 (*                               GETTERS                                      *)
 (******************************************************************************)
-
-(* returns the argument type from an argument description 
-  (string * arg_t * string * string *string ) *)
-val get_arg_type : (string * (arg_t * Cil.exp * Cil.exp * Cil.exp )) -> arg_t
 
 (* change the return type of a function *)
 val setFunctionReturnType : Cil.fundec -> Cil.typ -> unit
