@@ -1,0 +1,128 @@
+\documentclass[letterpaper]{article} 
+
+\setlength{\pdfpagewidth}{\paperwidth}
+\setlength{\pdfpageheight}{\paperheight}
+
+\usepackage{fullpage}
+
+
+% scoopversion.tex is generated automatically to define \scoopversion
+\include{scoop.version}
+
+
+\begin{document}
+\title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
+\date{last update: 29/05/11}
+\maketitle
+
+\section{License}
+
+Copyright (c) 2010, \\
+ Dimitris Hassapis  <hassapis@ics.forth.gr>\\
+ Foivos Zakkak        <zakkak@ics.forth.gr>\\
+ Polyvios Pratikakis  <polyvios@ics.forth.gr>\\
+All rights reserved.\\
+
+Redistribution and use in source and binary forms, with or without\\
+modification, are permitted provided that the following conditions are\\
+met:\\
+
+1. Redistributions of source code must retain the above copyright\\
+notice, this list of conditions and the following disclaimer.\\
+
+2. Redistributions in binary form must reproduce the above copyright\\
+notice, this list of conditions and the following disclaimer in the\\
+documentation and/or other materials provided with the distribution.\\
+
+3. The names of the contributors may not be used to endorse or promote\\
+products derived from this software without specific prior written\\
+permission.\\
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS\\
+IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\\
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\\
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\\
+OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\\
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\\
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\\
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\\
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\\
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\\
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
+
+\section{Annotation Syntax}
+
+\begin{verbatim}
+    #pragma css wait all
+    #pragma css wait on(list of expressions) //Not implemented yet
+    #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
+
+    Parameter notation:
+      <parameter>[\[parameter size*\]]
+     The parameter size must be an expression, thus we don't allow
+        function calls. Also there is no support for the conditional
+        operator (? :)
+
+    Example:
+      #pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])
+\end{verbatim}
+
+
+\section{Dependencies}
+
+\begin{enumerate}
+  \item ocaml
+  \item camlp4/ocaml-camlp4/ocaml-camlp4-devel
+  \item flex
+  \item bison
+  \item indent
+  \item ncurses-devel
+  \item emacs
+\end{enumerate}
+
+for CELL\\
+  you will also need the cell development package including ppu\_intrinsics.h\\
+  ,altivec.h etc in your include path (C\_INCLUDE\_PATH)\\
+  (e.g. export C\_INCLUDE\_PATH=$C\_INCLUDE\_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include )\\
+  and ppu32-gcc in your PATH\\
+  (e.g. export PATH=$PATH:/opt/cell/toolchain/bin )\\
+
+\section{Install}
+
+  ./configure \&\& make
+
+\section{Run (Needs update)}
+
+  scoop --arch=<x86/cell> [options] <file> [file2 ...]
+
+\subsection{Options (Needs update)}
+
+  --arch  Defines the target architecture (x86/cell)\\
+
+  --debug Enable debugging information printing.\\
+
+  --out-name Specify the output files' prefix.\\
+          e.g. (default: final) will produce \\
+          final.c and final\_func.c for the cell architecture\\
+\textbf{FIXME}         and final.c? for the x86 architecture\\
+
+\textbf{FIXME} to god x86 exei queue?\\
+  --queue-size\\
+          Specify the queue size for Cell. The value must match the one defined\\
+          in the Makefile as MAX\_QUEUE\_ENTRIES\\
+
+  --block-size\\
+          Specify the block size for x86.  The value must match the one defined\\
+          in the Makefile as BLOCK\_SZ\\
+
+  --with-stats\\
+          Enable code for statistics (for use with -DSTATISTICS)\\
+
+  --with-unaligned-arguments\\
+          Allow unalligned arguments in x86\\
+          (for use with -DUNALIGNED\_ARGUMENTS\_ALLOWED)\\
+
+  --threaded\\
+          Generate thread safe code (for use with -DTPC\_MULTITHREADED)\\
+
+\end{document}
