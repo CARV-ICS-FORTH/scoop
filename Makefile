@@ -67,7 +67,7 @@ all:
 	$(AT)$(MAKE) -C banshee NO_BANSHEE_ROLLBACK=1 NO_HASH_BOUNDS=1 all
 	$(AT)LINKFLAGS="$(LINKFLAGS)" $(MAKE) -C cil
 
-doc: pdfdoc
+doc: pdfdoc htmldoc
 
 pdfdoc: $(DOCDIR)/in/scoopman.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	-rm -rf $(DOCDIR)/scoop
@@ -86,6 +86,14 @@ pdfdoc: $(DOCDIR)/in/scoopman.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	cd $(DOCDIR) ; mv scoop-api.pdf scoop/SCOOP-API.pdf
 	-rm -f $(DOCDIR)/* $(DOCDIR)/in/*.aux $(DOCDIR)/in/*.log $(DOCDIR)/in/scoop.version.tex
 
+htmldoc: $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
+	-rm -rf $(DOCDIR)/html/
+	-mkdir -p $(DOCDIR)/html/
+	-rm -f $(DOCDIR)/ocamldoc.sty
+	ocamldoc -d $(DOCDIR)/html/ -v -stars \
+             -html -all-params -colorize-code -short-functors\
+             -t "SCOOP Documentation" \
+	     -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
 
 profile:
 	$(AT)$(MAKE) -C banshee NO_BANSHEE_ROLLBACK=1 NO_HASH_BOUNDS=1 DEBUG=1 DEBUG_RALLOC=1 all
