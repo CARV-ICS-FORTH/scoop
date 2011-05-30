@@ -91,7 +91,7 @@ htmldoc: $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	-mkdir -p $(DOCDIR)/html/
 	-rm -f $(DOCDIR)/ocamldoc.sty
 	ocamldoc -d $(DOCDIR)/html/ -v -stars \
-             -html -all-params -colorize-code -short-functors\
+             -html \
              -t "SCOOP Documentation" \
 	     -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
 
