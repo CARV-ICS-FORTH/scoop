@@ -38,8 +38,8 @@ open Pretty
 open Cil
 open Lockutil
 open Scoop_util
+open Scoop_make_exec
 open Scoop_x86
-open Scoop_cell
 module E = Errormsg
 module H = Hashtbl
 module S = Str
@@ -325,7 +325,8 @@ class findSPUDeclVisitor cgraph = object
                         done;*)
                         let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
                         let call = mkStmtOneInstr instr in
-                        ChangeTo(call) in
+                        ChangeTo(call)
+                      in
                       try
                         (* check if we have seen this function before *)
                         let (new_fd, _, _) = List.assoc funname !spu_tasks in
@@ -456,12 +457,9 @@ let feature : featureDescr =
           (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
           (L.rev !spu_tasks)
         in
-        if (!arch = "cell") then (
-          (!spu_file).globals <- (!spu_file).globals@[(make_exec_func !spu_file tasks)];
-        ) else (
-          (!ppc_file).globals <- (make_null_task_table tasks)::(!ppc_file).globals;
-          (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
-        );
+        if (!arch <> "cell") then
+            (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
+        (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
 
         (* eliminate dead code *)
 (*        Cfg.computeFileCFG !ppc_file;

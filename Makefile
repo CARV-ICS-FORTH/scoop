@@ -25,9 +25,10 @@ LOCKSMITH_MODULES = \
 	ptatype \
 	ptdepa \
 	scoop_util \
-	scoop_x86 \
 	scoop_cell \
 	scoop_cellgod \
+	scoop_x86 \
+	scoop_make_exec \
 #	scoop_rmtmps \
 #	lockpick \
 #	locksmith \

@@ -44,19 +44,72 @@ module E = Errormsg
 (** keeps the current funcid for the new tpc_function_* *)
 let func_id = ref 0
 
-let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
-  (spu_file: file) (unaligned_args: bool) (ppc_file: file) : stmt = begin
+let make_case execfun (task: varinfo) (task_info: varinfo)
+              (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
+  let res = ref [] in
+  assert(isFunctionType task.vtype);
+  (*TODO maybe start handling the return values of the tasks? *)
+  let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
+  assert(not hasvararg);
+  let argl = match arglopt with None -> [] | Some l -> l in
+  let argaddr = makeTempVar execfun voidPtrType in
+  res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
+  let lv = mkPtrFieldAccess (var task_info) "local" in
+  let t = typeOfLval lv in
+  assert(isArrayType t);
+  let i = ref 0 in
+
+  let args = List.rev args in
+  let arglist = List.map
+    (fun (place, (name, _)) ->
+      (* task_state->local[i] *)
+      let idxlv = addOffsetLval (Index(integer !i, NoOffset)) lv in
+(*      let rec castexp atyp = match atyp with
+        TInt(_, _)
+        | TFloat(_, _)
+        | TEnum(_, _)
+        | TComp(_, _) -> 
+          CastE(argt, Lval(mkMem (CastE( TPtr(argt, []), Lval(var argvar))) NoOffset))
+        | TNamed(_, _) -> castexp (unrollType atyp)
+        | _ -> CastE(argt, Lval(var argvar))
+      in*)
+(*       let (_, argt, _) = (List.nth argl !i) in *)
+      incr i;
+      (place, Lval(idxlv))
+    )
+    args
+  in
+  let arglist = List.sort comparator arglist in
+  let (_, arglist) = List.split arglist in
+  res := Call (None, Lval (var task), arglist, locUnknown)::!res;
+  mkStmt (Instr (List.rev !res))
+)
+(*
+    case 0:
+      //printf("SPU: Dispatch (%p) (%d,%d,%p)\n", task_info->ls_addr,
+//          task_info->state, task_info->dmatag, task_info->dmalist);
+      arg1 = (float * )task_info->ls_addr;
+      arg2 = (float * )((void * )arg1 + ex_task->arguments[0].size);
+      arg3 = (int * )((void * )arg2 + ex_task->arguments[1].size);
+      matrix_add_row(arg1, arg2, arg3);
+      task_info->state = EXECUTED; no need for it in every case
+                                      moved it out of the swith
+      break;
+*)
+
+let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_descr) )
+  (spu_file: file) (unaligned_args: bool) (ppc_file: file) : stmt = (
+  let (i_m, (arg_name, (arg_type, _, _, _))) = arg in
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
-  let actual_arg = List.nth fd.sformals i in
+  let actual_arg = List.nth fd.sformals i_m in
   let arg_addr = (
     if (isScalar actual_arg) then
-      AddrOf( var actual_arg)
+      mkAddrOf( var actual_arg)
     else
       Lval( var actual_arg)
   ) in
-  let (_, (arg_type ,_ ,_ ,_)) = arg in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
   let arguments = mkFieldAccess closure "arguments" in
@@ -72,7 +125,6 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  let (arg_name,(_,_,_,_)) = arg in
   if (Ptdepa.isSafeArg fd arg_name) then (
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
@@ -226,7 +278,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: arg_descr)
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
   mkStmt(Instr (List.rev !il));
-end
+)
 
 (** Creates a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
@@ -242,6 +294,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (ppc_file: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
+  let args = List.sort sort_args (List.rev args) in
   let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
   f_new.sformals <- [];
@@ -256,7 +309,11 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     assert false
   );
   for i = 0 to args_num do
-    let (_, (arg_type, _, _, _)) = List.nth args i in
+    let ex_arg = (List.nth oargs i) in
+    let name = getNameOfExp ex_arg in
+    let (_, (arg_type, _, _, _)) = List.find 
+      ( fun (vname, _) -> if( vname = name) then true else false)
+    args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
     if (is_strided arg_type) then (
       ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
@@ -277,16 +334,20 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   let uint32_t = (find_type !spu_file "uint32_t") in
   (* uint32_t block_index_start *)
   let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
-
-  (* for each argument*)
-  for i = 0 to args_num do
-    let ex_arg = (List.nth oargs i) in
-    let name = getNameOfExp ex_arg in
-    let arg = List.find ( fun (vname, _) -> if( vname = name) then true else false) args in
-      (* local_arg <- argument description *)
-      stmts := (doArgument i this bis f_new arg !spu_file
-                  !unaligned_args !ppc_file)::!stmts;
-  done;
+  
+  let args_n =
+  (* if we have arguments *)
+  if (f_new.sformals <> []) then (
+    (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+    let args_n = number_args args oargs in
+    let i_n = ref (args_num+1) in
+    let mapped = (List.map 
+      (fun arg -> decr i_n; doArgument !i_n this bis f_new arg !spu_file
+                  !unaligned_args !ppc_file)
+      args_n) in
+    stmts := mapped@(!stmts);
+    args_n
+  ) else [] in
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
     for x86*)
@@ -294,5 +355,5 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
 
   incr func_id;
-  (f_new, [])
+  (f_new, args_n)
 )

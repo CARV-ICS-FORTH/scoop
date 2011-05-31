@@ -670,6 +670,48 @@ let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
   let v = new changeStmtVisitor s fake stl in
   visitCilStmt v s
 
+(** Comparator for use with [List.sort] *)
+let comparator (a: (int * exp)) (b: (int * exp)) : int =
+  let (a_i, _) = a in
+  let (b_i, _) = b in
+  if (a_i = b_i) then 0
+  else if (a_i > b_i) then 1
+  else (-1)
+
+
+(** Comparator for use with [List.sort], 
+    takes an arg_descr list and sorts it according to the type of the arguments
+    input @ inout @ output *)
+let sort_args (a: arg_descr) (b: arg_descr) : int = 
+  let (_, (arg_typa, _, _, _)) = a in
+  let (_, (arg_typb, _, _, _)) = b in
+    (* if they are equal *)
+    if (arg_typa = arg_typb) then 0
+    (* if a is Out *)
+    else if (arg_typa = Out || arg_typa = SOut) then 1
+    (* if b is Out *)
+    else if (arg_typb = Out || arg_typb = SOut) then (-1)
+    (* if neither are Out and a is In *)
+    else if (arg_typa = In || arg_typa = SIn) then (-1)
+    else 1
+
+(** assigns to each argument description its place in the original
+          argument list *)
+let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list =
+  L.map (fun arg ->
+      let (name, _) = arg in
+      let i = ref 0 in
+      ignore(L.exists (fun e ->
+        let ename=getNameOfExp e in
+        if (ename=name) then
+          true
+        else (
+          incr i;
+          false
+        )
+      ) oargs);
+      (!i, arg)
+  ) args
 
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f

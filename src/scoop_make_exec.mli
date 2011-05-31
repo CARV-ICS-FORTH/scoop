@@ -1,7 +1,8 @@
-(*
+ (*
  *
  * Copyright (c) 2010, 
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
+ *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -33,10 +34,6 @@
  *
  *)
 
-val make_tpc_func : Cil.varinfo -> Cil.exp list ->
-    (string * (Scoop_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
-    Cil.file ref -> Cil.file ref ->
-    (Cil.fundec * (int * Scoop_util.arg_descr) list)
-
-val make_case : Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
-    ((int * Scoop_util.arg_descr) list) -> Cil.stmt
+val make_exec_func : string -> Cil.file ->
+    (Cil.fundec * Cil.varinfo * (int * Scoop_util.arg_descr) list) list ->
+    Cil.global

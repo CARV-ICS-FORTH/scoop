@@ -41,13 +41,6 @@ module L = List
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let comparator (a: (int * exp)) (b: (int * exp)) : int =
-  let (a_i, _) = a in
-  let (b_i, _) = b in
-  if (a_i = b_i) then 0
-  else if (a_i > b_i) then 1
-  else (-1)
-
 let make_case execfun (task: varinfo) (task_info: varinfo)
               (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
   let res = ref [] in
@@ -122,59 +115,6 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
                                       moved it out of the swith
       break;
 *)
-
-(* Make the execute_func function that branches on the task id and
- * calls the actual task function on the spe *)
-let make_exec_func (f: file)
-  (tasks: (fundec * varinfo * (int * arg_descr) list) list) : global = (
-  (* make the function *)
-  let exec_func = emptyFunction "execute_task" in
-  exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
-(*  (* make "queue_entry_t * volatile  ex_task" *)
-  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [Attr("volatile", [])])) in*)
-  (* make "queue_entry_t * ex_task" *)
-  let ex_task = makeFormalVar exec_func "ex_task" (TPtr((find_type f "queue_entry_t"), [])) in
-  (* make "tpc_spe_task_state_t task_info" *)
-  let task_info = makeFormalVar exec_func "task_info" (TPtr(find_type f "tpc_spe_task_state_t", [])) in
-  (* make an int variable for the return value *)
-  let lexit = makeLocalVar exec_func "exit" intType in
-  (* make a switch statement with one case per task starting from zero *)
-  let id = ref 0 in
-  let switchcases = List.map
-    (fun (tpc_call, task, fargs) ->
-      let c = Case (integer !id, locUnknown) in
-      incr id;
-      let body = make_case exec_func task task_info ex_task fargs in
-      (* add the arguments' declarations *)
-      body.labels <- [c];
-      let stmt_list = [body; mkStmt (Break locUnknown)] in
-      stmt_list
-    )
-    tasks
-  in
-  let cases = List.map List.hd switchcases in
-  (* default: exit=1; break; *)
-  let assignment = mkStmtOneInstr (Set (var lexit, one, locUnknown)) in
-  assignment.labels <- [Default(locUnknown)];
-  let switchcases2 = (List.append (List.flatten switchcases) [assignment; mkStmt (Break locUnknown)]) in
-  (* exit=0; *)
-  let exit0 = mkStmtOneInstr (Set (var lexit, zero, locUnknown)) in
-  (* return exit; *)
-  let retstmt = mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
-
-  (* the case expression of the switch statement (switch(expr)) *)
-  let expr = Lval(mkPtrFieldAccess (var ex_task) "funcid") in
-  let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
-  (* get the task_state enuminfo *)
-  let task_state_enum = find_enum f "task_state" in
-  (* task_info->state = EXECUTED no need for it in every case *)
-  let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
-  let executed = find_executed task_state_enum.eitems in
-  let exec_s = mkStmtOneInstr(Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)) in
-  (* the function body: exit = 0; switch (taskid); return exit; *)
-  exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
-  GFun (exec_func, locUnknown)
-)
 
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: (int * arg_descr)) (stats: bool) (spu_file: file): instr list = (
@@ -254,41 +194,15 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   !il
 )
 
-(* takes an arg_descr list and sorts it according to the type of the arguments
-    input @ inout @ output *)
-let sort_args a b = 
-  let (_, (arg_typa, _, _, _)) = a in
-  let (_, (arg_typb, _, _, _)) = b in
-    (* if they are equal *)
-    if (arg_typa = arg_typb) then 0
-    (* if a is Out *)
-    else if (arg_typa = Out || arg_typa = SOut) then 1
-    (* if b is Out *)
-    else if (arg_typb = Out || arg_typb = SOut) then (-1)
-    (* if neither are Out and a is In *)
-    else if (arg_typa = In || arg_typa = SIn) then (-1)
-    else 1
-
-(* assigns to each argument description its place in the original
-          argument list *)
-let number_args (args: arg_descr list) (oargs: exp list) =
-  L.map (fun arg ->
-      let (name, _) = arg in
-      let i = ref 0 in
-      ignore(L.exists (fun e ->
-        let ename=getNameOfExp e in
-        if (ename=name) then
-          true
-        else (
-          incr i;
-          false
-        )
-      ) oargs);
-      (!i, arg)
-  ) args
-
-(* make a tpc_ version of the function (for use on the ppc side)
+(** Creates a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
+ * @param func_vi the varinfo of the original function
+ * @param oargs the original arguments given to the annotated call
+ * @param args the argument descriptions given in the annotation
+ * @param ppc_file the ppc file
+ * @param spu_file the spu file
+ * @return the new function declaration paired with a list of numbered argument
+ *         descriptors
  *)
 let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)

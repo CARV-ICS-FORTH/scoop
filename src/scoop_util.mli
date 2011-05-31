@@ -227,12 +227,18 @@ val make_task_table :
 val make_null_task_table :
     (Cil.fundec * Cil.varinfo * (int * arg_descr) list) list -> Cil.global
 
-
 (******************************************************************************)
 (*                                 MISC                                       *)
 (******************************************************************************)
 
 val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stmt
+
+(** Comparator for use with [List.sort] *)
+val comparator : (int * Cil.exp) -> (int * Cil.exp) -> int
+
+val sort_args : arg_descr -> arg_descr -> int
+
+val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
 val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
     string -> string -> unit
