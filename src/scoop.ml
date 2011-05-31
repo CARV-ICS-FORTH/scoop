@@ -129,9 +129,9 @@ let options =
       Arg.Set(thread),
       " SCOOP: Generate thread safe code, for use with -DTPC_MULTITHREADED";
 
-		"--disable-sdam",
-			Arg.Set(dis_sdam),
-			" SCOOP: Disable static dependene analysis module";
+	"--disable-sdam",
+	  Arg.Set(dis_sdam),
+	  " SCOOP: Disable static dependence analysis module";
   ]
 
 (* create 1 global list (the spe output file) *)
