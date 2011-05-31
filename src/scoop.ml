@@ -75,6 +75,7 @@ let tpcIncludePath = ref ""
 let cflags = ref ""
 (** holds the previous visited statement *)
 let prevstmt = ref dummyStmt
+let dis_sdam = ref false
 
 (** The new spu file to create *)
 let spu_file = ref dummyFile
@@ -127,6 +128,10 @@ let options =
     "--threaded",
       Arg.Set(thread),
       " SCOOP: Generate thread safe code, for use with -DTPC_MULTITHREADED";
+
+		"--disable-sdam",
+			Arg.Set(dis_sdam),
+			" SCOOP: Disable static dependene analysis module";
   ]
 
 (* create 1 global list (the spe output file) *)
@@ -388,7 +393,7 @@ let feature : featureDescr =
         );
 
         (* SDAM *)
-        if (!arch = "cellgod") then
+        if ((!arch = "cellgod") && (not !dis_sdam)) then
           (Ptdepa.find_dependencies f);
 
 
