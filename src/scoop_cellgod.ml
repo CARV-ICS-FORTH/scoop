@@ -46,14 +46,11 @@ let func_id = ref 0
 
 let make_case execfun (task: varinfo) (task_info: varinfo)
               (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
-  let res = ref [] in
   assert(isFunctionType task.vtype);
   (*TODO maybe start handling the return values of the tasks? *)
   let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
   assert(not hasvararg);
   let argl = match arglopt with None -> [] | Some l -> l in
-  let argaddr = makeTempVar execfun voidPtrType in
-  res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
   let lv = mkPtrFieldAccess (var task_info) "local" in
   let t = typeOfLval lv in
   assert(isArrayType t);
@@ -64,25 +61,15 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
     (fun (place, (name, _)) ->
       (* task_state->local[i] *)
       let idxlv = addOffsetLval (Index(integer !i, NoOffset)) lv in
-(*      let rec castexp atyp = match atyp with
-        TInt(_, _)
-        | TFloat(_, _)
-        | TEnum(_, _)
-        | TComp(_, _) -> 
-          CastE(argt, Lval(mkMem (CastE( TPtr(argt, []), Lval(var argvar))) NoOffset))
-        | TNamed(_, _) -> castexp (unrollType atyp)
-        | _ -> CastE(argt, Lval(var argvar))
-      in*)
-(*       let (_, argt, _) = (List.nth argl !i) in *)
+      let (_, argt, _) = (List.nth argl place) in
       incr i;
-      (place, Lval(idxlv))
+      (place, mkCast (Lval(idxlv)) argt )
     )
     args
   in
   let arglist = List.sort comparator arglist in
   let (_, arglist) = List.split arglist in
-  res := Call (None, Lval (var task), arglist, locUnknown)::!res;
-  mkStmt (Instr (List.rev !res))
+  mkStmt (Instr ([Call (None, Lval (var task), arglist, locUnknown)]))
 )
 (*
     case 0:

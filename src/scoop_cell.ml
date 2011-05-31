@@ -76,7 +76,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let carry = ref dummyInstr in
   let args = L.rev args in
   let arglist = List.map
-    (fun (_, argt, _) ->
+    (fun (place, (name, (arg_type, _, _, _))) ->
       let argvar = makeTempVar execfun voidPtrType in
 (*      let rec castexp atyp = match atyp with
         TInt(_, _)
@@ -88,15 +88,15 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
         | _ -> CastE(argt, Lval(var argvar))
       in*)
       let castinstr = Set(var argvar, Lval(var argaddr), locUnknown) in
-      let (place, (name, (arg_type, _, _, _))) = (List.nth args !i) in
+      let (_, argt, _) = (List.nth argl place) in
       let advptrinstr = nextaddr !i (is_strided arg_type) in
       incr i;
       if !carry <> dummyInstr then res := !carry::!res;
       carry := advptrinstr;
       res := castinstr :: !res;
-      (place, Lval(var argvar))
+      (place, mkCast (Lval(var argvar)) argt)
     )
-    argl
+    args
   in
   let arglist = L.sort comparator arglist in
   let (_, arglist) = L.split arglist in

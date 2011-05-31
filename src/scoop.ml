@@ -457,8 +457,10 @@ let feature : featureDescr =
           (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
           (L.rev !spu_tasks)
         in
-        if (!arch <> "cell") then
-            (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)];
+        if (!arch = "cellgod") then (
+          (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
+          (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]
+        );
         (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
 
         (* eliminate dead code *)
