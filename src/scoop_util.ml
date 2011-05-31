@@ -350,7 +350,10 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
 (*                               GETTERS                                      *)
 (******************************************************************************)
 
-(* change the return type of a function *)
+(** changes the return type of a function
+    @param f the function declaration of the function to change
+    @param t the new type for the function to return
+ *)
 let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
   match unrollType f.svar.vtype with
     TFun (_, Some args, va, a) -> 
@@ -358,7 +361,7 @@ let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
     | _ -> assert(false);
 end
 
-(* returns the compiler added variables of the function *)
+(*(** returns the extra formal arguments added to a tpc_function_* by SCOOP *)
 let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
   List.filter 
     (fun formal -> 
@@ -367,7 +370,7 @@ let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
           old_f.sformals
     )
     new_f.sformals
-end
+end*)
 
 let getCompinfo = function
   (* unwrap the struct *)
@@ -375,6 +378,9 @@ let getCompinfo = function
   (* if it's not a struct, die. too bad. *)
   | _ -> assert false
 
+(** get the name of the variable if any
+    @raise Invalid_argument if the given expression doesn't include a single variable
+    @return the name of the variable included in the given Cil.exp *)
 let rec getNameOfExp = function
   Lval ((Var(vi),_))
   | AddrOf ((Var(vi),_))
@@ -396,7 +402,14 @@ let rec getNameOfExp = function
 (*                                   LOOP                                     *)
 (******************************************************************************)
 
+(** exception returning the stmt that failed to give a loop lower bound *)
 exception CouldntGetLoopLower of stmt 
+(** returns the lower bound of a loop 
+    @param s the loop stmt
+    @param prevstmt the previously visited statement
+    @raise CouldntGetLoopLower when it fails
+    @return the lower bound of the loop as a Cil.exp
+  *)
 let get_loop_lower (s: stmt) (prevstmt: stmt) : exp =
   match (prevstmt).skind with
       Instr(il) -> begin
@@ -406,7 +419,13 @@ let get_loop_lower (s: stmt) (prevstmt: stmt) : exp =
       end
     | _ -> raise (CouldntGetLoopLower s)
 
+(** exception returning the stmt that failed to give a loop upper bound *)
 exception CouldntGetLoopUpper of stmt 
+(** returns the upper bound of a loop 
+    @param s the loop stmt
+    @raise CouldntGetLoopUpper when it fails
+    @return the upper bound of the loop as a Cil.exp
+  *)
 let get_loop_condition (s: stmt) : exp =
   match s.skind with
       Loop(b, _, _, _) -> begin
@@ -417,7 +436,13 @@ let get_loop_condition (s: stmt) : exp =
       end
     | _ -> raise (CouldntGetLoopUpper s)
 
-exception CouldntGetLoopSuccesor of stmt 
+(** exception returning the stmt that failed to give a loop successor expression *)
+exception CouldntGetLoopSuccessor of stmt 
+(** returns the successor expression (step) of a loop 
+    @param s the loop stmt
+    @raise CouldntGetLoopSuccessor when it fails
+    @return the successor (step) of the loop as a Cil.exp
+  *)
 let get_loop_successor (s: stmt) : exp =
   match s.skind with
       Loop(b, _, _, _) -> begin
@@ -426,23 +451,25 @@ let get_loop_successor (s: stmt) : exp =
             Instr(il) -> begin
               match (L.hd (L.rev il)) with
                 Set(_, e, _) -> e
-              | _ -> raise (CouldntGetLoopSuccesor s)
+              | _ -> raise (CouldntGetLoopSuccessor s)
             end
-          | _ -> raise (CouldntGetLoopSuccesor s)
+          | _ -> raise (CouldntGetLoopSuccessor s)
       end
-    | _ -> raise (CouldntGetLoopSuccesor s)
+    | _ -> raise (CouldntGetLoopSuccessor s)
 
 
 (******************************************************************************)
 (*                          Constructors                                      *)
 (******************************************************************************)
 
+(** takes an lvalue and a fieldname and returns lvalue.fieldname *)
 let mkFieldAccess lv fieldname =
   let lvt = Cil.typeOfLval lv in
   let ci = getCompinfo (unrollType lvt) in
   let field = getCompField ci fieldname in
   addOffsetLval (Field (field, NoOffset)) lv
 
+(** takes an lvalue (pointer) and a fieldname and returns lvalue->fieldname *)
 let mkPtrFieldAccess lv fieldname =
   let lvt = Cil.typeOfLval lv in
   (* get the type *)
@@ -454,7 +481,10 @@ let mkPtrFieldAccess lv fieldname =
   let field = getCompField ci fieldname in
   addOffsetLval (Field (field, NoOffset)) (mkMem (Lval lv) NoOffset)
 
-(* Defines the Task_table for the spu file *)
+(** Defines the Task_table array for the spu file
+    @param tasks the tasks to put in the task table
+    @return the Task_table array as a Cil.global
+ *)
 let make_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
@@ -474,7 +504,10 @@ let make_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) :
   GVar(vi, ii, locUnknown)
 )
 
-(* Defines the Task_table for the ppu file *)
+(** Defines the Task_table for the ppu file. Simply filled with NULL
+    @param tasks the tasks are just used to get the number of NULLS to put in the Task_table
+    @return the Task_table array as a Cil.global
+*)
 let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
@@ -496,9 +529,15 @@ let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) li
 (*                         AttrParam to Expression                            *)
 (******************************************************************************)
 
-(* Convert an attribute into an expression, if possible. Otherwise raise 
- * NotAnExpression *)
+(** exception returning the attribute that failed to convert into an expression *)
 exception NotAnExpression of attrparam
+(** Converts an attribute into an expression.
+  @param  a the attrparam to convert
+  @param  currentFunction the function we are currently processing
+  @param  ppc_file  the ppc file
+  @raise NotAnExpression when it fails
+  @return the converted Cil.attrparam as a Cil.exp
+ *)
 let attrParamToExp (a: attrparam) ?(currFunction: fundec = !currentFunction) (ppc_file: file) : exp= 
   let rec subAttr2Exp (a: attrparam) : exp= begin
     match a with
@@ -545,7 +584,11 @@ let attrParamToExp (a: attrparam) ?(currFunction: fundec = !currentFunction) (pp
 (*                             FILE handling                                  *)
 (******************************************************************************)
 
-(* write an AST (list of globals) into a file *)
+(** writes an AST (list of globals) into a file 
+    @param f the file to be written
+    @param fname  the name of the file on the disk
+    @param globals  the globals of the file to be written
+*)
 let writeNewFile f fname globals = begin
   let file = { f with
     fileName = fname;
@@ -557,7 +600,9 @@ let writeNewFile f fname globals = begin
   close_out oc
 end
 
-(* write out file {e f} *)
+(** writes out file {e f}
+    @param f the file to be written
+*)
 let writeFile f = begin
   let oc = open_out f.fileName in
   Rmtmps.removeUnusedTemps f;
@@ -570,7 +615,10 @@ end
 (*                                BOOLEAN                                     *)
 (******************************************************************************)
 
-(* function that checks if an exp uses an indice *)
+(** checks if an exp uses an indice
+    @param e the expression to check
+    @return true or false
+ *)
 let uses_indice (e: exp) : bool =
   match (e) with 
     (BinOp(PlusPI, _, _, _))
@@ -578,7 +626,10 @@ let uses_indice (e: exp) : bool =
     | (Lval(_, Index(_, _))) -> true
     | _ -> false
 
-(* check if an arguments type is stride *)
+(** checks if an arguments type is stride 
+    @param arg the argument's type
+    @return true or false
+*)
 let is_strided (arg: arg_t) : bool =
    match arg with
     | SIn
@@ -586,7 +637,10 @@ let is_strided (arg: arg_t) : bool =
     | SInOut -> true
     | _ -> false
 
-(* check if an arguments type is out *)
+(** checks if an arguments type is out
+    @param arg the argument's type
+    @return true or false
+*)
 let is_out_arg (arg: arg_t) : bool =
    match arg with
     | Out
@@ -595,7 +649,11 @@ let is_out_arg (arg: arg_t) : bool =
     | SInOut -> true
     | _ -> false
 
-(* function that checks if a stmt is tagged with a #pragma tpc... *)
+(** checks if there is any indiced argument in the task (if any task) in the given
+    statement
+    @param st the statement to check
+    @return true or false
+*)
 let tpc_call_with_arrray (st: stmt) : bool =
   if (st.pragmas <> []) then begin
     match (L.hd st.pragmas) with
@@ -608,17 +666,26 @@ let tpc_call_with_arrray (st: stmt) : bool =
   end else
     false
 
-(* Checks if {e g} is *not* the function declaration of "main"  *)
+(** Checks if a [Cil.global] is {b not} the function declaration of "main" 
+    @param g the global to check
+    @return true or false
+*)
 let isNotMain (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
   | _ -> true
 
-(* Checks if {e g} is *not* the function declaration of "tpc_call_tpcAD65"  *)
+(** Checks if a [Cil.global] is {b not} the function declaration of "tpc_call_tpcAD65"
+    @param g the global to check
+    @return true or false
+*)
 let isNotSkeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
-(* Checks if {e g} is a typedef, enum, struct or union *)
+(** Checks if a global is a typedef, enum, struct or union
+    @param g the global to check
+    @return true or false
+*)
 let is_typedef (g: global) : bool = match g with
     GType(_, _)
   | GCompTag(_, _)
@@ -628,10 +695,17 @@ let is_typedef (g: global) : bool = match g with
   | GVarDecl(vi, _) when vi.vstorage=Extern -> true
   | _ -> false
 
+(** checks whether a type is TComp
+    @return true or false
+*)
 let isCompType = function
     TComp _ -> true
   | _ -> false
 
+(** checks whether a variable is scalar
+    @param vi the variable's [Cil.varinfo]
+    @return true or false
+*)
 let isScalar (vi: varinfo) =  match vi.vtype with
     TVoid _
   | TPtr _
@@ -667,11 +741,16 @@ class changeStmtVisitor (s: stmt) (name: string) (stl: stmt list) : cilVisitor =
     | _ -> DoChildren
   end
 
+(** replaces the call to the {e fake} function with a statement list
+    @param s the targeted [Cil.stmt] for the replacement
+    @param fake the name of the function call to replace
+    @param stl the [Cil.stmt list] to replace the fake call
+*)
 let replace_fake_call_with_stmt (s: stmt) (fake: string) (stl: stmt list) =
   let v = new changeStmtVisitor s fake stl in
   visitCilStmt v s
 
-(** Comparator for use with [List.sort] *)
+(** Comparator for use with [List.sort]. Checks which pair has the bigger int *)
 let comparator (a: (int * exp)) (b: (int * exp)) : int =
   let (a_i, _) = a in
   let (b_i, _) = b in
@@ -696,8 +775,12 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
     else if (arg_typa = In || arg_typa = SIn) then (-1)
     else 1
 
-(** assigns to each argument description its place in the original
-          argument list *)
+(** assigns to each argument description its place in the original argument list
+    @param args the arguments extracted from the annotation
+    @param oargs the original arguments of the function call
+    @return a [(int*arg_descr) list] where the int is the correct place in the
+    argument list for the argument described in the arg_descr 
+ *)
 let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list =
   L.map (fun arg ->
       let (name, _) = arg in
@@ -714,11 +797,14 @@ let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list 
       (!i, arg)
   ) args
 
-(* Preprocess the header file <header> and merges it with f.  The
- * given header should be in the gcc include path.  Modifies f
+(** Preprocesses a header file and merges it with a file.
+    @param f the file to merge the header with
+    @param header the header to merge
+    @param def defines to be passed to the preprocessor
+    @param incPath the include path to give to the preprocessor 
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = (
+    (incPath: string) : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
   ignore (Sys.command ("echo | ppu32-gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in

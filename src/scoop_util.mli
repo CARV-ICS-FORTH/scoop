@@ -145,8 +145,8 @@ val attrParamToExp : Cil.attrparam -> ?currFunction:Cil.fundec -> Cil.file -> Ci
 (* change the return type of a function *)
 val setFunctionReturnType : Cil.fundec -> Cil.typ -> unit
 
-(* returns the compiler added variables of the function *)
-val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list
+(*(* returns the compiler added variables of the function *)
+val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list*)
 
 (* returns the name of the variable in the expration *)
 val getNameOfExp : Cil.exp -> string
@@ -241,4 +241,4 @@ val sort_args : arg_descr -> arg_descr -> int
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
 val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
-    string -> string -> unit
+    string -> unit

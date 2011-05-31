@@ -33,14 +33,28 @@
  *
  *)
 
+(** Responsible for generating code for the TPC runtime on the
+    Cell Processor 
+    @author Foivos Zakkak, zakkak\@ics.forth.gr *)
+
 open Cil
 open Scoop_util
 module E = Errormsg
 module L = List
 
-(* keeps the current funcid for the new tpc_function *)
+(** keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
+(** Creates the body of the cases for the [execute_task]'s switch statement
+    @param task the task to create this case for
+    @param task_info the [varinfo] of the [execute_task]'s {e task_info} formal
+    argument
+    @param ex_task the [varinfo] of the [execute_task]'s {e ex_task} formal
+    argument
+    @param args a list of [(int * arg_descr)] pairs carrying the correct
+    position of each argument plus its description
+    @returns the body of the new case
+*)
 let make_case execfun (task: varinfo) (task_info: varinfo)
               (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
   let res = ref [] in
@@ -116,6 +130,21 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
       break;
 *)
 
+(** Produces the required instructions to push an argument in a task descriptor
+    @param i the argument's number
+    @param local_arg the {e local_arg}'s [Cil.lval]. {e local_arg} is defined
+    as local of tpc_function_* by make_tpc_func.
+    @param avail_task the {e avail_task}'s [Cil.lval]. {e avail_task} is defined
+    in the skeleton used by {b SCOOP}
+    @param tmpvec the {e tmpvec}'s [Cil.lval]. {e tmpvec} is defined
+    as local of tpc_function_* by make_tpc_func.
+    @param fd the tpc_function_* function declaration
+    @param arg a [(int * arg_descr)] pair with all the info about the arg to
+    pass in the task descriptor
+    @param stats flag about generating code for statistics
+    @param spu_file the spu file
+    @return a statement including the produced instructions
+*)
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: (int * arg_descr)) (stats: bool) (spu_file: file): instr list = (
   let (i_m, (_, (arg_type, _, _, _))) = arg in

@@ -34,11 +34,17 @@
  *
  *)
 
+(** Responsible for generating the [execute_task]
+    Cell Processor 
+    @author Foivos Zakkak, zakkak\@ics.forth.gr
+    @author Polyvios Pratikakis, polyvios\@ics.forth.gr *)
+
 open Cil
 open Scoop_util
 
 (** Make the execute_func function that branches on the task id and
     calls the actual task function on the spe
+    @param arch the runtime/architecture to target
     @param f the file where the execute_func is going to be placed
     @param tasks the tasks to be handled by the execute_task
            {e tasks} include:

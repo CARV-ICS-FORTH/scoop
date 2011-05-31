@@ -34,6 +34,8 @@
  *
  *)
 
+(** The main module of SCOOP *)
+
 open Pretty
 open Cil
 open Lockutil
@@ -54,23 +56,32 @@ let tracei = T.tracei "scoop"
 let traceu = T.traceu "scoop"
 
 (* defining globals *)
+(** holds the TPC's SPEs queue size *)
 let queue_size = ref "0"
+(** flag for more prints by SCOOP *)
 let debug = ref false
+(** flag for some tracing prints of SCOOP *)
 let dotrace = ref false
+(** flag to support multithreading or not *)
 let thread = ref false
+(** the prefix of the files to be produced by SCOOP. Defaults to "final" *)
 let out_name = ref "final"
+(** the runtime/architecture to target. Currently supporting cell/cellgod.
+    Defaults to unknown *)
 let arch = ref "unknown"
+(** the path where the runtime headers are located *)
 let tpcIncludePath = ref ""
+(** flags to pass to the gcc when merging files *)
 let cflags = ref ""
+(** holds the previous visited statement *)
 let prevstmt = ref dummyStmt
 
-(* create a ref to the input file *)
-(* let in_file = ref dummyFile *)
-(* create a ref to the new spu file *)
+(** The new spu file to create *)
 let spu_file = ref dummyFile
-(* create a ref to the new ppe file *)
+(** The new ppu file to create *)
 let ppc_file = ref dummyFile
 
+(** the options supported by scoop *)
 let options =
   [
     "--runtime",
@@ -119,9 +130,11 @@ let options =
   ]
 
 (* create 1 global list (the spe output file) *)
+(** holds the processed tasks *)
 let spu_tasks = ref []
 
-(* parses the #pragma css task arguments *)
+(** processes recursively the arguments' info found in input() output() and
+    inout() directives *)
 let rec scoop_process_args typ args =
   match args with
     (AIndex(ACons(varname, []), varsize)::rest) ->
@@ -137,13 +150,14 @@ let rec scoop_process_args typ args =
     | [] -> []
     | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)\n" typ); []
 
+(** parses the #pragma css task arguments *)
 let rec scoop_process = function
   | (AStr("highpriority")::rest) -> scoop_process rest
   | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args)@(scoop_process rest)
   | [] -> []
   | _ -> ignore(E.warn "Syntax error in #pragma css task\n"); []
 
-(* populates the global list of spu tasks [spu_tasks] *)
+(** populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
   inherit nopCilVisitor
   val callgraph = cgraph 
@@ -202,69 +216,6 @@ class findSPUDeclVisitor cgraph = object
             | _ ->  Scoop_x86.make_tpc_func in
 
           match (List.hd prags) with 
-(*            (Attr("tpc", args), _) -> (
-              let funname = vi.vname in
-              let args' =
-                List.map (fun arg -> match arg with
-(*                     ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> *)
-                    ACons(varname, ACons(arg_typ, [])::varsize::[]) ->
-                      (varname, ((translate_arg arg_typ false),
-                          attrParamToExp varsize !ppc_file,
-                          attrParamToExp varsize !ppc_file,
-                          attrParamToExp varsize !ppc_file))
-(*                   | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) -> *)
-                  | ACons(varname, ACons(arg_typ, [])::varsize::elsize::elnum::[]) ->
-                      (varname, ((translate_arg arg_typ true),
-                        attrParamToExp varsize !ppc_file,
-                        attrParamToExp elsize !ppc_file,
-                        attrParamToExp elnum !ppc_file))
-                  | _ -> ignore(E.error "impossible"); assert false
-                ) args in
-              ignore(E.log "Found task \"%s\"\n" funname);
-              let rest new_fd = 
-                (* push arguments to the call *)
-                let call_args = ref [] in
-                let args_num = (List.length args')-1 in
-                for i = 0 to args_num do
-                  let (vname, (_, _, _, _)) = List.nth args' i in
-                  call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
-                done;
-                for i = 0 to args_num do
-                  let (_, (arg_type, vsize, velsz, vels)) = List.nth args' i in
-(*                   call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
-                  call_args := vsize::!call_args;
-                  if (is_strided arg_type) then
-(*                    call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
-                      Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
-                    call_args := vels::velsz::!call_args;
-                done;
-                let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
-                let call = mkStmtOneInstr instr in
-                ChangeTo(call) in
-              try
-                (* check if we have seen this function before *)
-                let (new_fd, _, fargs) = List.assoc funname !spu_tasks in
-                rest new_fd
-              with Not_found -> (
-                let rest2 var_i = 
-                  let (new_fd, args) = make_tpc_funcf var_i oargs args' ppc_file spu_file in
-                  add_after_s !ppc_file var_i.vname new_fd;
-                  spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
-                  rest new_fd in
-                (* try to find the function definition *)
-                try
-                  (* checking for the function definition *)
-                  let task = find_function_fundec (!ppc_file) funname in
-                  (* copy itself and the callees *)
-                  deep_copy_function funname callgraph !spu_file !ppc_file;
-                  rest2 task.svar
-                (* else try to find the function signature/prototype *)
-                with Not_found -> (
-                  let task = find_function_sign (!ppc_file) funname in
-                  rest2 task
-                )
-              )
-            )*)
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> (
               match sub with
@@ -426,14 +377,14 @@ let feature : featureDescr =
 
           (* Defined in scoop_util *)
           preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(def))
-                                      !arch !tpcIncludePath;
+                                      !tpcIncludePath;
 
           (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
             plus the needed headers *)
           let new_types_l = List.filter is_typedef (!ppc_file).globals in
           (!spu_file).globals <- new_types_l;
           preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(def))
-                                      !arch !tpcIncludePath;
+                                      !tpcIncludePath;
         );
 
         (* SDAM *)

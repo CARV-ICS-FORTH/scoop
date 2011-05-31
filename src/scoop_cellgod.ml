@@ -44,6 +44,24 @@ module E = Errormsg
 (** keeps the current funcid for the new tpc_function_* *)
 let func_id = ref 0
 
+
+(** Creates the body of the cases for the [execute_task]'s switch statement
+    @param task the task to create this case for
+    @param task_info the [varinfo] of the [execute_task]'s {e task_info} formal
+    argument
+    @param ex_task the [varinfo] of the [execute_task]'s {e ex_task} formal
+    argument
+    @param args a list of [(int * arg_descr)] pairs carrying the correct
+    position of each argument plus its description
+    @return the body of the new case
+*)
+(*
+    case 0:
+      matrix_add_row(task_info->local[0], task_info->local[2], task_info->local[1]);
+      task_info->state = EXECUTED; no need for it in every case
+                                      moved it out of the swith
+      break;
+*)
 let make_case execfun (task: varinfo) (task_info: varinfo)
               (ex_task: varinfo) (args: (int * arg_descr) list): stmt = (
   assert(isFunctionType task.vtype);
@@ -71,19 +89,20 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let (_, arglist) = List.split arglist in
   mkStmt (Instr ([Call (None, Lval (var task), arglist, locUnknown)]))
 )
-(*
-    case 0:
-      //printf("SPU: Dispatch (%p) (%d,%d,%p)\n", task_info->ls_addr,
-//          task_info->state, task_info->dmatag, task_info->dmalist);
-      arg1 = (float * )task_info->ls_addr;
-      arg2 = (float * )((void * )arg1 + ex_task->arguments[0].size);
-      arg3 = (int * )((void * )arg2 + ex_task->arguments[1].size);
-      matrix_add_row(arg1, arg2, arg3);
-      task_info->state = EXECUTED; no need for it in every case
-                                      moved it out of the swith
-      break;
-*)
 
+(** Produces the required instructions to push an argument in a task descriptor
+    @param i the argument's number
+    @param this the {e this}'s [Cil.lval]. {e this} is defined in the skeleton
+    used by {b SCOOP}
+    @param bis the {e block_index_start}'s [Cil.lval]. {e block_index_start} is
+    defined as local of tpc_function_* by make_tpc_func.
+    @param arg a [(int * arg_descr)] pair with all the info about the arg to
+    pass in the task descriptor
+    @param spu_file the spu file
+    @param unaligned_args flag about supporting unaligned arguments
+    @param ppc_file the ppc file
+    @return a statement including the produced instructions
+*)
 let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_descr) )
   (spu_file: file) (unaligned_args: bool) (ppc_file: file) : stmt = (
   let (i_m, (arg_name, (arg_type, _, _, _))) = arg in
@@ -134,90 +153,6 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
     il := Set(total_arguments, pplus, locUnknown)::!il;
     (*stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (List.rev !il))];*)
   ) else (
-
-    (**************************************************************************
-    * OLD CODE from general tpc_call ******************************************
-    **************************************************************************)
-
-    (*
-    (* uint32_t block_index_start=this->closure.total_arguments; *)
-    il := Set(bis, Lval total_arguments, locUnknown)::!il;
-
-    (* limit=(((uint32_t)arg_addr64)+arg_size); *)
-    let plus = (BinOp(PlusA, CastE(uint32_t, arg_addr), Lval arg_size, uint32_t)) in
-    il := Set(limit, plus, locUnknown)::!il;
-
-    (* e_addr=(uint32_t)arg_addr64; *)
-    il := Set(e_addr, CastE(uint32_t, arg_addr), locUnknown)::!il;
-
-    (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
-        uint32_t tmp_addr=(uint32_t)arg_addr64;
-        arg_addr64 = (void* )(((uint32_t)(tmp_addr/BLOCK_SZ))*BLOCK_SZ);
-        this->closure.arguments[ this->closure.total_arguments].stride = tmp_addr-(uint32_t)arg_addr64;
-        arg_size +=this->closure.arguments[ this->closure.total_arguments ].stride;
-        //      limit +=this->closure.arguments[ this->closure.total_arguments ].stride;
-      #endif*)
-    if (unaligned_args) then (
-      let tmp_addr = var (makeLocalVar fd "tmp_addr" uint32_t) in
-      il := Set(tmp_addr, arg_addr, locUnknown)::!il; 
-      let div = BinOp(Div, Lval tmp_addr, integer block_size, uint32_t) in
-      let mul = BinOp(Mult, CastE(uint32_t, div), integer block_size, voidPtrType) in
-      il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
-      let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, arg_addr), intType) in
-      il := Set(stride, new_stride, locUnknown)::!il;
-      let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in
-      il := Set(arg_size, add, locUnknown)::!il;
-    );
-
-    (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
-      this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
-      this->closure.arguments[  this->closure.total_arguments ].size = BLOCK_SZ;
-      AddAttribute_Task( this, (void* )(e_addr), arg_flag,BLOCK_SZ,&(this->closure.arguments[  this->closure.total_arguments ]));
-      this -> closure.total_arguments++;
-      this->closure.arguments[ this->closure.total_arguments ].stride=0;
-    }*)
-    let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in
-    let ilt = ref [closure_flag] in
-    ilt := Set(size, integer block_size, locUnknown)::!ilt;
-    let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-    let addrOf_args = AddrOf(idxlv) in
-    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; integer block_size; addrOf_args ] in
-    ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
-    ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
-    let start = [mkStmtOneInstr (Set(e_addr, arg_addr, locUnknown))] in
-    let e_addr_plus = BinOp(PlusA, Lval e_addr, integer block_size, intType) in
-    let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
-    let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
-    let body = [mkStmt (Instr (List.rev !ilt))] in
-    stl := List.rev (mkStmt(Instr (List.rev !il))::(mkFor start guard next body));
-
-    (*if(limit-e_addr){
-      this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag;
-      this->closure.arguments[  this->closure.total_arguments ].size = limit-e_addr;
-      AddAttribute_Task( this, (void* )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size,&(this->closure.arguments[  this->closure.total_arguments ]));
-      this -> closure.total_arguments++;
-    }*)
-    let sub = (BinOp(MinusA, Lval limit, Lval e_addr, boolType)) in
-    ilt := [closure_flag];
-    ilt := Set(size, sub, locUnknown)::!ilt;
-    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval size; addrOf_args ] in
-    ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
-    ilt := Set(total_arguments, pplus, locUnknown)::!ilt;
-    let bl = mkBlock [mkStmt(Instr (List.rev !ilt))] in
-    stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::!stl;
-
-    (* this->closure.arguments[ block_index_start ].flag|=TPC_START_ARG;
-      tpc_common.h:20:#define TPC_START_ARG   0x10 *)
-    let idxlv = addOffsetLval (Index(Lval bis, NoOffset)) arguments in
-    let flag = mkFieldAccess idxlv "flag" in
-    let bor = BinOp(BOr, Lval flag, integer 0x10, intType) in
-    stl := mkStmtOneInstr(Set(flag, bor, locUnknown))::!stl;
-  *)
-
-
-    (**************************************************************************
-    * NEW CODE from tpc_callN *************************************************
-    **************************************************************************)
 
     (*
       #ifdef BLOCKING
