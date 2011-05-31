@@ -107,6 +107,7 @@ exception Found_fundec of fundec
 let find_function_fundec_g (g: global list) (name: string) : fundec =
   let findit = function
     | GFun(fd, _) when fd.svar.vname = name -> raise (Found_fundec fd)
+(*     | GFun(fd, _) -> print_endline fd.svar.vname; () *)
     | _ -> ()
   in
   try

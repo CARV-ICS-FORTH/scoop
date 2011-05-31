@@ -271,7 +271,10 @@ class findSPUDeclVisitor cgraph = object
                 (* Support #pragma css task... *)
                 AStr("task")-> (
                   match s.skind with 
-                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
+                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::restInst) -> (
+                      if (restInst <> []) then (
+                        (E.error "length=%d\n" (List.length restInst)); assert false
+                      );
                       let funname = vi.vname in
                       let args = scoop_process rest in
                       ignore(E.log "Found task \"%s\"\n" funname);
@@ -403,7 +406,7 @@ let feature : featureDescr =
         (* find tpc_decl pragmas *)
         let fspuVisitor = new findSPUDeclVisitor callgraph in
         (* let ftagVisitor = new findTaggedCalls in *)
-    
+
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
 
@@ -433,9 +436,10 @@ let feature : featureDescr =
                                       !arch !tpcIncludePath;
         );
 
-        (* kasas was here :P *)
+        (* SDAM *)
         if (!arch = "cellgod") then
           (Ptdepa.find_dependencies f);
+
 
         Cil.iterGlobals !ppc_file 
           (function
@@ -468,9 +472,6 @@ let feature : featureDescr =
         Deadcodeelim.dce !ppc_file;
         Cfg.computeFileCFG !spu_file;
         Deadcodeelim.dce !spu_file;*)
-
-        (*(* remove the "tpc_call_tpcAD65" function from the ppc_file *)
-        (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;*)
 
 (*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
