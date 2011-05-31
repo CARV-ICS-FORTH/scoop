@@ -48,7 +48,7 @@ let get_rhoSet (arg: arg_type) : LF.rhoSet =
             LF.d_rho argaddress PT.d_tau argtype); *)
   match argtype.PT.t with
   | PT.ITPtr(_, r) -> LF.close_rhoset_m (LF.RhoSet.singleton r)
-  | _ ->  ignore(E.log "Warning: %s is not a pointer" argname);
+  | _ ->  ignore(E.log "Warning: %s is not a pointer\n" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
 
