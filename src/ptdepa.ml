@@ -104,7 +104,7 @@ let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) 
   | (task::tl) -> let (taskinf', args) = task in
                   let rec check_arg' dep_args' = function
                     [] -> dep_args'
-                  | (arg'::tl) -> if((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf') )) then 
+                  | (arg'::tl) -> if((is_aliased arg arg')) then 
                                     check_arg' ((arg', taskinf')::dep_args') tl
                                   else 
                                     check_arg' dep_args' tl
@@ -177,32 +177,36 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
 
 
 let isSafeArg (task: fundec) (argname: string) : bool =
-	let rec find_task_deps task_deps = begin
-			match task_deps with
-				[] -> [];
-			| (task_n::rest) -> begin 
-				let (_, arg_dep_l) = task_n in
-				let rec find_argument_deps arg_dep_l = begin
-					match arg_dep_l with
-						[] -> []
-				| (arg_dep_n::rest) -> begin
-						let ((argname', _, _), arg_deps) = arg_dep_n in
-						if(argname = argname') then
-							arg_deps
-						else
-							find_argument_deps rest
-					end
-				end in
-				let arg_deps = (find_argument_deps arg_dep_l) in
-				match arg_deps with
-					[] -> find_task_deps rest
-				| _ -> arg_deps 	
-			end
-	end in
-	let arg_deps = (find_task_deps !task_dep_l) in
-	match arg_deps with
-		[] -> true
-	| _ -> false
+	(*  if task_deos empty, then teh analysis has not run, return false *)
+	match !task_dep_l with
+		[] -> false
+	| _ ->(
+		let rec find_task_deps task_deps = begin
+				match task_deps with
+					[] -> [];
+				| (task_n::rest) -> begin 
+					let (_, arg_dep_l) = task_n in
+					let rec find_argument_deps arg_dep_l = begin
+						match arg_dep_l with
+							[] -> []
+					| (arg_dep_n::rest) -> begin
+							let ((argname', _, _), arg_deps) = arg_dep_n in
+							if(argname = argname') then
+								arg_deps
+							else
+								find_argument_deps rest
+						end
+					end in
+					let arg_deps = (find_argument_deps arg_dep_l) in
+					match arg_deps with
+						[] -> find_task_deps rest
+					| _ -> arg_deps 	
+				end
+		end in
+		let arg_deps = (find_task_deps !task_dep_l) in
+		match arg_deps with
+			[] -> true
+		| _ -> false)
 
 
 let taskId (taskinf: task_descr) : string = 
