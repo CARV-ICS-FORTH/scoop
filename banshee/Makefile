@@ -28,7 +28,6 @@
 BANSHEE_VERSION := banshee-1.02
 DISTRIB_ROOT := /tmp
 DISTRIB_DIR := $(DISTRIB_ROOT)/$(BANSHEE_VERSION)
-export DEBUG = 1
 
 .PHONY: banshee libcompat codegen engine tests andersen steensgaard \
 	lambda dyckcfl docs points-to install perf ibanshee java distrib \
