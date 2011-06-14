@@ -227,6 +227,7 @@ static void test_dyck_reduction()
   make_mr_dyck_close_edge(d2,d3,1);
   make_mr_dyck_close_edge(d2,d4,2);
   make_mr_dyck_open_edge(d5,d1,2);
+  make_mr_dyck_open_edge(d6,d6,2);
   make_mr_dyck_close_edge(d7,d2,3);
   make_mr_dyck_subtype_edge(d1,d8);
   make_mr_dyck_close_edge(d8,d9,3);
