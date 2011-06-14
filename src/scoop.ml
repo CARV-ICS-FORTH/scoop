@@ -182,7 +182,7 @@ class findSPUDeclVisitor cgraph = object
         (Attr("css", AStr("wait")::rest), loc) -> (
           (* Support #pragma css wait on(...) *)
           match rest with 
-              ACons("on", exps)::_ -> (* wait on *) DoChildren
+              ACons("on", exps)::_ -> (* TODO wait on *) DoChildren
             | AStr("all")::_ -> ( (* wait all *)
                 let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
                 let instr = Call (None, Lval (var twa), [], locUnknown) in
@@ -197,8 +197,14 @@ class findSPUDeclVisitor cgraph = object
           let args = 
             if (!arch="cell") then
               [attrParamToExp exp !ppc_file]
-            else
+            else if (!arch="cellgod") then
               attrParamToExp exp !ppc_file::[attrParamToExp (L.hd rest) !ppc_file]
+            else (
+              match rest with
+                first::second::_ -> attrParamToExp exp !ppc_file::(attrParamToExp first !ppc_file::[attrParamToExp second !ppc_file])
+                | _ -> ignore(E.error "#pragma css start takes 3 arguments\n");
+                       assert false
+              )
           in
           let instr = Call (None, Lval (var ts), args, locUnknown) in
           let s' = {s with pragmas = List.tl s.pragmas} in
@@ -350,10 +356,9 @@ let feature : featureDescr =
       else if (!arch = "cell" && !queue_size = "0") then
         ignore(E.error "No queue_size specified. Exiting!\n")
       else (
-        (* create two copies of the initial file *)
-  (*       in_file := f; *)
-  (*       spu_file := { f with fileName = (!out_name^"_func.c");}; *)
-        spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
+        (* if we are not on x86-SMP create two copies of the initial file *)
+        if (!arch <> "x86") then
+          spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
         ppc_file := { f with fileName = (!out_name^".c");};
 
         (* create a call graph and print it *)
@@ -368,8 +373,7 @@ let feature : featureDescr =
 
         let def = " "^(!cflags)^( if (!stats) then " -DSTATISTICS=1" else " ") in
         if (!arch = "x86") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DX86tpc=1"^(def))
-                                      !arch !tpcIncludePath;
+          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
 (*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
@@ -393,7 +397,7 @@ let feature : featureDescr =
         );
 
         (* SDAM *)
-        if ((!arch = "cellgod") && (not !dis_sdam)) then
+        if ((!arch <> "cell") && (not !dis_sdam)) then
           (Ptdepa.find_dependencies f);
 
 
@@ -420,8 +424,13 @@ let feature : featureDescr =
         if (!arch = "cellgod") then (
           (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
           (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]
+        ) else if (!arch = "x86") then (
+          (!ppc_file).globals <- (make_task_table tasks)::((!ppc_file).globals)
         );
-        (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
+
+        (* execute_task is redundant in x86*)
+        if (!arch <> "x86") then
+          (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
 
         (* eliminate dead code *)
 (*        Cfg.computeFileCFG !ppc_file;

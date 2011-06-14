@@ -171,7 +171,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
-    (arch: string) (incPath: string) : unit = (
+    : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
   ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
