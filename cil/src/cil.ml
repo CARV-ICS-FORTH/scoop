@@ -6554,7 +6554,7 @@ let rec xform_switch_stmt s break_dest cont_dest label_index = begin
       let body_if_stmtkind = (If(zero,body_block,break_block,l)) in
 
       (* The default case, if present, must be used only if *all*
-      non-default cases fail [ISO/IEC 9899:1999, §6.8.4.2, ¶5]. As a
+      non-default cases fail [ISO/IEC 9899:1999, ï¿½6.8.4.2, ï¿½5]. As a
       result, we sort the order in which we handle the labels (but not the
       order in which we print out the statements, so fall-through still
       works as expected). *)

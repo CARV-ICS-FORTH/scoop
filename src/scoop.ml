@@ -220,12 +220,6 @@ class findSPUDeclVisitor cgraph = object
         | _ -> ();
       match s.skind with 
         Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
-          (* select the function to create the custom tpc_calls *)
-          let make_tpc_funcf = match !arch with
-              "cell" -> Scoop_cell.make_tpc_func
-            | "cellgod" -> Scoop_cellgod.make_tpc_func
-            | _ ->  Scoop_x86.make_tpc_func in
-
           match (List.hd prags) with 
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> (
@@ -234,12 +228,10 @@ class findSPUDeclVisitor cgraph = object
                 AStr("task")-> (
                   match s.skind with 
                     Instr(Call(_, Lval((Var(vi), _)), oargs, _)::restInst) -> (
-                      if (restInst <> []) then (
-                        (E.error "length=%d\n" (List.length restInst)); assert false
-                      );
                       let funname = vi.vname in
                       let args = scoop_process rest in
-                      ignore(E.log "Found task \"%s\"\n" funname);
+                      if (!debug) then
+                        ignore(E.log "Found task \"%s\"\n" funname);
                       let rest_f new_fd = 
                         (* add arguments to the call *)
                         let call_args = ref (L.rev oargs) in
@@ -289,7 +281,7 @@ class findSPUDeclVisitor cgraph = object
                             call_args := vels::velsz::!call_args;
                         done;*)
                         let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
-                        let call = mkStmtOneInstr instr in
+                        let call = mkStmt (Instr(instr::restInst)) in
                         ChangeTo(call)
                       in
                       try
@@ -298,6 +290,11 @@ class findSPUDeclVisitor cgraph = object
                         rest_f new_fd
                       with Not_found -> (
                         let rest_f2 var_i = 
+                          (* select the function to create the custom tpc_calls *)
+                          let make_tpc_funcf = match !arch with
+                              "cell" -> Scoop_cell.make_tpc_func
+                            | "cellgod" -> Scoop_cellgod.make_tpc_func
+                            | _ ->  Scoop_x86.make_tpc_func in
                           let (new_fd, args) = make_tpc_funcf var_i oargs args ppc_file spu_file in
                           add_after_s !ppc_file var_i.vname new_fd;
                           spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
@@ -440,7 +437,8 @@ let feature : featureDescr =
 
 (*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
-        writeFile !spu_file;
+        if (!arch <> "x86") then
+          writeFile !spu_file;
       )
     );
     fd_post_check = true;
