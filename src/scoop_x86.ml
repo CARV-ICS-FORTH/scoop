@@ -44,7 +44,7 @@ let func_id = ref 0
 let block_size = ref 0
 
 let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
- (fd: fundec) (arg: arg_descr) (spu_file: file) (unaligned_args: bool)
+ (fd: fundec) (arg: arg_descr) (spu_file: file)
  (block_size: int) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
@@ -99,14 +99,18 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
   ) else (
 
     (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
+        printf("ADAM Warning: Unaligned argument\n");
         uint32_t tmp_addr=(uint32_t)arg_addr64;
         arg_addr64 = (void* )(((uint32_t)(tmp_addr/BLOCK_SZ))*BLOCK_SZ);
         this->closure.arguments[ this->closure.total_arguments].stride = tmp_addr-(uint32_t)arg_addr64;
-        arg_size +=this->closure.arguments[ this->closure.total_arguments ].stride;
+        // arg_size +=this->closure.arguments[ this->closure.total_arguments ].stride;
         //      limit +=this->closure.arguments[ this->closure.total_arguments ].stride;
-        e_addr=(uint32_t)arg_addr64;
+        // e_addr=(uint32_t)arg_addr64;
       #endif*)
-    if (unaligned_args) then (
+    if (!unaligned_args) then (
+      let printf = find_function_sign ppc_file "printf" in
+      let args = [Const(CStr("ADAM Warning: Unaligned argument\n"))] in
+      il := Call (None, Lval (var printf), args, locUnknown)::!il;
       let tmp_addr = var (makeLocalVar fd "tmp_addr" uint32_t) in
       il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
       let div = BinOp(Div, Lval tmp_addr, integer block_size, uint32_t) in
@@ -114,9 +118,9 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
       let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint32_t, Lval arg_addr), intType) in
       il := Set(stride, new_stride, locUnknown)::!il;
-      let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in
-      il := Set(arg_size, add, locUnknown)::!il;
-      il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il;
+(*       let add = (BinOp(PlusA, Lval arg_size, Lval stride, uint32_t)) in *)
+(*       il := Set(arg_size, add, locUnknown)::!il; *)
+(*       il := Set(e_addr, CastE(uint32_t, Lval arg_addr), locUnknown)::!il; *)
     );
 
     (*for(e_addr=(uint32_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
@@ -231,7 +235,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
 
     (* local_arg <- argument description *)
     stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
-            !unaligned_args !block_size !f)@(!stmts);
+             !block_size !f)@(!stmts);
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
