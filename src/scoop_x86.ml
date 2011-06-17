@@ -44,10 +44,9 @@ let func_id = ref 0
 let block_size = ref 0
 
 let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
- (fd: fundec) (arg: arg_descr) (spu_file: file)
- (block_size: int) (ppc_file: file) : stmt list = (
+ (fd: fundec) (arg: arg_descr) (block_size: int) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
-  let uint32_t = (find_type spu_file "uint32_t") in
+  let uint32_t = (find_type ppc_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let arg_addr = var (List.nth fd.sformals i) in
   let (_, (arg_type ,_ ,_ ,_)) = arg in
@@ -215,13 +214,13 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkPtrFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
-  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
+    CastE(find_type !f "uint8_t", integer !func_id), locUnknown) in
   let stmts = ref [mkStmtOneInstr funcid_set] in
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
-  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
+  CastE(find_type !f "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
 
-  let uint32_t = (find_type !spu_file "uint32_t") in
+  let uint32_t = (find_type !f "uint32_t") in
   (* uint32_t block_index_start *)
   let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
   (* uint32_t limit *)
@@ -234,8 +233,7 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
     let arg = List.nth args i in
 
     (* local_arg <- argument description *)
-    stmts := (doArgument i this e_addr (var limit) bis f_new arg !spu_file
-             !block_size !f)@(!stmts);
+    stmts := (doArgument i this e_addr (var limit) bis f_new arg !block_size !f)@(!stmts);
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 

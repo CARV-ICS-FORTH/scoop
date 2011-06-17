@@ -129,9 +129,9 @@ let options =
       Arg.Set(thread),
       " SCOOP: Generate thread safe code, for use with -DTPC_MULTITHREADED";
 
-	"--disable-sdam",
-	  Arg.Set(dis_sdam),
-	  " SCOOP: Disable static dependence analysis module";
+    "--disable-sdam",
+      Arg.Set(dis_sdam),
+      " SCOOP: Disable static dependence analysis module";
   ]
 
 (* create 1 global list (the spe output file) *)
@@ -302,7 +302,7 @@ class findSPUDeclVisitor cgraph = object
                         (* try to find the function definition *)
                         try
                           (* checking for the function definition *)
-                          let task = find_function_fundec (!ppc_file) funname in
+                          let task = find_function_fundec_g (!ppc_file.globals) funname in
                           (* copy itself and the callees *)
                           deep_copy_function funname callgraph !spu_file !ppc_file;
                           rest_f2 task.svar
@@ -422,7 +422,7 @@ let feature : featureDescr =
           (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
           (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]
         ) else if (!arch = "x86") then (
-          (!ppc_file).globals <- (make_task_table tasks)::((!ppc_file).globals)
+          (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table tasks)]
         );
 
         (* execute_task is redundant in x86*)

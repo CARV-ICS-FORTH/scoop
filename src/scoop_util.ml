@@ -123,18 +123,16 @@ let find_function_fundec_g (g: global list) (name: string) : fundec =
     @return the Cil.fundec of the function named {e name}
  *)
 let find_function_fundec (f: file) (name: string) : fundec =
-  find_function_fundec_g f.globals name
+  try find_function_fundec_g f.globals name
+  with Not_found -> (
+    ignore(E.error "Function declaration of \"%s\" not found\n" name);
+    raise Not_found
+  )
 
 (** Exception returning the found function signature *)
 exception Found_sign of varinfo
-(** find the function signature for {e name} function in file {e f}
-    @param f the file to look in
-    @param name the name of the function to search
-    @raise Not_found when there is no function signature with name
-      {e name} in {e f}
-    @return the Cil.varinfo of the function named {e name}
- *)
-let find_function_sign (f: file) (name: string) : varinfo =
+(** this is the private function *)
+let __find_function_sign (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_sign vi)
     | _ -> ()
@@ -143,6 +141,19 @@ let find_function_sign (f: file) (name: string) : varinfo =
     iterGlobals f findit;
     raise Not_found
   with Found_sign v -> v
+(** find the function signature for {e name} function in file {e f}
+    @param f the file to look in
+    @param name the name of the function to search
+    @raise Not_found when there is no function signature with name
+      {e name} in {e f}
+    @return the Cil.varinfo of the function named {e name}
+ *)
+let find_function_sign (f: file) (name: string) : varinfo =
+  try __find_function_sign f name
+  with Not_found -> (
+    ignore(E.error "Function signature of \"%s\" not found\n" name);
+    raise Not_found
+  )
 
 (** Exception returning the found type *)
 exception Found_type of typ
@@ -159,6 +170,7 @@ let find_type (f: file) (name: string) : typ =
   in
   try
     iterGlobals f findit;
+    ignore(E.error "Type \"%s\" not found\n" name);
     raise Not_found
   with Found_type t -> t
 
@@ -175,18 +187,14 @@ let find_tcomp (f: file) (name: string) : typ =
   in
   try
     iterGlobals f findit;
+    ignore(E.error "Struct ot Union \"%s\" not found\n" name);
     raise Not_found
   with Found_type t -> t
 
 (** Exception returning the found varinfo *)
 exception Found_var of varinfo
-(** find the global variable named {e name} in file {e f} 
-    @param f the file to look in
-    @param name the name of the global variable to search
-    @raise Not_found when there is no global variable with name {e name} in {e f}
-    @return the Cil.varinfo of the global variable {e name}
- *)
-let find_global_var (f: file) (name: string) : varinfo =
+(** this is the private function *)
+let __find_global_var (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_var vi)
     | GVar(vi, _, _) when vi.vname = name -> raise (Found_var vi)
@@ -196,14 +204,21 @@ let find_global_var (f: file) (name: string) : varinfo =
     iterGlobals f findit;
     raise Not_found
   with Found_var v -> v
-
-(** find the variable named {e name} in the formals of {e fd} 
-    @param fd the function declaration to look in
-    @param name the name of the formal variable to search
-    @raise Not_found when there is no formal variable with name {e name} in {e fd}
-    @return the Cil.varinfo of the formal variable {e name}
+(** find the global variable named {e name} in file {e f} 
+    @param f the file to look in
+    @param name the name of the global variable to search
+    @raise Not_found when there is no global variable with name {e name} in {e f}
+    @return the Cil.varinfo of the global variable {e name}
  *)
-let find_formal_var (fd: fundec) (name: string) : varinfo =
+let find_global_var (f: file) (name: string) : varinfo =
+  try __find_global_var f name
+  with Not_found -> (
+    ignore(E.error "Global variable \"%s\" not found\n" name);
+    raise Not_found
+  )
+
+(** this is the private function *)
+let __find_formal_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
     | _ -> ()
@@ -212,14 +227,21 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
     List.iter findit fd.sformals;
     raise Not_found
   with Found_var v -> v
-
-(** find the variable named {e name} in the locals of {e fd}  
+(** find the variable named {e name} in the formals of {e fd} 
     @param fd the function declaration to look in
-    @param name the name of the local variable to search
-    @raise Not_found when there is no local variable with name {e name} in {e fd}
-    @return the Cil.varinfo of the local variable {e name}
+    @param name the name of the formal variable to search
+    @raise Not_found when there is no formal variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the formal variable {e name}
  *)
-let find_local_var (fd: fundec) (name: string) : varinfo =
+let find_formal_var (fd: fundec) (name: string) : varinfo =
+  try __find_formal_var fd name
+  with Not_found -> (
+    ignore(E.error "Formal variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
+    raise Not_found
+  )
+
+(** this is the private function *)
+let __find_local_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
     | _ -> ()
@@ -228,6 +250,18 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
     List.iter findit fd.slocals;
     raise Not_found
   with Found_var v -> v
+(** find the variable named {e name} in the locals of {e fd}  
+    @param fd the function declaration to look in
+    @param name the name of the local variable to search
+    @raise Not_found when there is no local variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the local variable {e name}
+ *)
+let find_local_var (fd: fundec) (name: string) : varinfo =
+  try __find_local_var fd name
+  with Not_found -> (
+    ignore(E.error "Local variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
+    raise Not_found
+  )
 
 (** find the variable named {e name} in fundec {e fd}
    else look if it's a global of file {e f}  
@@ -239,13 +273,13 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
  *)
 let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
   try
-    find_local_var fd name
+    __find_local_var fd name
   with Not_found -> 
       ( try
-        find_formal_var fd name
+        __find_formal_var fd name
       with Not_found -> 
           ( try
-            find_global_var f name
+            __find_global_var f name
           with Not_found -> (
               raise Not_found)
           )
@@ -340,7 +374,7 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
     (* now copy current *)
     try
       (* First check whether the function is defined *)
-      let new_fd = GFun(find_function_fundec (ppc_file) func, locUnknown) in
+      let new_fd = GFun(find_function_fundec_g (ppc_file.globals) func, locUnknown) in
       spu_file.globals <- spu_file.globals@[new_fd];
       (* if not check whether we have a signature *)
     with Not_found -> ignore(find_function_sign (ppc_file) func);
