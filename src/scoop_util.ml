@@ -310,6 +310,69 @@ let find_enum (f: file) (name: string) : enuminfo =
 (******************************************************************************)
 
 
+(** Takes an expression and changes it if it's a scalar to its address
+    @param e the expression to get the address of
+    @return the new expression (& old_expression)
+ *)
+let rec expScalarToPointer (e: exp) : exp =
+  match e with
+    AddrOf _
+    | StartOf _ -> e
+    | Const _ -> ignore(E.unimp "Constants are not supported yet as a task argument"); exit 1
+    | SizeOf _
+    | SizeOfE _
+    | SizeOfStr _ -> ignore(E.unimp "sizeof is not supported yet as a task argument"); exit 1
+    | AlignOf _ 
+    | AlignOfE _ -> ignore(E.unimp "AlignOf is not supported yet as a task argument"); exit 1
+    | UnOp _
+    | BinOp _ -> ignore(E.unimp "Operations are not supported yet as a task argument"); exit 1
+    | CastE (t, e') -> (
+      match t with
+          TVoid _
+        | TPtr _
+        | TArray _
+        | TFun _ -> e
+        | _ -> CastE(TPtr(t, []), expScalarToPointer e')
+    )
+    | Lval (lv) -> mkAddrOrStartOf lv
+
+(** Takes a function declaration and changes the types of its scalar formals to pointers
+    @param f the function declaration to change
+ *)
+let formalScalarsToPointers (f: fundec) : unit =
+  match f.svar.vtype with
+    TFun (rt, Some args, va, a) -> 
+      if (va) then (
+        ignore(E.error "Functions with va args cannot be executed as tasks");
+        exit 1
+      );
+
+      let scalarToPointer arg = 
+        let (name, t, a) = arg in
+        match t with
+            TVoid _
+          | TPtr _
+          | TArray _
+          | TFun _ -> arg
+          | _ -> (name, TPtr(t, []), a)
+      in
+      let formals = f.sformals in
+      let args = List.map scalarToPointer args in
+      (* Change the function type. *)
+      f.svar.vtype <- TFun (rt, Some args, false, a); 
+      
+      let scalarToPointer arg = 
+        match arg.vtype with
+            TVoid _
+          | TPtr _
+          | TArray _
+          | TFun _ -> ();
+          | _ -> arg.vtype <- TPtr(arg.vtype, [])
+      in
+      List.iter scalarToPointer formals;
+    | TFun (_) -> ();
+    | _ -> assert false
+
 (** Converts the {e arg} describing the argument type to arg_t
     @param arg the string (in/out/inout/input/output) describing the type of the argument
     @param strided flag showing whether it is a strided argument
@@ -320,13 +383,13 @@ let translate_arg (arg: string) (strided: bool) : arg_t =
       "in" when strided -> SIn
     | "out" when strided -> SOut
     | "inout" when strided -> SInOut
-    | _  when strided -> ignore(E.error "Only in/out/inout are allowed"); assert false
+    | _  when strided -> ignore(E.error "Only in/out/inout are allowed"); exit 1
     | "in" (* legacy *)
     | "input" -> In
     | "out" (* legacy *)
     | "output" -> Out
     | "inout" -> InOut
-    | _ -> ignore(E.error "Only input/output/inout are allowed"); assert false
+    | _ -> ignore(E.error "Only input/output/inout are allowed"); exit 1
 
 (** Maps the arg_t to a number as defined by the TPC headers
     @return the corrensponding number *)
@@ -392,7 +455,7 @@ let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
   match unrollType f.svar.vtype with
     TFun (_, Some args, va, a) -> 
       f.svar.vtype <- TFun(t, Some args, va, a);
-    | _ -> assert(false);
+    | _ -> assert false
 end
 
 (*(** returns the extra formal arguments added to a tpc_function_* by SCOOP *)
@@ -735,18 +798,23 @@ let is_typedef (g: global) : bool = match g with
 let isCompType = function
     TComp _ -> true
   | _ -> false
+  
+(** checks whether a type is scalar
+    @param t the type [Cil.typ]
+    @return true or false
+*)
+let isScalar_t =  function
+  |  TVoid _
+  | TPtr _
+  | TArray _
+  | TFun _ -> false
+  | _ -> true
 
 (** checks whether a variable is scalar
     @param vi the variable's [Cil.varinfo]
     @return true or false
 *)
-let isScalar (vi: varinfo) =  match vi.vtype with
-    TVoid _
-  | TPtr _
-  | TArray _
-  | TFun _ -> false
-  | _ -> true
-  
+let isScalar_v (vi: varinfo) =  isScalar_t vi.vtype
 
 (******************************************************************************)
 (*                                 MISC                                       *)

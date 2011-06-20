@@ -184,7 +184,7 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (func_vi: varinfo) (oargs: exp list)
+let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
@@ -194,12 +194,14 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new func_vi.vtype;
   setFunctionReturnType f_new intType;
+  formalScalarsToPointers f_new;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (List.length f_new.sformals)-1 in
-  if ( args_num > (List.length args) ) then (
-    ignore(E.error "Number of arguments described in #pragma doesn't much the\
-          number of arguments in the function declaration");
-    assert false
+  assert (args_num >= 0);
+  if ( args_num <> (List.length args)-1 ) then (
+    ignore(E.error "%a\n\tNumber of arguments described in #pragma doesn't much the \
+          number of arguments in the function declaration" d_loc loc);
+    exit (1)
   );
   for i = 0 to args_num do
     let (_, (arg_type, _, _, _)) = List.nth args i in

@@ -108,7 +108,13 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
       if !carry <> dummyInstr then res := !carry::!res;
       carry := advptrinstr;
       res := castinstr :: !res;
-      (place, mkCast (Lval(var argvar)) argt)
+      let lv = Lval (
+        if (isScalar_t argt) then
+          mkMem (Lval(var argvar)) NoOffset
+        else
+          var argvar
+      ) in
+      (place, mkCast lv argt)
     )
     args
   in
@@ -151,7 +157,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i_m)))) in
   let actual_arg = L.nth fd.sformals i_m in
   let arg_addr = (
-    if (isScalar actual_arg) then
+    if (isScalar_v actual_arg) then
       mkAddrOf (var actual_arg)
     else
       Lval( var actual_arg)
@@ -233,7 +239,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
  * @return the new function declaration paired with a list of numbered argument
  *         descriptors
  *)
-let make_tpc_func (func_vi: varinfo) (oargs: exp list)
+let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
@@ -244,12 +250,14 @@ let make_tpc_func (func_vi: varinfo) (oargs: exp list)
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new func_vi.vtype;
   setFunctionReturnType f_new intType;
+  formalScalarsToPointers f_new;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (L.length f_new.sformals)-1 in
-  if ( args_num > (L.length args) ) then (
-    ignore(E.error "Number of arguments described in #pragma doesn't much the\
-          number of arguments in the function declaration");
-    assert false
+  assert (args_num >= 0);
+  if ( args_num <> (List.length args)-1 ) then (
+    ignore(E.error "%a\n\tNumber of arguments described in #pragma doesn't much the \
+          number of arguments in the function declaration" d_loc loc);
+    exit (1)
   );
   for i = 0 to args_num do
     let ex_arg = (L.nth oargs i) in

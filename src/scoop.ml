@@ -191,6 +191,13 @@ class findSPUDeclVisitor cgraph = object
             )
             | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
         )
+        | (Attr("css", AStr("barrier")::_), _) -> (
+          (* Support #pragma css barrier(...) *)
+          let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
+          let instr = Call (None, Lval (var twa), [], locUnknown) in
+          let s' = {s with pragmas = List.tl s.pragmas} in
+          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+        )
         | (Attr("css", ACons("start", exp::rest)::_), loc) -> (
           (* Support #pragma css start(processes) *)
           let ts = find_function_sign (!ppc_file) "tpc_init" in
@@ -202,8 +209,8 @@ class findSPUDeclVisitor cgraph = object
             else (
               match rest with
                 first::second::_ -> attrParamToExp exp !ppc_file::(attrParamToExp first !ppc_file::[attrParamToExp second !ppc_file])
-                | _ -> ignore(E.error "#pragma css start takes 3 arguments\n");
-                       assert false
+                | _ -> ignore(E.error "%a\n\t#pragma css start takes 3 arguments\n" d_loc loc);
+                       exit 1
               )
           in
           let instr = Call (None, Lval (var ts), args, locUnknown) in
@@ -219,7 +226,7 @@ class findSPUDeclVisitor cgraph = object
         )
         | _ -> ();
       match s.skind with 
-        Instr(Call(_, Lval((Var(vi), _)), oargs, _)::_) -> (
+        Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::_) -> (
           match (List.hd prags) with 
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> (
@@ -234,7 +241,7 @@ class findSPUDeclVisitor cgraph = object
                         ignore(E.log "Found task \"%s\"\n" funname);
                       let rest_f new_fd = 
                         (* add arguments to the call *)
-                        let call_args = ref (L.rev oargs) in
+                        let call_args = ref (L.rev (L.map expScalarToPointer oargs)) in
 (*                         let args_num = (List.length args)-1 in *)
                         
                         (* push call args from the start...
@@ -295,7 +302,7 @@ class findSPUDeclVisitor cgraph = object
                               "cell" -> Scoop_cell.make_tpc_func
                             | "cellgod" -> Scoop_cellgod.make_tpc_func
                             | _ ->  Scoop_x86.make_tpc_func in
-                          let (new_fd, args) = make_tpc_funcf var_i oargs args ppc_file spu_file in
+                          let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
                           add_after_s !ppc_file var_i.vname new_fd;
                           spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
                           rest_f new_fd in
@@ -316,9 +323,9 @@ class findSPUDeclVisitor cgraph = object
                     | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
                     | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
                 )
-                | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
+                | _ -> ignore(E.warn "%a\n\tUnrecognized pragma" d_loc loc); DoChildren
             )
-            | _ -> ignore(E.warn "Unrecognized pragma"); DoChildren
+            | _ -> ignore(E.warn "%a\n\tUnrecognized pragma" d_loc loc); DoChildren
         )
         | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
         | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
@@ -347,12 +354,14 @@ let feature : featureDescr =
     (function (f: file) ->
       if !dotrace then
         Trace.traceAddSys "scoop";
-      ignore(E.log "Welcome to SCOOP!!!\n");
-      if (!arch = "unknown") then
-        ignore(E.error "No architecture specified. Exiting!\n")
-      else if (!arch = "cell" && !queue_size = "0") then
-        ignore(E.error "No queue_size specified. Exiting!\n")
-      else (
+      ignore(E.log "\nWelcome to SCOOP!!!\n\n");
+      if (!arch = "unknown") then (
+        ignore(E.error "No architecture specified. Exiting!");
+        exit 1
+      ) else if (!arch = "cell" && !queue_size = "0") then (
+        ignore(E.error "No queue_size specified. Exiting!");
+        exit 1
+      ) else (
         (* if we are not on x86-SMP create two copies of the initial file *)
         if (!arch <> "x86") then
           spu_file := { dummyFile with fileName = (!out_name^"_func.c");};

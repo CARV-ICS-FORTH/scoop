@@ -109,6 +109,16 @@ val find_enum : Cil.file -> string -> Cil.enuminfo
 (*                                Converters                                  *)
 (******************************************************************************)
 
+(** Takes an expression and changes it if it's a scalar to its address
+    @param e the expression to get the address of
+    @return the new expression (& old_expression)
+ *)
+val expScalarToPointer : Cil.exp -> Cil.exp
+
+(** Takes a function declaration and changes the types of its scalar formals to pointers
+    @param f the function declaration to change
+ *)
+val formalScalarsToPointers : Cil.fundec -> unit
 
 (* Converts the strings describing the argument type to arg_t *)
 val translate_arg : string -> bool -> arg_t
@@ -206,8 +216,11 @@ val isNotSkeleton : Cil.global -> bool
 (* Checks if <g> is a typedef, enum, struct or union *)
 val is_typedef : Cil.global -> bool
 
+(* Checks if <t> is a scalar *)
+val isScalar_t : Cil.typ -> bool
+
 (* Checks if <vi> is a scalar *)
-val isScalar : Cil.varinfo -> bool
+val isScalar_v : Cil.varinfo -> bool
 
 (******************************************************************************)
 (*                          Constructors                                      *)
