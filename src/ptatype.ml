@@ -2445,8 +2445,8 @@ let rec css_task_process_args typ args loc : unit = begin
 		[] -> ()
 	| (curr::rest) -> begin 
 		match curr with
-    	AIndex(ACons(varname, []), varsize) -> Sdam.addArg (varname, typ, !currentFunction); 		
-
+    	AIndex(ACons(varname, []), _) 
+    | ACons(varname, []) -> Sdam.addArg (varname, typ, !currentFunction);
     | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
 	end;	
 	css_task_process_args typ rest loc

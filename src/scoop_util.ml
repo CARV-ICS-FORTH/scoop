@@ -93,6 +93,115 @@ let blocking = ref false
 
 
 (******************************************************************************)
+(*                                BOOLEAN                                     *)
+(******************************************************************************)
+
+(** checks if an exp uses an indice
+    @param e the expression to check
+    @return true or false
+ *)
+let uses_indice (e: exp) : bool =
+  match (e) with 
+    (BinOp(PlusPI, _, _, _))
+    | (BinOp(IndexPI, _, _, _))
+    | (Lval(_, Index(_, _))) -> true
+    | _ -> false
+
+(** checks if an arguments type is stride 
+    @param arg the argument's type
+    @return true or false
+*)
+let is_strided (arg: arg_t) : bool =
+   match arg with
+    | SIn
+    | SOut
+    | SInOut -> true
+    | _ -> false
+
+(** checks if an arguments type is out
+    @param arg the argument's type
+    @return true or false
+*)
+let is_out_arg (arg: arg_t) : bool =
+   match arg with
+    | Out
+    | InOut
+    | SOut
+    | SInOut -> true
+    | _ -> false
+
+(** checks if there is any indiced argument in the task (if any task) in the given
+    statement
+    @param st the statement to check
+    @return true or false
+*)
+let tpc_call_with_arrray (st: stmt) : bool =
+  if (st.pragmas <> []) then begin
+    match (L.hd st.pragmas) with
+      (Attr("css", _), _) -> begin
+        match (st.skind)  with
+          Instr(Call(_, _, args, _)::_) -> L.exists uses_indice args
+          | _ -> false
+      end
+      | _ -> false
+  end else
+    false
+
+(** Checks if a [Cil.global] is {b not} the function declaration of "main" 
+    @param g the global to check
+    @return true or false
+*)
+let isNotMain (g: global) : bool = match g with
+    GFun({svar = vi}, _) when (vi.vname = "main") -> false
+  | _ -> true
+
+(** Checks if a [Cil.global] is {b not} the function declaration of "tpc_call_tpcAD65"
+    @param g the global to check
+    @return true or false
+*)
+let isNotSkeleton (g: global) : bool = match g with
+    GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
+  | _ -> true
+
+(** Checks if a global is a typedef, enum, struct or union
+    @param g the global to check
+    @return true or false
+*)
+let is_typedef (g: global) : bool = match g with
+    GType(_, _)
+  | GCompTag(_, _)
+  | GCompTagDecl(_, _)
+  | GEnumTag(_, _)
+  | GEnumTagDecl(_, _) -> true
+  | GVarDecl(vi, _) when vi.vstorage=Extern -> true
+  | _ -> false
+
+(** checks whether a type is TComp
+    @return true or false
+*)
+let isCompType = function
+  | TComp _ -> true
+  | _ -> false
+  
+(** checks whether a type is scalar
+    @param t the type [Cil.typ]
+    @return true or false
+*)
+let isScalar_t =  function
+  | TVoid _
+  | TPtr _
+  | TArray _
+  | TFun _ -> false
+  | _ -> true
+
+(** checks whether a variable is scalar
+    @param vi the variable's [Cil.varinfo]
+    @return true or false
+*)
+let isScalar_v (vi: varinfo) =  isScalar_t vi.vtype
+
+
+(******************************************************************************)
 (*                          Search Functions                                  *)
 (******************************************************************************)
 
@@ -334,7 +443,16 @@ let rec expScalarToPointer (e: exp) : exp =
         | TFun _ -> e
         | _ -> CastE(TPtr(t, []), expScalarToPointer e')
     )
-    | Lval (lv) -> mkAddrOrStartOf lv
+    | Lval (lh, off) -> (
+      match lh with
+        Var vi -> (
+          if (isScalar_v vi) then
+            mkAddrOrStartOf (lh, off)
+          else
+            e
+        )
+        | Mem e' -> e'
+    )
 
 (** Takes a function declaration and changes the types of its scalar formals to pointers
     @param f the function declaration to change
@@ -349,12 +467,10 @@ let formalScalarsToPointers (f: fundec) : unit =
 
       let scalarToPointer arg = 
         let (name, t, a) = arg in
-        match t with
-            TVoid _
-          | TPtr _
-          | TArray _
-          | TFun _ -> arg
-          | _ -> (name, TPtr(t, []), a)
+        if (isScalar_t t) then
+          (name, TPtr(t, []), a)
+        else
+          arg
       in
       let formals = f.sformals in
       let args = List.map scalarToPointer args in
@@ -362,12 +478,10 @@ let formalScalarsToPointers (f: fundec) : unit =
       f.svar.vtype <- TFun (rt, Some args, false, a); 
       
       let scalarToPointer arg = 
-        match arg.vtype with
-            TVoid _
-          | TPtr _
-          | TArray _
-          | TFun _ -> ();
-          | _ -> arg.vtype <- TPtr(arg.vtype, [])
+        if (isScalar_t arg.vtype) then
+          arg.vtype <- TPtr(arg.vtype, [])
+        else
+          ()
       in
       List.iter scalarToPointer formals;
     | TFun (_) -> ();
@@ -706,115 +820,6 @@ let writeFile f = begin
   dumpFile defaultCilPrinter oc f.fileName f;
   close_out oc
 end
-
-
-(******************************************************************************)
-(*                                BOOLEAN                                     *)
-(******************************************************************************)
-
-(** checks if an exp uses an indice
-    @param e the expression to check
-    @return true or false
- *)
-let uses_indice (e: exp) : bool =
-  match (e) with 
-    (BinOp(PlusPI, _, _, _))
-    | (BinOp(IndexPI, _, _, _))
-    | (Lval(_, Index(_, _))) -> true
-    | _ -> false
-
-(** checks if an arguments type is stride 
-    @param arg the argument's type
-    @return true or false
-*)
-let is_strided (arg: arg_t) : bool =
-   match arg with
-    | SIn
-    | SOut
-    | SInOut -> true
-    | _ -> false
-
-(** checks if an arguments type is out
-    @param arg the argument's type
-    @return true or false
-*)
-let is_out_arg (arg: arg_t) : bool =
-   match arg with
-    | Out
-    | InOut
-    | SOut
-    | SInOut -> true
-    | _ -> false
-
-(** checks if there is any indiced argument in the task (if any task) in the given
-    statement
-    @param st the statement to check
-    @return true or false
-*)
-let tpc_call_with_arrray (st: stmt) : bool =
-  if (st.pragmas <> []) then begin
-    match (L.hd st.pragmas) with
-      (Attr("css", _), _) -> begin
-        match (st.skind)  with
-          Instr(Call(_, _, args, _)::_) -> L.exists uses_indice args
-          | _ -> false
-      end
-      | _ -> false
-  end else
-    false
-
-(** Checks if a [Cil.global] is {b not} the function declaration of "main" 
-    @param g the global to check
-    @return true or false
-*)
-let isNotMain (g: global) : bool = match g with
-    GFun({svar = vi}, _) when (vi.vname = "main") -> false
-  | _ -> true
-
-(** Checks if a [Cil.global] is {b not} the function declaration of "tpc_call_tpcAD65"
-    @param g the global to check
-    @return true or false
-*)
-let isNotSkeleton (g: global) : bool = match g with
-    GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
-  | _ -> true
-
-(** Checks if a global is a typedef, enum, struct or union
-    @param g the global to check
-    @return true or false
-*)
-let is_typedef (g: global) : bool = match g with
-    GType(_, _)
-  | GCompTag(_, _)
-  | GCompTagDecl(_, _)
-  | GEnumTag(_, _)
-  | GEnumTagDecl(_, _) -> true
-  | GVarDecl(vi, _) when vi.vstorage=Extern -> true
-  | _ -> false
-
-(** checks whether a type is TComp
-    @return true or false
-*)
-let isCompType = function
-    TComp _ -> true
-  | _ -> false
-  
-(** checks whether a type is scalar
-    @param t the type [Cil.typ]
-    @return true or false
-*)
-let isScalar_t =  function
-  |  TVoid _
-  | TPtr _
-  | TArray _
-  | TFun _ -> false
-  | _ -> true
-
-(** checks whether a variable is scalar
-    @param vi the variable's [Cil.varinfo]
-    @return true or false
-*)
-let isScalar_v (vi: varinfo) =  isScalar_t vi.vtype
 
 (******************************************************************************)
 (*                                 MISC                                       *)

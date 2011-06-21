@@ -110,7 +110,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
       res := castinstr :: !res;
       let lv = Lval (
         if (isScalar_t argt) then
-          mkMem (Lval(var argvar)) NoOffset
+          mkMem ( mkCast (Lval(var argvar)) (TPtr(argt, [])) ) NoOffset
         else
           var argvar
       ) in

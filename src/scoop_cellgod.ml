@@ -81,7 +81,13 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
       let idxlv = addOffsetLval (Index(integer !i, NoOffset)) lv in
       let (_, argt, _) = (List.nth argl place) in
       incr i;
-      (place, mkCast (Lval(idxlv)) argt )
+      let lv = Lval (
+        if (isScalar_t argt) then
+          mkMem ( mkCast (Lval(idxlv)) (TPtr(argt, [])) ) NoOffset
+        else
+          idxlv
+      ) in
+      (place, mkCast lv argt )
     )
     args
   in

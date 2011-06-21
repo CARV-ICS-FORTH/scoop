@@ -69,6 +69,38 @@ val blocking : bool ref
 
 
 (******************************************************************************)
+(*                                BOOLEAN                                     *)
+(******************************************************************************)
+
+(* function that checks if an exp uses an indice *)
+val uses_indice : Cil.exp -> bool
+
+(* check if an arguments type is stride *)
+val is_strided : arg_t -> bool
+
+(* check if an arguments type is out *)
+val is_out_arg : arg_t -> bool
+
+(* function that checks if a stmt is tagged with a #pragma tpc... *)
+val tpc_call_with_arrray : Cil.stmt -> bool
+
+(* Checks if <g> is *not* the function declaration of "main"  *)
+val isNotMain : Cil.global -> bool
+
+(* Checks if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
+val isNotSkeleton : Cil.global -> bool
+
+(* Checks if <g> is a typedef, enum, struct or union *)
+val is_typedef : Cil.global -> bool
+
+(* Checks if <t> is a scalar *)
+val isScalar_t : Cil.typ -> bool
+
+(* Checks if <vi> is a scalar *)
+val isScalar_v : Cil.varinfo -> bool
+
+
+(******************************************************************************)
 (*                          Search Functions                                  *)
 (******************************************************************************)
 
@@ -189,38 +221,6 @@ val writeNewFile : Cil.file -> string -> Cil.global list -> unit
 
 (* write out file <f> *)
 val writeFile : Cil.file -> unit
-
-
-(******************************************************************************)
-(*                                BOOLEAN                                     *)
-(******************************************************************************)
-
-(* function that checks if an exp uses an indice *)
-val uses_indice : Cil.exp -> bool
-
-(* check if an arguments type is stride *)
-val is_strided : arg_t -> bool
-
-(* check if an arguments type is out *)
-val is_out_arg : arg_t -> bool
-
-(* function that checks if a stmt is tagged with a #pragma tpc... *)
-val tpc_call_with_arrray : Cil.stmt -> bool
-
-(* Checks if <g> is *not* the function declaration of "main"  *)
-val isNotMain : Cil.global -> bool
-
-(* Checks if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
-val isNotSkeleton : Cil.global -> bool
-
-(* Checks if <g> is a typedef, enum, struct or union *)
-val is_typedef : Cil.global -> bool
-
-(* Checks if <t> is a scalar *)
-val isScalar_t : Cil.typ -> bool
-
-(* Checks if <vi> is a scalar *)
-val isScalar_v : Cil.varinfo -> bool
 
 (******************************************************************************)
 (*                          Constructors                                      *)

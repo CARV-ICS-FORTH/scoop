@@ -140,27 +140,28 @@ let spu_tasks = ref []
 
 (** processes recursively the arguments' info found in input() output() and
     inout() directives *)
-let rec scoop_process_args typ args =
+let rec scoop_process_args typ args loc =
   match args with
     (AIndex(ACons(varname, []), varsize)::rest) ->
       let tmp_size = attrParamToExp varsize !ppc_file in
       (varname, ((translate_arg typ false),
-          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest)
-    (* TODO support optional sizes example int_a would have size of sizeof(int_a) *)
-(*    | (ACons(varname, [])::rest) ->
+          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
+    (* support optional sizes example int_a would have size of sizeof(int_a) *)
+   | (ACons(varname, [])::rest) ->
       let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
       (varname, ((translate_arg typ false),
-          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest)*)
+          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
 (*         | handle strided... *)
     | [] -> []
-    | _ -> ignore(E.log "Syntax error in #pragma css task %s(...)\n" typ); []
+    | _ -> ignore(E.log "%a\n\tSyntax error in #pragma css task %s(...)\n"  d_loc loc typ); []
 
 (** parses the #pragma css task arguments *)
-let rec scoop_process = function
-  | (AStr("highpriority")::rest) -> scoop_process rest
-  | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args)@(scoop_process rest)
-  | [] -> []
-  | _ -> ignore(E.warn "Syntax error in #pragma css task\n"); []
+let rec scoop_process pr loc =
+  match pr with
+      (AStr("highpriority")::rest) -> scoop_process rest loc
+    | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args loc)@(scoop_process rest loc)
+    | [] -> []
+    | _ -> ignore(E.warn "%a\n\tSyntax error in #pragma css task\n" d_loc loc); []
 
 (** populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
@@ -236,7 +237,7 @@ class findSPUDeclVisitor cgraph = object
                   match s.skind with 
                     Instr(Call(_, Lval((Var(vi), _)), oargs, _)::restInst) -> (
                       let funname = vi.vname in
-                      let args = scoop_process rest in
+                      let args = scoop_process rest loc in
                       if (!debug) then
                         ignore(E.log "Found task \"%s\"\n" funname);
                       let rest_f new_fd = 
