@@ -153,7 +153,7 @@ let rec scoop_process_args typ args loc =
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
 (*         | handle strided... *)
     | [] -> []
-    | _ -> ignore(E.log "%a\n\tSyntax error in #pragma css task %s(...)\n"  d_loc loc typ); []
+    | _ -> ignore(warnLoc loc "Syntax error in #pragma css task %s(...)\n" typ); []
 
 (** parses the #pragma css task arguments *)
 let rec scoop_process pr loc =
@@ -161,7 +161,7 @@ let rec scoop_process pr loc =
       (AStr("highpriority")::rest) -> scoop_process rest loc
     | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args loc)@(scoop_process rest loc)
     | [] -> []
-    | _ -> ignore(E.warn "%a\n\tSyntax error in #pragma css task\n" d_loc loc); []
+    | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); []
 
 (** populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
@@ -190,7 +190,7 @@ class findSPUDeclVisitor cgraph = object
                 let s' = {s with pragmas = List.tl s.pragmas} in
                 ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
             )
-            | _ -> ignore(E.warn "Ignoring wait pragma at %a" d_loc loc); DoChildren
+            | _ -> ignore(warnLoc loc "Ignoring wait pragma"); DoChildren
         )
         | (Attr("css", AStr("barrier")::_), _) -> (
           (* Support #pragma css barrier(...) *)
@@ -210,8 +210,7 @@ class findSPUDeclVisitor cgraph = object
             else (
               match rest with
                 first::second::_ -> attrParamToExp exp !ppc_file::(attrParamToExp first !ppc_file::[attrParamToExp second !ppc_file])
-                | _ -> ignore(E.error "%a\n\t#pragma css start takes 3 arguments\n" d_loc loc);
-                       exit 1
+                | _ -> E.s (errorLoc loc "#pragma css start takes 3 arguments")
               )
           in
           let instr = Call (None, Lval (var ts), args, locUnknown) in
@@ -239,7 +238,7 @@ class findSPUDeclVisitor cgraph = object
                       let funname = vi.vname in
                       let args = scoop_process rest loc in
                       if (!debug) then
-                        ignore(E.log "Found task \"%s\"\n" funname);
+                        ignore(E.log "Found task \"%s\"" funname);
                       let rest_f new_fd = 
                         (* add arguments to the call *)
                         let call_args = ref (L.rev (L.map expScalarToPointer oargs)) in
@@ -261,8 +260,7 @@ class findSPUDeclVisitor cgraph = object
                               let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
                               call_args := vsize::!call_args;
                             with Not_found ->
-                              ignore(E.error "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname);
-                              assert false
+                              E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
                           )
                           | CastE (_, ex') -> getSize ex';
                           (* The following are not supported yet *)
@@ -321,15 +319,15 @@ class findSPUDeclVisitor cgraph = object
                         )
                       )
                     )
-                    | Block(b) -> ignore(E.warn "Ignoring block pragma at %a" d_loc loc); DoChildren
-                    | _ -> ignore(E.warn "Ignoring pragma at %a" d_loc loc); DoChildren
+                    | Block(b) -> ignore(warnLoc loc "Ignoring block pragma"); DoChildren
+                    | _ -> ignore(warnLoc loc "Ignoring block pragma"); DoChildren
                 )
-                | _ -> ignore(E.warn "%a\n\tUnrecognized pragma" d_loc loc); DoChildren
+                | _ -> ignore(warnLoc loc "Unrecognized pragma"); DoChildren
             )
-            | _ -> ignore(E.warn "%a\n\tUnrecognized pragma" d_loc loc); DoChildren
+            | _ -> ignore(warnLoc loc "Unrecognized pragma"); DoChildren
         )
-        | Block(b) -> ignore(E.unimp "Ignoring block pragma"); DoChildren
-        | _ -> ignore(E.warn "Ignoring pragma"); DoChildren
+        | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
+        | _ -> ignore(warn "Ignoring pragma"); DoChildren
     ) else 
       DoChildren
 end
@@ -356,13 +354,11 @@ let feature : featureDescr =
       if !dotrace then
         Trace.traceAddSys "scoop";
       ignore(E.log "\nWelcome to SCOOP!!!\n\n");
-      if (!arch = "unknown") then (
-        ignore(E.error "No architecture specified. Exiting!");
-        exit 1
-      ) else if (!arch = "cell" && !queue_size = "0") then (
-        ignore(E.error "No queue_size specified. Exiting!");
-        exit 1
-      ) else (
+      if (!arch = "unknown") then
+        E.s (error "No architecture specified. Exiting!")
+      else if (!arch = "cell" && !queue_size = "0") then
+        E.s (error "No queue_size specified. Exiting!")
+      else (
         (* if we are not on x86-SMP create two copies of the initial file *)
         if (!arch <> "x86") then
           spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
@@ -383,7 +379,6 @@ let feature : featureDescr =
           preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
-(*           ignore(E.warn "Path = %s\n" !tpcIncludePath); *)
           let def = def^(
             if (!arch = "cellgod") then 
               (" -DADAM=1")

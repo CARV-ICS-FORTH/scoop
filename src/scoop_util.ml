@@ -234,7 +234,7 @@ let find_function_fundec_g (g: global list) (name: string) : fundec =
 let find_function_fundec (f: file) (name: string) : fundec =
   try find_function_fundec_g f.globals name
   with Not_found -> (
-    ignore(E.error "Function declaration of \"%s\" not found\n" name);
+    ignore(error "Function declaration of \"%s\" not found\n" name);
     raise Not_found
   )
 
@@ -260,7 +260,7 @@ let __find_function_sign (f: file) (name: string) : varinfo =
 let find_function_sign (f: file) (name: string) : varinfo =
   try __find_function_sign f name
   with Not_found -> (
-    ignore(E.error "Function signature of \"%s\" not found\n" name);
+    ignore(error "Function signature of \"%s\" not found\n" name);
     raise Not_found
   )
 
@@ -279,7 +279,7 @@ let find_type (f: file) (name: string) : typ =
   in
   try
     iterGlobals f findit;
-    ignore(E.error "Type \"%s\" not found\n" name);
+    ignore(error "Type \"%s\" not found\n" name);
     raise Not_found
   with Found_type t -> t
 
@@ -296,7 +296,7 @@ let find_tcomp (f: file) (name: string) : typ =
   in
   try
     iterGlobals f findit;
-    ignore(E.error "Struct ot Union \"%s\" not found\n" name);
+    ignore(error "Struct ot Union \"%s\" not found\n" name);
     raise Not_found
   with Found_type t -> t
 
@@ -322,7 +322,7 @@ let __find_global_var (f: file) (name: string) : varinfo =
 let find_global_var (f: file) (name: string) : varinfo =
   try __find_global_var f name
   with Not_found -> (
-    ignore(E.error "Global variable \"%s\" not found\n" name);
+    ignore(error "Global variable \"%s\" not found\n" name);
     raise Not_found
   )
 
@@ -345,7 +345,7 @@ let __find_formal_var (fd: fundec) (name: string) : varinfo =
 let find_formal_var (fd: fundec) (name: string) : varinfo =
   try __find_formal_var fd name
   with Not_found -> (
-    ignore(E.error "Formal variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
+    ignore(error "Formal variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
     raise Not_found
   )
 
@@ -368,7 +368,7 @@ let __find_local_var (fd: fundec) (name: string) : varinfo =
 let find_local_var (fd: fundec) (name: string) : varinfo =
   try __find_local_var fd name
   with Not_found -> (
-    ignore(E.error "Local variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
+    ignore(error "Local variable \"%s\" not found in function \"%s\"\n" name fd.svar.vname);
     raise Not_found
   )
 
@@ -427,14 +427,14 @@ let rec expScalarToPointer (e: exp) : exp =
   match e with
     AddrOf _
     | StartOf _ -> e
-    | Const _ -> ignore(E.unimp "Constants are not supported yet as a task argument"); exit 1
+    | Const _ -> E.s (unimp "Constants are not supported yet as a task argument")
     | SizeOf _
     | SizeOfE _
-    | SizeOfStr _ -> ignore(E.unimp "sizeof is not supported yet as a task argument"); exit 1
+    | SizeOfStr _ -> E.s (unimp "sizeof is not supported yet as a task argument")
     | AlignOf _ 
-    | AlignOfE _ -> ignore(E.unimp "AlignOf is not supported yet as a task argument"); exit 1
+    | AlignOfE _ -> E.s (unimp "AlignOf is not supported yet as a task argument")
     | UnOp _
-    | BinOp _ -> ignore(E.unimp "Operations are not supported yet as a task argument"); exit 1
+    | BinOp _ -> E.s (unimp "Operations are not supported yet as a task argument")
     | CastE (t, e') -> (
       match t with
           TVoid _
@@ -460,10 +460,8 @@ let rec expScalarToPointer (e: exp) : exp =
 let formalScalarsToPointers (f: fundec) : unit =
   match f.svar.vtype with
     TFun (rt, Some args, va, a) -> 
-      if (va) then (
-        ignore(E.error "Functions with va args cannot be executed as tasks");
-        exit 1
-      );
+      if (va) then
+        E.s (error "Functions with va args cannot be executed as tasks");
 
       let scalarToPointer arg = 
         let (name, t, a) = arg in
@@ -497,13 +495,13 @@ let translate_arg (arg: string) (strided: bool) : arg_t =
       "in" when strided -> SIn
     | "out" when strided -> SOut
     | "inout" when strided -> SInOut
-    | _  when strided -> ignore(E.error "Only in/out/inout are allowed"); exit 1
+    | _  when strided -> E.s (error "Only in/out/inout are allowed")
     | "in" (* legacy *)
     | "input" -> In
     | "out" (* legacy *)
     | "output" -> Out
     | "inout" -> InOut
-    | _ -> ignore(E.error "Only input/output/inout are allowed"); exit 1
+    | _ -> E.s (error "Only input/output/inout are allowed")
 
 (** Maps the arg_t to a number as defined by the TPC headers
     @return the corrensponding number *)

@@ -253,7 +253,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   formalScalarsToPointers f_new;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (L.length f_new.sformals)-1 in
-  assert (args_num >= 0);
+  assert (args_num >= -1);
   if ( args_num <> (List.length args)-1 ) then (
     ignore(E.error "%a\n\tNumber of arguments described in #pragma doesn't much the \
           number of arguments in the function declaration" d_loc loc);
