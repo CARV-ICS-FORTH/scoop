@@ -144,12 +144,12 @@ let rec scoop_process_args typ args loc =
   match args with
     (AIndex(ACons(varname, []), varsize)::rest) ->
       let tmp_size = attrParamToExp varsize !ppc_file in
-      (varname, ((translate_arg typ false),
+      (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
    | (ACons(varname, [])::rest) ->
       let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
-      (varname, ((translate_arg typ false),
+      (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
 (*         | handle strided... *)
     | [] -> []
@@ -240,8 +240,9 @@ class findSPUDeclVisitor cgraph = object
                       if (!debug) then
                         ignore(E.log "Found task \"%s\"" funname);
                       let rest_f new_fd = 
+                        let expS2P = expScalarToPointer loc in
                         (* add arguments to the call *)
-                        let call_args = ref (L.rev (L.map expScalarToPointer oargs)) in
+                        let call_args = ref (L.rev (L.map expS2P oargs)) in
 (*                         let args_num = (List.length args)-1 in *)
                         
                         (* push call args from the start...

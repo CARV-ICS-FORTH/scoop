@@ -145,15 +145,15 @@ val find_enum : Cil.file -> string -> Cil.enuminfo
     @param e the expression to get the address of
     @return the new expression (& old_expression)
  *)
-val expScalarToPointer : Cil.exp -> Cil.exp
+val expScalarToPointer : Cil.location -> Cil.exp -> Cil.exp
 
 (** Takes a function declaration and changes the types of its scalar formals to pointers
     @param f the function declaration to change
  *)
-val formalScalarsToPointers : Cil.fundec -> unit
+val formalScalarsToPointers : Cil.location -> Cil.fundec -> unit
 
 (* Converts the strings describing the argument type to arg_t *)
-val translate_arg : string -> bool -> arg_t
+val translate_arg : string -> bool -> Cil.location -> arg_t
 
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h)
  * integer expretion

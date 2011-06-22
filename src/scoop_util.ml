@@ -423,25 +423,25 @@ let find_enum (f: file) (name: string) : enuminfo =
     @param e the expression to get the address of
     @return the new expression (& old_expression)
  *)
-let rec expScalarToPointer (e: exp) : exp =
+let rec expScalarToPointer (loc: location) (e: exp) : exp =
   match e with
     AddrOf _
     | StartOf _ -> e
-    | Const _ -> E.s (unimp "Constants are not supported yet as a task argument")
+    | Const _ -> E.s (unimp "%a\n\tConstants are not supported yet as a task argument" d_loc loc)
     | SizeOf _
     | SizeOfE _
-    | SizeOfStr _ -> E.s (unimp "sizeof is not supported yet as a task argument")
+    | SizeOfStr _ -> E.s (unimp "%a\n\tsizeof is not supported yet as a task argument" d_loc loc)
     | AlignOf _ 
-    | AlignOfE _ -> E.s (unimp "AlignOf is not supported yet as a task argument")
+    | AlignOfE _ -> E.s (unimp "%a\n\tAlignOf is not supported yet as a task argument" d_loc loc)
     | UnOp _
-    | BinOp _ -> E.s (unimp "Operations are not supported yet as a task argument")
+    | BinOp _ -> E.s (unimp "%a\n\tOperations are not supported yet as a task argument" d_loc loc)
     | CastE (t, e') -> (
       match t with
           TVoid _
         | TPtr _
         | TArray _
         | TFun _ -> e
-        | _ -> CastE(TPtr(t, []), expScalarToPointer e')
+        | _ -> CastE(TPtr(t, []), expScalarToPointer loc e')
     )
     | Lval (lh, off) -> (
       match lh with
@@ -457,11 +457,11 @@ let rec expScalarToPointer (e: exp) : exp =
 (** Takes a function declaration and changes the types of its scalar formals to pointers
     @param f the function declaration to change
  *)
-let formalScalarsToPointers (f: fundec) : unit =
+let formalScalarsToPointers (loc: location) (f: fundec) : unit =
   match f.svar.vtype with
     TFun (rt, Some args, va, a) -> 
       if (va) then
-        E.s (error "Functions with va args cannot be executed as tasks");
+        E.s (errorLoc loc "Functions with va args cannot be executed as tasks");
 
       let scalarToPointer arg = 
         let (name, t, a) = arg in
@@ -490,18 +490,18 @@ let formalScalarsToPointers (f: fundec) : unit =
     @param strided flag showing whether it is a strided argument
     @return the corresponding arg_t
  *)
-let translate_arg (arg: string) (strided: bool) : arg_t =
+let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
   match arg with
       "in" when strided -> SIn
     | "out" when strided -> SOut
     | "inout" when strided -> SInOut
-    | _  when strided -> E.s (error "Only in/out/inout are allowed")
+    | _  when strided -> E.s (errorLoc loc "Only in/out/inout are allowed")
     | "in" (* legacy *)
     | "input" -> In
     | "out" (* legacy *)
     | "output" -> Out
     | "inout" -> InOut
-    | _ -> E.s (error "Only input/output/inout are allowed")
+    | _ -> E.s (errorLoc loc "Only input/output/inout are allowed")
 
 (** Maps the arg_t to a number as defined by the TPC headers
     @return the corrensponding number *)

@@ -229,15 +229,12 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new func_vi.vtype;
   setFunctionReturnType f_new intType;
-  formalScalarsToPointers f_new;
+  formalScalarsToPointers loc f_new;
   (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
   let args_num = (List.length f_new.sformals)-1 in
-  assert (args_num >= -1);
-  if ( args_num <> (List.length args)-1 ) then (
-    ignore(E.error "%a\n\tNumber of arguments described in #pragma doesn't much the \
-          number of arguments in the function declaration" d_loc loc);
-    exit (1)
-  );
+  if ( args_num <> (List.length args)-1 ) then
+    E.s (errorLoc loc "Number of arguments described in #pragma doesn't much the \
+          number of arguments in the function declaration");
   for i = 0 to args_num do
     let ex_arg = (List.nth oargs i) in
     let name = getNameOfExp ex_arg in
