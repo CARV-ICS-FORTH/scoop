@@ -3025,6 +3025,54 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
       (env, phi, eff)
     ) else (input_env, input_phi, input_effect)
 
+and type_pragma ((env, phi, eff), kind) pragma =
+	match pragma with
+    (Attr("css", ACons("start", _)::_), loc) -> (
+		if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
+		((env, phi, eff),kind) (* TODO: handle css start  *)  		
+	)
+	| (Attr("css", AStr("finish")::_), loc) -> (
+		if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
+		let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+		CF.phi_flows phi barrier_phi;
+		CF.starting_phis := barrier_phi::!CF.starting_phis;
+
+		((env, barrier_phi, eff),kind)
+	)
+	| (Attr("css", AStr("wait")::rest), loc) -> (
+		match rest with 
+    	ACons("on", exps)::_ -> (
+			ignore(E.warn "Wait on task analysis not supported yet...\n"); 
+			((env, phi, eff),kind)
+		)
+  	| AStr("all")::_ -> (
+			if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+			let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+			CF.phi_flows phi barrier_phi;
+			CF.starting_phis := barrier_phi::!CF.starting_phis;
+			((env, barrier_phi, eff),kind)
+			)
+		| _ -> ( 
+			ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
+			((env, phi, eff),kind)
+		)
+	) 
+	|	(Attr("css", AStr("task")::args), loc) -> (
+		match kind with
+				Instr(il) -> (
+				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
+				let task_d = (handle_css_task (List.hd il) args loc) in	
+				let task_phi = make_phi "Task" (CF.PhiTask task_d) in
+				CF.phi_flows phi task_phi;
+				CF.starting_phis := task_phi::!CF.starting_phis;
+				((env, task_phi, eff),kind)
+			)
+			| _ -> ignore(warnLoc loc "SDAM:Invalid syntax!\n"); ((env, phi, eff), kind)
+	)
+	| (_, loc) -> ( 
+		ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
+		((env, phi, eff),kind)
+	)
 
 (*****************************************************************************)
 
@@ -3040,70 +3088,9 @@ and type_stmt (env, phi, eff) stmt : gamma =
   if !do_uniq then current_uniqueness := Uniq.get_stmt_state stmt;
   set_goto_target env phi eff stmt;
   let (env,phi,eff) = Hashtbl.find env.goto_tbl stmt in
+	let ((env', phi', eff'),_) = List.fold_left (type_pragma ) ((env, phi, eff),stmt.skind) stmt.pragmas in
   match stmt.skind with
-  	Instr(il) -> begin
-			let (env', phi', eff') = 
-			(match stmt.pragmas with
-				[]	->	List.fold_left
-        (type_instr ) (env, phi, eff) il
-			|	(pragma::rest) -> (
-				match pragma with 
-					(Attr("tpc_wait_all", _), _) -> (
-						if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
-						let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-						CF.phi_flows phi barrier_phi;
-						CF.starting_phis := barrier_phi::!CF.starting_phis;
-						(env, barrier_phi, eff)					
-					)
-				| (Attr("tpc", args), loc) -> (
-					handle_tpc_task (List.hd il) args loc; (* this is for legacy tpc support *)
-					(env, phi, eff) (* FIXME: add support for barrier analysis*)
-				)					
-				| (Attr("css", ACons("start", _)::_), loc) -> (
-					if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
-					(env, phi, eff) (* TODO: handle css start  *)  		
-				)
-				| (Attr("css", AStr("finish")::_), loc) -> (
-					if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
-					let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-					CF.phi_flows phi barrier_phi;
-					CF.starting_phis := barrier_phi::!CF.starting_phis;
-					(env, barrier_phi, eff)		
-				)
-				| (Attr("css", AStr("wait")::rest), loc) -> (
-					match rest with 
-          	ACons("on", exps)::_ -> (
-						ignore(E.warn "Wait on task analysis not supported yet...\n"); 
-						(env, phi, eff)
-					)
-        	| AStr("all")::_ -> (
-						if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
-						let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-						CF.phi_flows phi barrier_phi;
-						CF.starting_phis := barrier_phi::!CF.starting_phis;
-						(env, barrier_phi, eff)	
-						)
-					| _ -> ( 
-						ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-						(env, phi, eff)
-					)
-				) 
-				|	(Attr("css", AStr("task")::args), loc) -> (
-					if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
-					let task_d = (handle_css_task (List.hd il) args loc) in	
-					let task_phi = make_phi "Task" (CF.PhiTask task_d) in
-					CF.phi_flows phi task_phi;
-					CF.starting_phis := task_phi::!CF.starting_phis;
-					(env, task_phi, eff)
-				)
-				| (_, loc) -> ( 
-					ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-					(env, phi, eff)
-				)
-			)) in
-      List.fold_left
-        (type_instr ) (env', phi', eff') il		
-		end	
+  	Instr(il) -> List.fold_left (type_instr ) (env', phi', eff') il		
   | Return(e, loc) ->
       currentLoc := loc;
       let ((sret,_), env, phi, eff) =
