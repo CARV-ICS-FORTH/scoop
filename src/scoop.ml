@@ -77,6 +77,8 @@ let cflags = ref ""
 let prevstmt = ref dummyStmt
 let dis_sdam = ref false
 
+let blade = ref false
+
 (** The new spu file to create *)
 let spu_file = ref dummyFile
 (** The new ppu file to create *)
@@ -87,7 +89,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod).";
+      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod/cellBlade/cellgodBlade).";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -360,6 +362,14 @@ let feature : featureDescr =
       else if (!arch = "cell" && !queue_size = "0") then
         E.s (error "No queue_size specified. Exiting!")
       else (
+        if(!arch = "cellBlade") then (
+          blade := true;
+          arch := "cell";
+        ) else if(!arch = "cellgodBlade") then (
+          blade := true;
+          arch := "cellgod";
+        );
+
         (* if we are not on x86-SMP create two copies of the initial file *)
         if (!arch <> "x86") then
           spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
@@ -375,7 +385,9 @@ let feature : featureDescr =
         (* create a global list (the spu output file) *)
   (*       let spu_glist = ref [] in *)
 
-        let def = " "^(!cflags)^( if (!stats) then " -DSTATISTICS=1" else " ") in
+        let def = " "^(!cflags)^
+          ( if (!stats) then " -DSTATISTICS=1" else " ")^
+          ( if (!blade) then " -DBLADE=1" else " ") in
         if (!arch = "x86") then (
           preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
         ) else ( (* else cell/cellgod *)
