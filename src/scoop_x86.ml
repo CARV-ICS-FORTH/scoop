@@ -41,15 +41,14 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let block_size = ref 0
-
 (* TODO fix stride support *)
 let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
- (fd: fundec) (arg: arg_descr) (block_size: int) (ppc_file: file) : stmt list = (
+ (fd: fundec) (arg: arg_descr) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
 (*   let uint32_t = (find_type ppc_file "uint32_t") in *)
   let uint64_t = (find_type ppc_file "uint64_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
+  let block_size = var (find_global_var ppc_file "__block_sz") in
   let arg_addr = var (List.nth fd.sformals i) in
   let (_, (arg_type ,_ ,_ ,_)) = arg in
   let stl = ref [] in
@@ -147,8 +146,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       il := Call (None, Lval (var printf), args, locUnknown)::!il;
       let tmp_addr = var (makeLocalVar fd "tmp_addr" uint64_t) in
       il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
-      let div = BinOp(Div, Lval tmp_addr, integer block_size, uint64_t) in
-      let mul = BinOp(Mult, CastE(uint64_t, div), integer block_size, voidPtrType) in
+      let div = BinOp(Div, Lval tmp_addr, Lval block_size, uint64_t) in
+      let mul = BinOp(Mult, CastE(uint64_t, div), Lval block_size, voidPtrType) in
       il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
       let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint64_t, Lval arg_addr), intType) in
       il := Set(stride, new_stride, locUnknown)::!il;
@@ -163,13 +162,13 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
     let ilt = ref [] in
 (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
 (*     ilt := (closure_flag::!ilt; *)
-(*     ilt := Set(size, integer block_size, locUnknown)::!ilt; *)
+(*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
     let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; integer block_size ] in
+    let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval block_size ] in
     ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
 (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
     let start = [mkStmtOneInstr (Set(e_addr, Lval arg_addr, locUnknown))] in
-    let e_addr_plus = BinOp(PlusA, Lval e_addr, integer block_size, intType) in
+    let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval block_size, intType) in
     let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
     let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
     let body = [mkStmt (Instr (L.rev !ilt))] in
@@ -268,7 +267,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     let arg = List.nth args i in
 
     (* local_arg <- argument description *)
-    stmts := (doArgument i this e_addr (var limit) bis f_new arg !block_size !f)@(!stmts);
+    stmts := (doArgument i this e_addr (var limit) bis f_new arg !f)@(!stmts);
   done;
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 

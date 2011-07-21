@@ -33,8 +33,6 @@
  *
  *)
 
-val block_size : int ref
-
 val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> unit
 
 val make_tpc_func :  Cil.location -> Cil.varinfo -> Cil.exp list ->
