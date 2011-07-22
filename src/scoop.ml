@@ -244,7 +244,11 @@ class findSPUDeclVisitor cgraph = object
                       let rest_f new_fd = 
                         let expS2P = expScalarToPointer loc in
                         (* add arguments to the call *)
-                        let call_args = ref (L.rev (L.map expS2P oargs)) in
+                        let call_args = if (!arch <> "x86") then
+                            ref (L.rev (L.map expS2P oargs))
+                          else
+                            ref (L.rev oargs)
+                        in
 (*                         let args_num = (List.length args)-1 in *)
                         
                         (* push call args from the start...

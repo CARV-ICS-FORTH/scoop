@@ -149,9 +149,11 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
         continue; //We don't need continue here, we are not in a loop :)
       }
       #define TPC_START_ARG   0x10
+      #define TPC_SAFE_ARG    0x8
     *)
     il := Set(size, Lval arg_size, locUnknown)::!il;
-    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
+    (* this->closure.arguments[  this->closure.total_arguments ].flag    = arg_flag|TPC_START_ARG|TPC_SAFE_ARG; *)
+    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x18), locUnknown)::!il;
     let eal_in = mkFieldAccess idxlv "eal_in" in
     il := Set(eal_in, CastE(uint32_t, arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
@@ -205,7 +207,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
   );
 
   (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
-  mkStmt(Instr (List.rev !il));
+  mkStmt(Instr (List.rev !il))
 )
 
 (** Creates a tpc_ version of the function (for use on the ppc side)
