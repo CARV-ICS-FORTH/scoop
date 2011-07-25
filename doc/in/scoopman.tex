@@ -56,12 +56,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
     #pragma css wait all
     #pragma css wait on(list of expressions) //Not implemented yet
     #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
+    (highpriority is simply ignored)
 
     Parameter notation:
       <parameter>[\[parameter size*\]]
-     The parameter size must be an expression, thus we don't allow
-        function calls. Also there is no support for the conditional
-        operator (? :)
+     The parameter size must be an expression, thus we don't allow function
+        calls. Also there is no support for the conditional operator (? :)
 
     Example:
       #pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])

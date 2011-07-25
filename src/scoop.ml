@@ -260,16 +260,20 @@ class findSPUDeclVisitor cgraph = object
                         (* for each actual argument of the call find it's (pragma)
                            declared size and push it to the argument list of them
                            new call *)
-                        let rec getSize ex = match ex with
+                        let rec getSizeNstride ex = match ex with
                           Lval ((Var(vi),_))
                           | StartOf ((Var(vi),_)) -> (
                             try
                               let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
                               call_args := vsize::!call_args;
+                              if (is_strided arg_type) then (
+                                call_args := vels::!call_args;
+                                call_args := velsz::!call_args;
+                              );
                             with Not_found ->
                               E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
                           )
-                          | CastE (_, ex') -> getSize ex';
+                          | CastE (_, ex') -> getSizeNstride ex';
                           (* The following are not supported yet *)
                           | Const _ -> raise (Invalid_argument "Const");
                           | SizeOf _ -> raise (Invalid_argument "Sizeof");
@@ -282,7 +286,7 @@ class findSPUDeclVisitor cgraph = object
                           | AddrOf _ -> raise (Invalid_argument "AddrOf");
                           | _ -> raise (Invalid_argument "Uknown");
                         in
-                        L.iter getSize oargs;
+                        L.iter getSizeNstride oargs;
 
 (*                        for i = 0 to args_num do
                           let (_, arg_type, vsize, velsz, vels) = List.nth args i in

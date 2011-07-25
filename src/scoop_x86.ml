@@ -41,11 +41,10 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-(* TODO fix stride support *)
 let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
  (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
-(*   let uint32_t = (find_type ppc_file "uint32_t") in *)
+  let uint32_t = (find_type ppc_file "uint32_t") in
   let uint64_t = (find_type ppc_file "uint64_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let block_size = var (find_global_var ppc_file "__block_sz") in
@@ -61,14 +60,19 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
   let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
   let stride = mkFieldAccess idxlv "stride" in
   il := (* FIX here *)
-    ( if (is_strided arg_type) then Set(stride, (integer 0), locUnknown)
-      else Set(stride, (integer 0), locUnknown)
+    ( if (is_strided arg_type) then (
+        let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
+        let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+        (*#define TPC_BUILD_STRIDEARG(elems, elemsz)    (((elems)<<16) | (elemsz))*)
+        Set(stride, BinOp(BOr, BinOp(Shiftlt, arg_els, integer 16, uint32_t), arg_elsz, uint32_t) , locUnknown)
+      ) else
+        Set(stride, (integer 0), locUnknown)
     )::!il;
 
 
   let size = mkFieldAccess idxlv "size" in
   let flag = mkFieldAccess idxlv "flag" in
-  let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
+  let pplus = (BinOp(PlusA, Lval total_arguments, one, intType)) in
 
 (*  this->closure.arguments[this->closure.total_arguments].eal_in = arg_addr64;
   this->closure.arguments[this->closure.total_arguments].eal_out = arg_addr64;
@@ -114,6 +118,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
     if (is_strided arg_type) then (
+      let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+
       (*  if(TPC_IS_STRIDEARG(arg_flag)){
           uint32_t j;
           uint32_t stride=this->closure.arguments[  this->closure.total_arguments ].stride ;
@@ -129,10 +135,29 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       //this->closure.total_arguments++;
           }
         }*)
+      let j_var = var (makeLocalVar fd "j" uint32_t) in
+      let stride_var = var (makeLocalVar fd "stride" uint32_t) in
+      il := Set(stride_var, Lval stride, locUnknown)::!il;
       if (!unaligned_args) then (
         il := Set(stride, (integer 0), locUnknown)::!il;
       );
-      (* TODO Make the for loop *)
+
+      let ilt = ref [] in
+  (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
+  (*     ilt := (closure_flag::!ilt; *)
+  (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
+      let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer (arg_t2int arg_type); arg_elsz] in
+      ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+  (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
+      let start = [mkStmtOneInstr (Set(j_var, zero, locUnknown))] in
+      let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval stride, intType) in
+      let j_plus = BinOp(PlusA, Lval j_var, one, intType) in
+      let guard = BinOp(Le, j_plus, arg_elsz, boolType) in
+      let next = [mkStmt( Instr ([Set(j_var, j_plus, locUnknown); Set(e_addr, e_addr_plus, locUnknown)]))] in
+      let body = [mkStmt (Instr (L.rev !ilt))] in
+      stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
+
     ) else (
 
       (* const uint64_t limit=(((uint64_t)arg_addr64)+arg_size); *)

@@ -509,9 +509,9 @@ let arg_t2int = function
     | In -> 1
     | Out -> 2
     | InOut -> 3
-    | SIn -> 5
-    | SOut -> 6
-    | SInOut -> 7
+    | SIn -> 1 (*5*)
+    | SOut -> 2 (*6*)
+    | SInOut -> 3 (*7*)
 
 (** Maps the arg_t to ints as defined by the TPC headers
     @return the corrensponding int *)
