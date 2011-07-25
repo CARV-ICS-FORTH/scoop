@@ -134,7 +134,7 @@ let print_task_dependencies (task: task_dep_node) : unit = begin
       List.iter 
         (fun dep -> 
           let ((argname, _, _), (id, taskname, (loc, _))) = dep in
-            ignore(E.log "\tdep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
+            ignore(E.log "\t->dep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
         ) dependencies
     ) args
 

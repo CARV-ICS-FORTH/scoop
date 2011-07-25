@@ -144,16 +144,24 @@ let spu_tasks = ref []
     inout() directives *)
 let rec scoop_process_args typ args loc =
   match args with
-    (AIndex(ACons(varname, []), varsize)::rest) ->
-      let tmp_size = attrParamToExp varsize !ppc_file in
+    (* handle strided... *)
+    (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
+      let attrParamToExp' = attrParamToExp !ppc_file in
+      let tmp_size = attrParamToExp' varsize in
+      let tmp_els = attrParamToExp' var_els in
+      let tmp_elsz = attrParamToExp' var_elsz in
+      (varname, ((translate_arg typ true loc),
+          tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
+   | (AIndex(ACons(varname, []), varsize)::rest) ->
+      let tmp_size = attrParamToExp !ppc_file varsize in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
+    (* FIXME make it smarter, so it can do sizeof(int) for int* etc. *)
    | (ACons(varname, [])::rest) ->
       let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
-(*         | handle strided... *)
     | [] -> []
     | _ -> ignore(warnLoc loc "Syntax error in #pragma css task %s(...)\n" typ); []
 
@@ -206,12 +214,12 @@ class findSPUDeclVisitor cgraph = object
           let ts = find_function_sign (!ppc_file) "tpc_init" in
           let args = 
             if (!arch="cell") then
-              [attrParamToExp exp !ppc_file]
+              [attrParamToExp !ppc_file exp]
             else if (!arch="cellgod") then
-              attrParamToExp exp !ppc_file::[attrParamToExp (L.hd rest) !ppc_file]
+              attrParamToExp !ppc_file exp::[attrParamToExp !ppc_file (L.hd rest)]
             else (
               match rest with
-                first::second::_ -> attrParamToExp exp !ppc_file::(attrParamToExp first !ppc_file::[attrParamToExp second !ppc_file])
+                first::second::_ -> attrParamToExp !ppc_file exp::(attrParamToExp !ppc_file first::[attrParamToExp !ppc_file second])
                 | _ -> E.s (errorLoc loc "#pragma css start takes 3 arguments")
               )
           in
@@ -267,8 +275,8 @@ class findSPUDeclVisitor cgraph = object
                               let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
                               call_args := vsize::!call_args;
                               if (is_strided arg_type) then (
-                                call_args := vels::!call_args;
                                 call_args := velsz::!call_args;
+                                call_args := vels::!call_args;
                               );
                             with Not_found ->
                               E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)

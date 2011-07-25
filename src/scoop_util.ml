@@ -349,7 +349,13 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
     raise Not_found
   )
 
-(** this is the private function *)
+(** find the variable named {e name} in the locals of {e fd}
+    (doesn't print anything on fail)
+    @param fd the function declaration to look in
+    @param name the name of the local variable to search
+    @raise Not_found when there is no local variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the local variable {e name}
+ *)
 let __find_local_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
@@ -747,7 +753,7 @@ exception NotAnExpression of attrparam
   @raise NotAnExpression when it fails
   @return the converted Cil.attrparam as a Cil.exp
  *)
-let attrParamToExp (a: attrparam) ?(currFunction: fundec = !currentFunction) (ppc_file: file) : exp= 
+let attrParamToExp (ppc_file: file) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp= 
   let rec subAttr2Exp (a: attrparam) : exp= begin
     match a with
         AInt(i) -> integer i                    (** An integer constant *)

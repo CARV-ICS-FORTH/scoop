@@ -129,6 +129,9 @@ val find_formal_var : Cil.fundec -> string -> Cil.varinfo
 (* find the variable named <name> in the locals of <fd> *)
 val find_local_var : Cil.fundec -> string -> Cil.varinfo
 
+(* find the variable named <name> in the locals of <fd> *)
+val __find_local_var : Cil.fundec -> string -> Cil.varinfo
+
 (* find the variable named <name> in fundec <fd>
    else look if it's a global of file <f> *)
 val find_scoped_var : Cil.fundec -> Cil.file -> string -> Cil.varinfo
@@ -178,7 +181,7 @@ val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -
 
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
-val attrParamToExp : Cil.attrparam -> ?currFunction:Cil.fundec -> Cil.file -> Cil.exp
+val attrParamToExp : Cil.file -> ?currFunction:Cil.fundec -> Cil.attrparam -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)

@@ -59,9 +59,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
     (highpriority is simply ignored)
 
     Parameter notation:
-      <parameter>[\[parameter size*\]]
-     The parameter size must be an expression, thus we don't allow function
-        calls. Also there is no support for the conditional operator (? :)
+      Non stride:
+        <parameter>[\[parameter size\]]
+      
+      Stride:
+        <parameter>\[stride]\[ els | elsz \]
+        where stride is ... (TODO)
+        els is ... (TODO)
+        elsz is ... (TODO)
+
+      The parameter size/stride/els/elsz must be an expression, thus
+      we don't allow function calls. Also there is no support for the
+      conditional operator (? :)
+      
 
     Example:
       #pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])

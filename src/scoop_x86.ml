@@ -41,7 +41,7 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
-let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
+let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
  (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type ppc_file "uint32_t") in
@@ -61,10 +61,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
   let stride = mkFieldAccess idxlv "stride" in
   il := (* FIX here *)
     ( if (is_strided arg_type) then (
-        let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
-        let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
-        (*#define TPC_BUILD_STRIDEARG(elems, elemsz)    (((elems)<<16) | (elemsz))*)
-        Set(stride, BinOp(BOr, BinOp(Shiftlt, arg_els, integer 16, uint32_t), arg_elsz, uint32_t) , locUnknown)
+        Set(stride, Lval arg_size, locUnknown)
       ) else
         Set(stride, (integer 0), locUnknown)
     )::!il;
@@ -119,6 +116,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
 
     if (is_strided arg_type) then (
       let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
+      let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
 
       (*  if(TPC_IS_STRIDEARG(arg_flag)){
           uint32_t j;
@@ -135,8 +133,15 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       //this->closure.total_arguments++;
           }
         }*)
-      let j_var = var (makeLocalVar fd "j" uint32_t) in
-      let stride_var = var (makeLocalVar fd "stride" uint32_t) in
+      il :=  Set(e_addr, CastE(uint64_t, Lval arg_addr), locUnknown)::!il;
+      let j_var = 
+        try var (__find_local_var fd "j")
+        with Not_found -> var (makeLocalVar fd "j" uint32_t)
+      in
+      let stride_var =
+        try var (__find_local_var fd "stride")
+        with Not_found -> var (makeLocalVar fd "stride" uint32_t)
+      in
       il := Set(stride_var, Lval stride, locUnknown)::!il;
       if (!unaligned_args) then (
         il := Set(stride, (integer 0), locUnknown)::!il;
@@ -151,9 +156,9 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
       let start = [mkStmtOneInstr (Set(j_var, zero, locUnknown))] in
-      let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval stride, intType) in
+      let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval stride_var, intType) in
       let j_plus = BinOp(PlusA, Lval j_var, one, intType) in
-      let guard = BinOp(Le, j_plus, arg_elsz, boolType) in
+      let guard = BinOp(Le, j_plus, arg_els, boolType) in
       let next = [mkStmt( Instr ([Set(j_var, j_plus, locUnknown); Set(e_addr, e_addr_plus, locUnknown)]))] in
       let body = [mkStmt (Instr (L.rev !ilt))] in
       stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
@@ -161,6 +166,10 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (limit: lval) (bis: lval)
     ) else (
 
       (* const uint64_t limit=(((uint64_t)arg_addr64)+arg_size); *)
+      let limit =
+        try var (__find_local_var fd "limit")
+        with Not_found -> var (makeLocalVar fd "limit" uint64_t)
+      in
       let plus = (BinOp(PlusA, CastE(uint64_t, Lval arg_addr), Lval arg_size, uint64_t)) in
       il := Set(limit, plus, locUnknown)::!il;
 
@@ -270,14 +279,17 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   for i = 0 to args_num do
     let ex_arg = (List.nth oargs i) in
     let name = getNameOfExp ex_arg in
-    let (_, (arg_type, _, _, _)) = List.find 
-      ( fun (vname, _) -> if( vname = name) then true else false)
-    args in
-    ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-    if (is_strided arg_type) then (
-      ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
-      ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
-    );
+    try
+      let (_, (arg_type, _, _, _)) = List.find 
+        ( fun (vname, _) -> if( vname = name) then true else false)
+      args in
+      ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
+      if (is_strided arg_type) then (
+        ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
+        ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
+      );
+    with Not_found ->
+      E.s (errorLoc loc "\"%s\" not found in the #pragma css task\n" name)
   done;
 
   let this = var (find_local_var f_new "this") in
@@ -294,8 +306,6 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   let uint64_t = (find_type !f "uint64_t") in
   (* uint32_t block_index_start *)
   let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
-  (* uint32_t limit *)
-  let limit = makeLocalVar f_new "limit" uint32_t in
   (* uint64_t e_addr; *)
   let e_addr = var (makeLocalVar f_new "e_addr" uint64_t) in
   
@@ -306,7 +316,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     let args_n = number_args args oargs in
     let i_n = ref (args_num+1) in
     let mapped = L.flatten (List.map 
-      (fun arg -> decr i_n; doArgument !i_n this e_addr (var limit) bis f_new arg !f)
+      (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f)
       args_n) in
     stmts := mapped@(!stmts);
     args_n
