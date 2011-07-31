@@ -9,6 +9,7 @@ module LF = Labelflow
 module E = Errormsg
 module CF = Controlflow
 module BS = Barrierstate
+module LP = Loopa
 
 let do_graph_out = ref false
 
@@ -41,14 +42,14 @@ let is_in_arg (arg: string): bool =
 
 (* return rhoSet for the specific arg (argument is argname * function descriptor) *)
 let get_rhoSet (arg: arg_type) : LF.rhoSet =
-  let (argname, _, func) = arg in
+  let (argname, _, (_, _, (_, func))) = arg in
   let env = List.assoc func !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup argname env in
   (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
             LF.d_rho argaddress PT.d_tau argtype); *)
   match argtype.PT.t with
   | PT.ITPtr(_, r) -> LF.close_rhoset_m (LF.RhoSet.singleton r)
-  | _ ->  ignore(E.log "Warning: %s is not a pointer\n" argname);
+  | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
 
@@ -56,8 +57,8 @@ let get_rhoSet (arg: arg_type) : LF.rhoSet =
 let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
   (* if both arguments are only inputs, return false (they could 
      be aliased, but we treat them as if the were not) *)
-  let (_, t, _) = arg1 in
-  let (_, t', _) = arg2 in
+  let (_, (t, _, _), _) = arg1 in
+  let (_, (t', _, _), _) = arg2 in
   if((is_in_arg t) && (is_in_arg t')) then false
   else
     let set1 = get_rhoSet arg1 in
@@ -104,7 +105,11 @@ let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) 
   | (task::tl) -> let (taskinf', args) = task in
                   let rec check_arg' dep_args' = function
                     [] -> dep_args'
-                  | (arg'::tl) -> if((is_aliased arg arg')) then 
+                  | (arg'::tl) -> 
+										let (argname1, (_, var1, e_size1), task_d1) = arg in
+										let (argname2, (_, var2, e_size2), task_d2) = arg' in
+										if(((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) 
+											&& (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2)))) then 
                                     check_arg' ((arg', taskinf')::dep_args') tl
                                   else 
                                     check_arg' dep_args' tl
@@ -134,7 +139,7 @@ let print_task_dependencies (task: task_dep_node) : unit = begin
       List.iter 
         (fun dep -> 
           let ((argname, _, _), (id, taskname, (loc, _))) = dep in
-            ignore(E.log "\t->dep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
+            ignore(E.log "\tdep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
         ) dependencies
     ) args
 
@@ -211,7 +216,7 @@ let isSafeArg (task: fundec) (argname: string) : bool =
 
 let taskId (taskinf: task_descr) : string = 
   let (_, taskname, (loc, _)) = taskinf in
-  taskname^"_"^(string_of_int loc.line);
+  ignore(taskname^"_"^(string_of_int loc.line));
   taskname
 
 (* writes dependencies in graphiz format *)
@@ -247,7 +252,7 @@ end
 
 (* prints argument  *)
 let print_arg (arg: arg_type) : unit = begin
-  let (argname, typ, _) = arg in
+  let (argname, (typ, _, _), _) = arg in
   ignore(E.log "\targ:%s, type:%s\n" argname typ);
 end
 
@@ -261,8 +266,10 @@ end
 (* Static analysis for task dependencies *)
 let find_dependencies (f: file) : unit = begin	
   (* List.iter print_task !tasks_l; *)
+  program_file := f;
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
+	Cfg.computeFileCFG f;
   ignore(E.log "Ptdepa: Generating CFG.\n");
   (* LT.generate_constraints f; *)
   ignore(E.log "Ptdepa: Generating and solving flow constraints.\n");

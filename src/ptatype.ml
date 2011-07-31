@@ -43,6 +43,8 @@ module LN = Labelname
 module CG = Callgraph
 module LF = Labelflow
 module VS = Usedef.VS
+module RD = Reachingdefs
+module LP = Loopa
 
 open Cil
 open Sdam
@@ -50,6 +52,7 @@ open Printf
 open Pretty
 open Lockutil
 open Labelflow
+open Scoop_util
 module GB = Correlation
 open Shared
 module Conf = Locksettings
@@ -64,6 +67,7 @@ let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
 
 let currentFunction = ref dummyFunDec
+let currSid = ref (-1)
 
 (* wrappers *)
 let join_phi (p1: phi) (p2: phi) (k: CF.phi_kind) : phi =
@@ -342,6 +346,8 @@ type global_kind =
   | KMalloc_Addr  (* A malloc or address of a local, which have
                      self-loops but are not live, unless they
                      flow to a true global *)
+(*****************************************************************************)
+(*type index = Cil.exp*)
 
 (*****************************************************************************)
 let get_vinfo_types : voiddata_t -> (tau_sig * tau) list =
@@ -2424,54 +2430,60 @@ and type_offcinit (c: cinfo)
 
 (*****************************************************************************)
 
-let handle_tpc_task il args loc: unit = begin
-	match il with 
-  	Call(_, Lval((Var(vi), _)), _, loc') ->
-    	ignore(List.map (fun arg -> match arg with
-      	ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> 
-        	(* give all the arguments to Dtdepa*)
-        	Sdam.addArg (varname, arg_typ, !currentFunction);
-        | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->
-        	(* give all the arguments to Dtdepa don't care for strided  *)
-         	Sdam.addArg (varname, arg_typ, !currentFunction);
-        | _ -> ignore(E.warn "SDAM:%a:Task annotation error!\n" d_loc loc);
-        ) args);
-      ignore(Sdam.addTask vi.vname !currentFunction loc');
-			| _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);
-end
+(*let handle_tpc_task il args loc: unit = begin*)
+(*	match il with *)
+(*  	Call(_, Lval((Var(vi), _)), _, loc') ->*)
+(*    	ignore(List.map (fun arg -> match arg with*)
+(*      	ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::[]) -> *)
+(*        	(* give all the arguments to Dtdepa*)*)
+(*        	Sdam.addArg (varname, arg_typ, !Sdam.currTask_descr));*)
+(*        | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->*)
+(*        	(* give all the arguments to Dtdepa don't care for strided  *)*)
+(*         	Sdam.addArg (varname, arg_typ, !currentFunction);*)
+(*        | _ -> ignore(E.warn "SDAM:%a:Task annotation error!\n" d_loc loc);*)
+(*        ) args);*)
+(*      ignore(Sdam.addTask vi.vname !currentFunction loc');*)
+(*			| _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);*)
+(*end*)
 
-let rec css_task_process_args typ args loc : unit = begin
+let rec css_task_process_args typ args task_d loc : unit = begin
 	match args with 
 		[] -> ()
 	| (curr::rest) -> begin 
 		match curr with
-    	AIndex(ACons(varname, []), _) 
-    | ACons(varname, []) -> Sdam.addArg (varname, typ, !currentFunction);
-      (* handle strided... *)
-    | AIndex(AIndex(ACons(varname, []), _), ABinOp( BOr, _, _)) ->
-      Sdam.addArg (varname, typ, !currentFunction);
+    	AIndex(ACons(varname, []), varsize) -> 
+    		let tmp_size = attrParamToExp !program_file varsize in
+    		let var_i = find_scoped_var !currentFunction !program_file varname in
+    		Sdam.addArg (varname, (typ, var_i, tmp_size), task_d); 
+    | ACons(varname, []) -> ( 
+        let var_i = find_scoped_var !currentFunction !program_file varname in
+    		let tmp_size = SizeOfE (Lval (var var_i)) in 
+				Sdam.addArg (varname, (typ, var_i, tmp_size), task_d);
+			)
     | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc typ);		
 	end;	
-	css_task_process_args typ rest loc
+	css_task_process_args typ rest task_d loc
 end
 
-let rec css_task_process io loc : unit = begin
+let rec css_task_process io loc task_d : unit = begin
 	match io with 
   	(curr::rest) -> begin
       match curr with
         AStr("highpriority") -> (* simply ignore it *) ();
-        | ACons(arg_typ, args) -> css_task_process_args arg_typ args loc
+        | ACons(arg_typ, args) -> css_task_process_args arg_typ args task_d loc
         | _ -> ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
     end;
-    css_task_process rest loc
+    css_task_process rest loc task_d
     | _ -> ();
 end
 
-let handle_css_task il args loc : task_descr =  begin
+let handle_css_task il args loc loop_d : task_descr =  begin
 	match il with 
-  	Call(_, Lval((Var(vi), _)), _, loc) -> begin
-			css_task_process args loc;
-      Sdam.addTask vi.vname !currentFunction loc
+  	Call(_, Lval((Var(vi), _)), acts, loc) -> begin
+			let task_d = Sdam.new_task_d vi.vname loc !currentFunction in 
+			css_task_process args loc task_d;			
+			LP.process_call_actuals acts loc !currSid task_d loop_d;
+      Sdam.addTask task_d
 		end
   | _ -> ignore(E.error "SDAM:%a:Ignoring pragma" d_loc loc); (0, "", (loc, !currentFunction)) (*FIXME: handle as exception *)
 end
@@ -3028,11 +3040,11 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
       (env, phi, eff)
     ) else (input_env, input_phi, input_effect)
 
-and type_pragma ((env, phi, eff), kind) pragma =
+and type_pragma ((env, phi, eff), (kind, loop_d)) pragma =
 	match pragma with
     (Attr("css", ACons("start", _)::_), loc) -> (
 		if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
-		((env, phi, eff),kind) (* TODO: handle css start  *)  		
+		((env, phi, eff), (kind, loop_d)) (* TODO: handle css start *)  		
 	)
 	| (Attr("css", AStr("finish")::_), loc) -> (
 		if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
@@ -3040,62 +3052,76 @@ and type_pragma ((env, phi, eff), kind) pragma =
 		CF.phi_flows phi barrier_phi;
 		CF.starting_phis := barrier_phi::!CF.starting_phis;
 
-		((env, barrier_phi, eff),kind)
+		((env, barrier_phi, eff), (kind, loop_d))
 	)
 	| (Attr("css", AStr("wait")::rest), loc) -> (
 		match rest with 
     	ACons("on", exps)::_ -> (
 			ignore(E.warn "Wait on task analysis not supported yet...\n"); 
-			((env, phi, eff),kind)
+			((env, phi, eff), (kind, loop_d))
 		)
   	| AStr("all")::_ -> (
 			if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
 			let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
 			CF.phi_flows phi barrier_phi;
 			CF.starting_phis := barrier_phi::!CF.starting_phis;
-			((env, barrier_phi, eff),kind)
+			((env, barrier_phi, eff), (kind, loop_d))
 			)
 		| _ -> ( 
 			ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-			((env, phi, eff),kind)
+			((env, phi, eff), (kind, loop_d))
 		)
 	) 
 	|	(Attr("css", AStr("task")::args), loc) -> (
 		match kind with
 				Instr(il) -> (
 				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
-				let task_d = (handle_css_task (List.hd il) args loc) in	
+				let task_d = handle_css_task (List.hd il) args loc loop_d in	
 				let task_phi = make_phi "Task" (CF.PhiTask task_d) in
 				CF.phi_flows phi task_phi;
 				CF.starting_phis := task_phi::!CF.starting_phis;
-				((env, task_phi, eff),kind)
+				((env, task_phi, eff), (kind, loop_d))
 			)
-			| _ -> ignore(warnLoc loc "SDAM:Invalid syntax!\n"); ((env, phi, eff), kind)
+			| _ -> ignore(warnLoc loc "SDAM:Invalid syntax!\n"); ((env, phi, eff), (kind, loop_d))
 	)
 	| (_, loc) -> ( 
 		ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-		((env, phi, eff),kind)
+		((env, phi, eff), (kind, loop_d))
 	)
 
 (*****************************************************************************)
 
-and type_stmt_list g stmts : gamma =
+and type_stmt_list ((gm: gamma), (loop_d: loop_descr)) stmts =
+	let g = (gm, loop_d) in
   let f g s =
     let g' = type_stmt g s in
-    g'
+    (g', loop_d)
   in
-  List.fold_left f g stmts
+	List.fold_left f g stmts
+	
+and type_pragma_list g pragmas = 
+	let f g s =
+		let g' = type_pragma g s in
+		g'
+	in 
+	List.fold_left f g pragmas
 
-and type_stmt (env, phi, eff) stmt : gamma =
+(* FIXME: Might be cases where we do not type pragmas *)
+and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr)) stmt : gamma =
+	currSid := stmt.sid;
   if !debug then ignore(E.log "SDAM: typing statement %a\n" d_stmt stmt);
   if !do_uniq then current_uniqueness := Uniq.get_stmt_state stmt;
   set_goto_target env phi eff stmt;
+	(* ignore(E.log "stmt=%a\n" d_stmt stmt); *)
   let (env,phi,eff) = Hashtbl.find env.goto_tbl stmt in
-	let ((env', phi', eff'),_) = List.fold_left (type_pragma ) ((env, phi, eff),stmt.skind) stmt.pragmas in
+(*	let ((env', phi', eff'),_) = List.fold_left (type_pragma) ((env, phi, eff),stmt.skind) stmt.pragmas in*)
   match stmt.skind with
-  	Instr(il) -> List.fold_left (type_instr ) (env', phi', eff') il		
+  	Instr(il) -> 
+			let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
+			List.fold_left (type_instr ) (env', phi', eff') il		
   | Return(e, loc) ->
       currentLoc := loc;
+			let ((env, phi, eff), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
       let ((sret,_), env, phi, eff) =
         match e with
           None -> ((void_tau,NotUnq), env, phi, eff)
@@ -3125,33 +3151,52 @@ and type_stmt (env, phi, eff) stmt : gamma =
       (env, CF.empty_phi, make_effect "goto-effect" false)
   | If(cond_exp, block1, block2, loc) ->
       currentLoc := loc;
+			let ((env, phi, eff), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
       let ((cond_type,_), env, phi, eff) =
         type_exp cond_exp env phi eff in
       let true_phi,false_phi = phi, phi
       in
-      let g1 = type_stmt_list (env, true_phi, eff) block1.bstmts in
-      let g2 = type_stmt_list (env, phi, eff) block2.bstmts in
+      let (g1, _) = type_stmt_list ((env, true_phi, eff), loop_d) block1.bstmts in
+      let (g2, _) = type_stmt_list ((env, phi, eff), loop_d) block2.bstmts in
       join_gamma g1 g2
   | Loop(b, loc, Some(_), Some(_)) ->
       currentLoc := loc;
-      let begin_phi = make_phi "beginloop" CF.PhiVar in
-      CF.phi_flows phi begin_phi;
-      let (env2,p2,ef2) = type_stmt_list (env, begin_phi, eff) b.bstmts in
+			if !debug_SDAM then ignore(E.log "Loop found, analyzing bounds\n");
+			let loop_d = Sdam.new_loop_d (LP.get_loop_index b.bstmts) in
+			ignore(E.log "Will now type pragmas in the loop\n");
+			(* FIXME: maybe we do not need this... *)
+(*			let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff),(stmt.skind, loop_d)) stmt.pragmas in *)
+			(* FIXME: check whether to use stmt or b.stmts *)
+(*			let loopstart_phi = make_phi "LoopStart" (CF.PhiLoopStart (Sdam.new_loop_d (LP.get_loop_index b.bstmts))) in*)
+			let begin_phi = make_phi "beginloop" CF.PhiVar in
+			CF.phi_flows phi begin_phi;
+(*			CF.starting_phis := loopstart_phi::!CF.starting_phis;*)
+(*      CF.phi_flows begin_phi loopstart_phi;*)
+(*			let (_, smth) = loop_d in*)
+(*			if(isSome smth) then ignore(E.log "put something there\n");*)
+      let ((env2,p2,ef2), _) = type_stmt_list ((env, begin_phi, eff), loop_d) b.bstmts in
       CF.phi_flows p2 begin_phi;
       effect_flows eff ef2;
       effect_flows ef2 eff;
-      env_flows env2 env;
+      env_flows env2 env;	
+			(* match with the last statement, which should be the loop index incrementation *)
+(*			let last_stmt = (List.hd (List.rev b.bstmts)) in *)
+(* 			Loopa.simple_loop_pattern last_stmt.skind;*)
+			
       (*let live_vars = LV.getLiveSet stmt.sid in
       down e env (getSome live_vars);
       *)
       (env2, p2, ef2)
   | Block(b) ->
-      type_stmt_list (env, phi, eff) b.bstmts
+			let ((env, phi, eff), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
+      let (g, _) = type_stmt_list ((env, phi, eff), loop_d) b.bstmts in g
   | Loop(_,_,None,_)
   | Loop(_,_,_,None)
   | Break _
   | Continue _
-  | Switch _ -> assert false
+  | Switch _ -> 
+		ignore(type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas);
+		assert false
   | TryExcept _ (* wrong compiler *)
   | TryFinally _ -> assert false
 
@@ -3191,6 +3236,7 @@ let non_forker = ref 0
 
 let addfun (fd: fundec) : unit = begin
   Cil.prepareCFG fd;
+	RD.computeRDs fd;
   if !debug then ignore (E.log "typing function %s %s\n" fd.svar.vname (Lprof.timestamp ()));
   let location1 = !Cil.currentLoc in
   LV.computeLiveness fd;
@@ -3273,8 +3319,8 @@ let addfun (fd: fundec) : unit = begin
         env_add_var locals_env fd.svar.vname (fun_abs_type, const_rho)
       in
       (* using this Gamma, type the function body *)
-      let (_, phi_stmt, eff_stmt) =
-        type_stmt_list (final_env, in_phi, in_eff) fd.sbody.bstmts in
+      let ((_, phi_stmt, eff_stmt), _) =
+        type_stmt_list ((final_env, in_phi, in_eff), None) fd.sbody.bstmts in
       (* flow the output phi, eff, to the formal output phi, eff *)
       effect_flows out_eff eff_stmt;
       CF.phi_flows phi_stmt out_phi;
