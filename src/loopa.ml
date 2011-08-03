@@ -7,7 +7,7 @@ open Int64
 module E = Errormsg
 module RD = Reachingdefs
 
-let debug = ref true
+let debug = ref false
 
 let aaaInfoHT : (arg_descr, array_loop_descr) Hashtbl.t = Hashtbl.create 100
 
@@ -51,7 +51,7 @@ let get_loop_index body_stmts =
 		match il with 
 			Instr(Set((Var(vi), NoOffset), e, _)::[]) -> ( 
 				(if !debug then ignore(E.log "Found index %s\n" vi.vname););
-				if(vi.vreferenced) then None (* FIXME: this does not seem to work... *)
+				if(vi.vreferenced || vi.vaddrof) then None (* FIXME: this does not seem to work... *)
 				else (
 					let rec isModified = function
 						[] -> false
@@ -100,9 +100,11 @@ let process_call_actuals acts loc currSid task_d loop_d = begin
 														RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
 															(match e with 
 																AddrOf(Var(va), Index(index, NoOffset)) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
+															|	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
+															|	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
 															| _ -> if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname); 
 															); 
-													| RD.RDCall i -> if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname);
+													| RD.RDCall i -> if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); (* FIXME: maybe we need to remove malloc, etc (probably doesn't matter) *)
 													);
 												| None -> if !debug then ignore(E.log "No reaching definitions\n"); ) ios;
 					)
