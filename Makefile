@@ -20,11 +20,12 @@ LOCKSMITH_MODULES = \
 	semiunification \
 	locktype \
 	lockalloc \
+	scoop_util \
 	sdam \
 	barrierstate \
+	loopa \
 	ptatype \
 	ptdepa \
-	scoop_util \
 	scoop_cell \
 	scoop_cellgod \
 	scoop_x86 \
