@@ -786,6 +786,7 @@ exception NotAnExpression of attrparam
   @return the converted Cil.attrparam as a Cil.exp
  *)
 let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp= 
+  assert (currFunction.svar.vname <> "@dummy");
   let rec subAttr2Exp (a: attrparam) : exp= (
     match a with
         AInt(i) -> integer i                    (** An integer constant *)
