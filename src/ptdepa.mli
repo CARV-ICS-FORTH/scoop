@@ -6,4 +6,4 @@ val options : (string * Arg.spec * string) list
 val find_dependencies : file -> unit
 
 (* returns true if the argument has no dependencies  *)
-val isSafeArg : fundec -> string -> bool
+val isSafeArg : (*fundec ->*) string -> bool

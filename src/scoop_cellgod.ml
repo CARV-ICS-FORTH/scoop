@@ -137,7 +137,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Ptdepa.isSafeArg fd arg_name) then (
+  if (Ptdepa.isSafeArg (*fd*) arg_name) then (
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;

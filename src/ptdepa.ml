@@ -183,7 +183,7 @@ let hasDependencies (args: arg_dep_node list) (argname: string) : bool =
 (*  search_list (!task_dep_l)*)
 
 
-let isSafeArg (task: fundec) (argname: string) : bool =
+let isSafeArg (*(task: fundec)*) (argname: string) : bool =
 	(*  if task_deos empty, then teh analysis has not run, return false *)
 	match !task_dep_l with
 		[] -> false

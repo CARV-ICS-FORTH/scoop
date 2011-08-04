@@ -50,6 +50,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
   let block_size = var (find_global_var ppc_file "__block_sz") in
   let arg_addr = var (List.nth fd.sformals i) in
   let (i_m, (arg_name, (arg_type ,_ ,_ ,_))) = arg in
+(*   print_endline ("Doing "^arg_name); *)
   let stl = ref [] in
   let il = ref [] in
   let total_arguments = mkFieldAccess closure "total_arguments" in
@@ -83,7 +84,10 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 (*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Ptdepa.isSafeArg fd arg_name) then (
+  if (Ptdepa.isSafeArg arg_name) then (
+      let (Var vi, _) = arg_addr in
+(*       print_endline ("And it's safe "^vi.vname); *)
+(*       print_endline ("And it's safe "^arg_name); *)
     (* if(TPC_IS_SAFEARG(arg_flag)){
         //uint64_t e_addr=(uint64_t) arg_addr64;
         //this->closure.arguments[  this->closure.total_arguments ].size = arg_size;

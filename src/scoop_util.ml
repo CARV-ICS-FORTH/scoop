@@ -928,10 +928,10 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
 
 (** Comparator for use with [List.sort], 
     takes an (int*arg_descr) list and sorts it according to the int of the elements
-    (smaller first) *)
+    (biggest first) *)
 let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int = 
     if (an = bn) then 0
-    else if (an > bn) then 1
+    else if (an < bn) then 1
     else -1
 
 (** assigns to each argument description its place in the original argument list
