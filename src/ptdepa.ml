@@ -102,18 +102,20 @@ let rec check_args (arg1: arg_type)
 let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) : dep_node list =
   let rec check_task dep_args = function
     [] -> dep_args
-  | (task::tl) -> let (taskinf', args) = task in
-                  let rec check_arg' dep_args' = function
-                    [] -> dep_args'
-                  | (arg'::tl) -> 
-										let (argname1, (_, var1, e_size1), task_d1) = arg in
-										let (argname2, (_, var2, e_size2), task_d2) = arg' in
-										if(((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) 
-											&& (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2)))) then 
-                                    check_arg' ((arg', taskinf')::dep_args') tl
-                                  else 
-                                    check_arg' dep_args' tl
-                  in check_task (dep_args@(check_arg' [] args)) tl
+  | (task::tl) ->
+    let (taskinf', args) = task in
+    let rec check_arg' dep_args' = function
+        [] -> dep_args'
+      | (arg'::tl) -> 
+        let (argname1, (_, var1, e_size1), task_d1) = arg in
+        let (argname2, (_, var2, e_size2), task_d2) = arg' in
+        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) 
+          && (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2)))
+        ) then 
+          check_arg' ((arg', taskinf')::dep_args') tl
+        else 
+          check_arg' dep_args' tl
+    in check_task (dep_args@(check_arg' [] args)) tl
   in check_task [] tasks
 
 

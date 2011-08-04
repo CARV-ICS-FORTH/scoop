@@ -85,31 +85,35 @@ let process_call_actuals acts loc currSid task_d loop_d = begin
 		List.iter (fun acts -> 
 			match acts with
 				Lval(Var(vi), _) -> (
-					let reaching_defs = RD.getRDs currSid in	
-					let (_, _, iosh) = getSome reaching_defs in
-					let ios =	(Inthash.find iosh vi.vid) in 
-					if !debug then (
-						ignore(E.log "argument:%s-%d\n" vi.vname vi.vid);	
-(*						ignore(E.log "RDs table_size=%d\n" (Inthash.length iosh));*)
-(*						Inthash.iter (fun a b -> ignore(E.log "vi:%d\n" a);) iosh;*)
-					);
-					if ((RD.IOS.cardinal ios) <= 1) then (
-						RD.IOS.iter (function
-													Some i ->  let r = getSome (RD.getSimpRhs i) in
-													(match r with
-														RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
-															(match e with 
-																AddrOf(Var(va), Index(index, NoOffset)) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-															|	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-															|	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-															| _ -> if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname); 
-															); 
-													| RD.RDCall i -> if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); (* FIXME: maybe we need to remove malloc, etc (probably doesn't matter) *)
-													);
-												| None -> if !debug then ignore(E.log "No reaching definitions\n"); ) ios;
-					)
-					else (if !debug then ignore(E.log "More than one reaching defs\n"); ); (* TODO:check if all paths are monotonal instead *)
-				);
+          try
+            let reaching_defs = RD.getRDs currSid in	
+            let (_, _, iosh) = getSome reaching_defs in
+            let ios =	(Inthash.find iosh vi.vid) in 
+            if !debug then (
+              ignore(E.log "argument:%s-%d\n" vi.vname vi.vid);	
+              (*  ignore(E.log "RDs table_size=%d\n" (Inthash.length iosh));*)
+              (*  Inthash.iter (fun a b -> ignore(E.log "vi:%d\n" a);) iosh;*)
+            );
+            if ((RD.IOS.cardinal ios) <= 1) then (
+              RD.IOS.iter (function
+                            Some i ->  let r = getSome (RD.getSimpRhs i) in
+                            (match r with
+                              RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
+                                (match e with 
+                                  AddrOf(Var(va), Index(index, NoOffset)) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
+                                |	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
+                                |	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
+                                | _ -> if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname); 
+                                ); 
+                            | RD.RDCall i -> if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); (* FIXME: maybe we need to remove malloc, etc (probably doesn't matter) *)
+                            );
+                          | None -> if !debug then ignore(E.log "No reaching definitions\n"); ) ios;
+            )
+            else (if !debug then ignore(E.log "More than one reaching defs\n"); ); (* TODO:check if all paths are monotonal instead *)
+          with Not_found ->
+            (* zakkak workaround *)
+            ignore(E.log "Inthash.find failed\n");
+        );
 			| _ -> ignore(warnLoc loc "SDAM:Actual expr too complicated, no analysis possible\n");
 		) acts; 
 end
