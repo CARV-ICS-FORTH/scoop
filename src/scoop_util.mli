@@ -181,7 +181,8 @@ val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -
 
 (* Convert an attribute into an expression, if possible. Otherwise raise 
  * NotAnExpression *)
-val attrParamToExp : Cil.file -> ?currFunction:Cil.fundec -> Cil.attrparam -> Cil.exp
+val attrParamToExp : Cil.file -> Cil.location -> ?currFunction:Cil.fundec ->
+    Cil.attrparam -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
@@ -196,6 +197,8 @@ val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list*)
 (* returns the name of the variable in the expration *)
 val getNameOfExp : Cil.exp -> string
 
+(* gets the basetype of a type *)
+val getBType : Cil.typ -> string -> Cil.typ
 
 (******************************************************************************)
 (*                                   LOOP                                     *)
@@ -253,6 +256,8 @@ val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stm
 val comparator : (int * Cil.exp) -> (int * Cil.exp) -> int
 
 val sort_args : arg_descr -> arg_descr -> int
+
+val sort_args_n : (int*arg_descr) -> (int*arg_descr) -> int
 
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 

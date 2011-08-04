@@ -2452,7 +2452,7 @@ let rec css_task_process_args typ args task_d loc : unit = begin
 	| (curr::rest) -> begin 
 		match curr with
     	AIndex(ACons(varname, []), varsize) -> 
-    		let tmp_size = attrParamToExp !program_file varsize in
+    		let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
     		let var_i = find_scoped_var !currentFunction !program_file varname in
     		Sdam.addArg (varname, (typ, var_i, tmp_size), task_d); 
     | ACons(varname, []) -> ( 
@@ -2480,6 +2480,7 @@ end
 let handle_css_task il args loc loop_d : task_descr =  begin
 	match il with 
   	Call(_, Lval((Var(vi), _)), acts, loc) -> begin
+(*       print_endline ("Doing"^vi.vname); *)
 			let task_d = Sdam.new_task_d vi.vname loc !currentFunction in 
 			css_task_process args loc task_d;			
 			LP.process_call_actuals acts loc !currSid task_d loop_d;

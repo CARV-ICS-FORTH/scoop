@@ -359,6 +359,7 @@ let find_formal_var (fd: fundec) (name: string) : varinfo =
 let __find_local_var (fd: fundec) (name: string) : varinfo =
   let findit = function
     | vi when vi.vname = name -> raise (Found_var vi)
+(*     | vi -> print_endline vi.vname *)
     | _ -> ()
   in
   try
@@ -596,7 +597,7 @@ let getCompinfo = function
 (** get the name of the variable if any
     @raise Invalid_argument if the given expression doesn't include a single variable
     @return the name of the variable included in the given Cil.exp *)
-let rec getNameOfExp = function
+let rec getNameOfExp = ( function
   Lval ((Var(vi),_))
   | AddrOf ((Var(vi),_))
   | StartOf ((Var(vi),_)) -> vi.vname
@@ -610,8 +611,26 @@ let rec getNameOfExp = function
   | AlignOf _ -> raise (Invalid_argument "Alignof");
   | UnOp _ -> raise (Invalid_argument "UnOp");
   | BinOp _ -> raise (Invalid_argument "BinOp");
-  | _ -> raise (Invalid_argument "Uknown");
+  | _ -> raise (Invalid_argument "Unknown");
+)
 
+(** gets the basetype of {e t}
+    @param the type
+    @param the variables name (for error printing)
+    @return the basetype of {e t}
+ *)
+let rec getBType (t: typ) (name: string) : typ =
+  match t with
+    TVoid _ -> ignore(error "Found void expression as task argument \"%s\"\n" name); t
+  | TInt _
+  | TFloat _
+  | TNamed _
+  | TComp _
+  | TEnum _ -> t
+  | TPtr (t', _)-> getBType t' name
+  | TArray _ -> ignore(error "I can't guess the size of array \"%s\"\n" name); t
+  | TFun _ -> ignore(error "Found function as task argument \n"); t
+  | TBuiltin_va_list _ -> ignore(error "Found variable args as task argument \n"); t
 
 (******************************************************************************)
 (*                                   LOOP                                     *)
@@ -744,6 +763,19 @@ let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) li
 (*                         AttrParam to Expression                            *)
 (******************************************************************************)
 
+(* Type signatures. Two types are identical iff they have identical 
+ * signatures *)
+let rec unrollSigtype (f:file) (ts: typsig) : typ = 
+  let unrollSigtype' = unrollSigtype f in
+  match ts with
+    TSArray (ts, Some i, attrs) -> TArray( unrollSigtype' ts, Some(kinteger64 IInt i), attrs )
+  | TSArray (ts, None, attrs) -> TArray( unrollSigtype' ts, None, attrs )
+  | TSPtr (ts, attrs) -> TPtr( unrollSigtype' ts, attrs )
+  | TSComp (_, n, _ ) -> find_tcomp f n
+  | TSFun (_, _, _, _) -> TVoid([]) (* Not sure about this :D *)
+  | TSEnum (n, attrs) -> TEnum(find_enum f n, attrs)
+  | TSBase (t) -> t
+
 (** exception returning the attribute that failed to convert into an expression *)
 exception NotAnExpression of attrparam
 (** Converts an attribute into an expression.
@@ -753,19 +785,26 @@ exception NotAnExpression of attrparam
   @raise NotAnExpression when it fails
   @return the converted Cil.attrparam as a Cil.exp
  *)
-let attrParamToExp (ppc_file: file) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp= 
-  let rec subAttr2Exp (a: attrparam) : exp= begin
+let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp= 
+  let rec subAttr2Exp (a: attrparam) : exp= (
     match a with
         AInt(i) -> integer i                    (** An integer constant *)
       | AStr(s) -> Const(CStr s)                (** A string constant *)
-      | ACons(name, []) ->                      (** An id *)
-        Lval (Var (find_scoped_var currFunction ppc_file name) , NoOffset)
+      | ACons(name, []) -> (                    (** An id *)
+        try
+          Lval (Var (find_scoped_var currFunction ppc_file name) , NoOffset)
+        with Not_found ->
+          E.s (errorLoc loc "\"%s\" was not found in the current scope" name)
+      )
       (* We don't support function calls as argument size *)
-      (*| ACons(name, args) ->                    (** A function call *)*)
+      | ACons(name, args) ->                 (** A function call *)
+          E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as as argument size in #pragma css task..." name)
       | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
       | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
+      | ASizeOfS(ts) -> SizeOf (unrollSigtype ppc_file ts)
       | AAlignOf(t) -> AlignOf t
       | AAlignOfE(a) -> AlignOfE (subAttr2Exp a)
+      | AAlignOfS(ts) -> AlignOf (unrollSigtype ppc_file ts)
       | AUnOp(op, a) -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
       | ABinOp(op, a, b) -> BinOp(op, subAttr2Exp a,
                                     subAttr2Exp b, intType) (* same as above *)
@@ -790,8 +829,9 @@ let attrParamToExp (ppc_file: file) ?(currFunction: fundec = !currentFunction) (
       end
       (* not supported *)
   (*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
-      | _ -> raise (NotAnExpression a)
-  end in
+      | AQuestion (at1, at2, at3) ->
+          E.s (errorLoc loc "\"cond ? if : else\"  is not supported in #pragma css task...")
+  ) in
   subAttr2Exp a
 
 
@@ -885,6 +925,14 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
     (* if neither are Out and a is In *)
     else if (arg_typa = In || arg_typa = SIn) then (-1)
     else 1
+
+(** Comparator for use with [List.sort], 
+    takes an (int*arg_descr) list and sorts it according to the int of the elements
+    (smaller first) *)
+let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int = 
+    if (an = bn) then 0
+    else if (an > bn) then 1
+    else -1
 
 (** assigns to each argument description its place in the original argument list
     @param args the arguments extracted from the annotation

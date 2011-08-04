@@ -115,8 +115,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
     if (is_strided arg_type) then (
-      let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
-      let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
+      let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i_m)))) in
+      let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i_m)))) in
 
       (*  if(TPC_IS_STRIDEARG(arg_flag)){
           uint32_t j;
@@ -263,7 +263,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   print_endline ("Creating tpc_function_" ^ func_vi.vname);
-  let args = List.sort sort_args (List.rev args) in
+(*   let args = List.sort sort_args args in *)
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
   f_new.sformals <- [];
@@ -281,7 +281,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     let name = getNameOfExp ex_arg in
     try
       let (_, (arg_type, _, _, _)) = List.find 
-        ( fun (vname, _) -> if( vname = name) then true else false)
+        ( fun (vname, _) -> (vname = name) )
       args in
       ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
       if (is_strided arg_type) then (
@@ -314,6 +314,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   if (f_new.sformals <> []) then (
     (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
     let args_n = number_args args oargs in
+    let args_n = List.sort sort_args_n args_n in
     let i_n = ref (args_num+1) in
     let mapped = L.flatten (List.map 
       (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f)

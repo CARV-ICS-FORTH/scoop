@@ -146,20 +146,21 @@ let rec scoop_process_args typ args loc =
   match args with
     (* handle strided... *)
     (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
-      let attrParamToExp' = attrParamToExp !ppc_file in
+      let attrParamToExp' = attrParamToExp !ppc_file loc in
       let tmp_size = attrParamToExp' varsize in
       let tmp_els = attrParamToExp' var_els in
       let tmp_elsz = attrParamToExp' var_elsz in
       (varname, ((translate_arg typ true loc),
           tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
    | (AIndex(ACons(varname, []), varsize)::rest) ->
-      let tmp_size = attrParamToExp !ppc_file varsize in
+      let tmp_size = attrParamToExp !ppc_file loc varsize in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
     (* FIXME make it smarter, so it can do sizeof(int) for int* etc. *)
    | (ACons(varname, [])::rest) ->
-      let tmp_size = SizeOfE (Lval (var (find_scoped_var !currentFunction !ppc_file varname))) in
+      let vi = find_scoped_var !currentFunction !ppc_file varname in
+      let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     | [] -> []
@@ -214,12 +215,12 @@ class findSPUDeclVisitor cgraph = object
           let ts = find_function_sign (!ppc_file) "tpc_init" in
           let args = 
             if (!arch="cell") then
-              [attrParamToExp !ppc_file exp]
+              [attrParamToExp !ppc_file loc exp]
             else if (!arch="cellgod") then
-              attrParamToExp !ppc_file exp::[attrParamToExp !ppc_file (L.hd rest)]
+              attrParamToExp !ppc_file loc exp::[attrParamToExp !ppc_file loc (L.hd rest)]
             else (
               match rest with
-                first::second::_ -> attrParamToExp !ppc_file exp::(attrParamToExp !ppc_file first::[attrParamToExp !ppc_file second])
+                first::second::_ -> attrParamToExp !ppc_file loc exp::(attrParamToExp !ppc_file loc first::[attrParamToExp !ppc_file loc second])
                 | _ -> E.s (errorLoc loc "#pragma css start takes 3 arguments")
               )
           in
@@ -328,8 +329,9 @@ class findSPUDeclVisitor cgraph = object
                         try
                           (* checking for the function definition *)
                           let task = find_function_fundec_g (!ppc_file.globals) funname in
-                          (* copy itself and the callees *)
-                          deep_copy_function funname callgraph !spu_file !ppc_file;
+                          if (!arch <> "x86") then
+                            (* copy itself and the callees *)
+                            deep_copy_function funname callgraph !spu_file !ppc_file;
                           rest_f2 task.svar
                         (* else try to find the function signature/prototype *)
                         with Not_found -> (
