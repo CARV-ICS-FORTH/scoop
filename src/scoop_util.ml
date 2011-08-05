@@ -499,16 +499,17 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
  *)
 let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
   match arg with
-      "in" when strided -> SIn
-    | "out" when strided -> SOut
+      "in" when strided (* legacy *)
+    | "input" when strided -> SIn
+    | "out" when strided (* legacy *)
+    | "output" when strided -> SOut
     | "inout" when strided -> SInOut
-    | _  when strided -> E.s (errorLoc loc "Only in/out/inout are allowed")
     | "in" (* legacy *)
     | "input" -> In
     | "out" (* legacy *)
     | "output" -> Out
     | "inout" -> InOut
-    | _ -> E.s (errorLoc loc "Only input/output/inout are allowed")
+    | _ -> E.s (errorLoc loc "Only in/out/input/output/inout are allowed")
 
 (** Maps the arg_t to a number as defined by the TPC headers
     @return the corrensponding number *)

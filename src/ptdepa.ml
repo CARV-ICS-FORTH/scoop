@@ -43,7 +43,7 @@ let is_strided_arg (arg: string): bool =
   match arg with 
       "sinput"
     | "sin"
-    | "sinout"
+    | "soutput"
     | "sout"
     | "sinout" -> ignore(E.log "argument strided:%s\n" arg); true
     | _ -> false
@@ -51,7 +51,7 @@ let is_strided_arg (arg: string): bool =
 (* return true if arg_t is In or SIn *)
 let is_in_arg (arg: string): bool = 
   match arg with 
-      "input" -> true (* for css tags  *)
+      "input" (* for css tags  *)
     | "in" -> true    (* for tpc legacy tags *)
     | _ -> false
 
@@ -82,12 +82,12 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
     if !do_verbose_output then begin
       let (argname1, _, _) = arg1 in
       let (argname2, _, _) = arg2 in
-			if !debug then (
+      if !debug then (
         ignore(E.log "comparing %s - %s\n" argname1 argname2);
-      	ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
-      	ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
-      	ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
-			);
+        ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
+        ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
+        ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+      );
     end;
     not (LF.RhoSet.is_empty final_set)
 
@@ -293,7 +293,7 @@ let find_dependencies (f: file) : unit = begin
   ignore(E.log "Ptdepa: Generating and solving flow constraints.\n");
   PT.generate_constraints f;
   LF.done_adding ();
-	BS.solve();
+  BS.solve();
   if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
     Labelflow.print_graph !Dotpretty.outf;
