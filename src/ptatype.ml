@@ -84,7 +84,7 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
 
 (* user interface *)
 let debug = ref false
-let debug_SDAM = ref true
+let debug_SDAM = ref false
 let debug_void = ref false
 let debug_one_effect = ref false
 let do_typing_stats = ref false
@@ -103,6 +103,10 @@ let do_asm = ref true
 let do_contextual = ref false
 
 let options = [
+  "--debug-ptatype",
+  Arg.Set(debug),
+  "SDAM: Print debugging information during sdam-typechecking phace (constraint//phi generation).";
+  
   "--debug-typing",
     Arg.Set(debug),
     " Print progress information during the typechecking phase (constraint generation)";
@@ -2458,7 +2462,7 @@ let rec css_task_process_args typ args task_d loc : unit = begin
         let var_i = find_scoped_var !currentFunction !program_file varname in
   (*      let tmp_els = attrParamToExp' var_els in
         let tmp_elsz = attrParamToExp' var_elsz in*)
-        Sdam.addArg (varname, (typ, var_i, tmp_size), task_d); 
+        Sdam.addArg (varname, ("s"^typ, var_i, tmp_size), task_d); 
     | AIndex(ACons(varname, []), varsize) -> 
     		let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
     		let var_i = find_scoped_var !currentFunction !program_file varname in

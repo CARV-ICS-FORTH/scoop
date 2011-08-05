@@ -8,6 +8,12 @@ module LF = Labelflow
 let debug = ref false
 let disable = ref false
 
+let options = [
+  "--debug-barrierstate",
+  Arg.Set(debug),
+  "SDAM-Barrier Analysis: debugging output.";
+]
+
 module Task =
   struct
     type t = task_descr
@@ -114,6 +120,7 @@ module BarrierStateTransfer =
 			| PhiBarrier -> (
 					Some TaskSet.empty
 				)
+			| PhiLoopStart _ -> ignore(E.log "Loop!!!\n"); Some acq
 			| _ -> Some acq
     end
 
@@ -122,8 +129,8 @@ module BarrierStateTransfer =
     let merge_state (acq1: state) (acq2: state) : state =
       TaskSet.inter acq1 acq2
 
-		    let merge_state (acq1: state) (acq2: state) : state =
-				  TaskSet.union acq1 acq2
+    let merge_state (acq1: state) (acq2: state) : state =
+		  TaskSet.union acq1 acq2
 
 		(* TODO: This is probably usefull to detect if a task is in a loop *)
     let equal_state (acq1: state) (acq2: state) : bool =
@@ -162,5 +169,6 @@ let solve () =
 									PhiBarrier -> true
 								| _ -> false)	!starting_phis in
 		taskStates := List.map (fun p -> (PhiHT.find BarrierStateTransfer.state_before_phi p)) barrier_phis;
+		print_taskStates ();
 	)
 

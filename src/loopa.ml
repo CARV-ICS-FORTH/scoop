@@ -9,6 +9,12 @@ module RD = Reachingdefs
 
 let debug = ref false
 
+let options = [
+  "--debug-loopa",
+  Arg.Set(debug),
+  "SDAM-Simple loop analysis: debugging output.";
+]
+
 let aaaInfoHT : (arg_descr, array_loop_descr) Hashtbl.t = Hashtbl.create 100
 
 let curr_index = ref None 

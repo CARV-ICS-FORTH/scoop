@@ -13,7 +13,7 @@ module LP = Loopa
 
 let do_graph_out = ref false
 
-let do_task_graph_out = ref true 
+let do_task_graph_out = ref false
 
 let do_verbose_output = ref true
 
@@ -22,20 +22,31 @@ let debug = ref false
 let options = [
   "--save-graph",
   Arg.Set(do_graph_out),
-  "PtDepa: Write constraints in \"graph.dot\".";
+  "SDAM-Pointer analysis: Write constraints in \"graph.dot\".";
 
   "--save-dependencies-graph",
   Arg.Set(do_task_graph_out),
-  "PtDepa: Write task dependecies in \"task-dep.dot\".";
+  "SDAM-Pointer analysis: Write task dependecies in \"task-dep.dot\".";
 
   "--verbose-output",
   Arg.Set(do_verbose_output),
-  "PtDepa: Verbose output.";
+  "SDAM-Pointer analysis: Verbose output.";
 
   "--debug-ptdepa",
   Arg.Set(debug),
-  "PtDepa: debugging output.";
+  "SDAM-Pointer analysis: debugging output.";
 ]
+
+(* return true if arg_t is strided *)
+(* return true if arg_t is In or SIn *)
+let is_strided_arg (arg: string): bool = 
+  match arg with 
+      "sinput"
+    | "sin"
+    | "sinout"
+    | "sout"
+    | "sinout" -> ignore(E.log "argument strided:%s\n" arg); true
+    | _ -> false
 
 (* return true if arg_t is In or SIn *)
 let is_in_arg (arg: string): bool = 
@@ -112,9 +123,9 @@ let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) 
     let rec check_arg' dep_args' = function
         [] -> dep_args'
       | (arg'::tl) -> 
-        let (argname1, (_, var1, e_size1), task_d1) = arg in
+        let (argname1, (t1, var1, e_size1), task_d1) = arg in
         let (argname2, (_, var2, e_size2), task_d2) = arg' in
-        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) 
+        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) || (is_strided_arg t1)
           && (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2)))
         ) then 
           check_arg' ((arg', taskinf')::dep_args') tl
