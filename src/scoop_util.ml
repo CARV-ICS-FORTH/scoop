@@ -620,16 +620,16 @@ let rec getNameOfExp = ( function
     @param the variables name (for error printing)
     @return the basetype of {e t}
  *)
-let rec getBType (t: typ) (name: string) : typ =
+let getBType (t: typ) (name: string) : typ =
   match t with
     TVoid _ -> ignore(error "Found void expression as task argument \"%s\"\n" name); t
   | TInt _
   | TFloat _
   | TNamed _
   | TComp _
-  | TEnum _ -> t
+  | TEnum _
   | TPtr (TVoid _, _)-> t
-  | TPtr (t', _)-> getBType t' name
+  | TPtr (t', _)-> t'
   | TArray _ -> ignore(error "I can't guess the size of array \"%s\"\n" name); t
   | TFun _ -> ignore(error "Found function as task argument \n"); t
   | TBuiltin_va_list _ -> ignore(error "Found variable args as task argument \n"); t
