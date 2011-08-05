@@ -387,7 +387,7 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
     @raise Not_found when there is no variable with name {e name} in {e fd} of {e f}
     @return the Cil.varinfo of the variable {e name}
  *)
-let find_scoped_var(loc: location) (fd: fundec) (f: file) (name: string) : varinfo =
+let find_scoped_var (loc: location) (fd: fundec) (f: file) (name: string) : varinfo =
   try
     __find_local_var fd name
   with Not_found -> 
@@ -396,9 +396,8 @@ let find_scoped_var(loc: location) (fd: fundec) (f: file) (name: string) : varin
       with Not_found -> 
           ( try
             __find_global_var f name
-          with Not_found -> (
+          with Not_found ->
               E.s (errorLoc loc "\"%s\" was not found in the current scope" name)
-              raise Not_found)
           )
       )
 
@@ -599,22 +598,21 @@ let getCompinfo = function
 (** get the name of the variable if any
     @raise Invalid_argument if the given expression doesn't include a single variable
     @return the name of the variable included in the given Cil.exp *)
-let rec getNameOfExp = ( function
-  Lval ((Var(vi),_))
-  | AddrOf ((Var(vi),_))
-  | StartOf ((Var(vi),_)) -> vi.vname
-  | CastE (_, ex)
-  | AlignOfE ex
-  | SizeOfE ex -> getNameOfExp ex
-  (* The following are not supported yet *)
-  | Const _ -> raise (Invalid_argument "Const");
-  | SizeOf _ -> raise (Invalid_argument "Sizeof");
-  | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
-  | AlignOf _ -> raise (Invalid_argument "Alignof");
-  | UnOp _ -> raise (Invalid_argument "UnOp");
-  | BinOp _ -> raise (Invalid_argument "BinOp");
-  | _ -> raise (Invalid_argument "Unknown");
-)
+let rec getNameOfExp = function
+      Lval ((Var(vi),_))
+    | AddrOf ((Var(vi),_))
+    | StartOf ((Var(vi),_)) -> vi.vname
+    | CastE (_, ex)
+    | AlignOfE ex
+    | SizeOfE ex -> getNameOfExp ex
+    (* The following are not supported yet *)
+    | Const _ -> raise (Invalid_argument "Const");
+    | SizeOf _ -> raise (Invalid_argument "Sizeof");
+    | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+    | AlignOf _ -> raise (Invalid_argument "Alignof");
+    | UnOp _ -> raise (Invalid_argument "UnOp");
+    | BinOp _ -> raise (Invalid_argument "BinOp");
+    | _ -> raise (Invalid_argument "Unknown")
 
 (** gets the basetype of {e t}
     @param the type
