@@ -85,7 +85,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
   if (Ptdepa.isSafeArg arg_name) then (
-      let (Var vi, _) = arg_addr in
+(*       let (Var vi, _) = arg_addr in *)
 (*       print_endline ("And it's safe "^vi.vname); *)
 (*       print_endline ("And it's safe "^arg_name); *)
     (* if(TPC_IS_SAFEARG(arg_flag)){
