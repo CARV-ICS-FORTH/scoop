@@ -157,7 +157,6 @@ let rec scoop_process_args typ args loc =
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
-    (* FIXME make it smarter, so it can do sizeof(int) for int* etc. *)
    | (ACons(varname, [])::rest) ->
       let vi = find_scoped_var !currentFunction !ppc_file varname in
       let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in

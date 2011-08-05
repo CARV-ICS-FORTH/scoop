@@ -499,9 +499,9 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
  *)
 let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
   match arg with
-      "in" when strided (* legacy *)
+      "in" when strided -> SIn (* legacy *)
     | "input" when strided -> SIn
-    | "out" when strided (* legacy *)
+    | "out" when strided -> SOut (* legacy *)
     | "output" when strided -> SOut
     | "inout" when strided -> SInOut
     | "in" (* legacy *)
@@ -628,6 +628,7 @@ let rec getBType (t: typ) (name: string) : typ =
   | TNamed _
   | TComp _
   | TEnum _ -> t
+  | TPtr (TVoid _, _)-> t
   | TPtr (t', _)-> getBType t' name
   | TArray _ -> ignore(error "I can't guess the size of array \"%s\"\n" name); t
   | TFun _ -> ignore(error "Found function as task argument \n"); t
