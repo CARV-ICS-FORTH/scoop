@@ -387,7 +387,7 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
     @raise Not_found when there is no variable with name {e name} in {e fd} of {e f}
     @return the Cil.varinfo of the variable {e name}
  *)
-let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
+let find_scoped_var(loc: location) (fd: fundec) (f: file) (name: string) : varinfo =
   try
     __find_local_var fd name
   with Not_found -> 
@@ -397,6 +397,7 @@ let find_scoped_var (fd: fundec) (f: file) (name: string) : varinfo =
           ( try
             __find_global_var f name
           with Not_found -> (
+              E.s (errorLoc loc "\"%s\" was not found in the current scope" name)
               raise Not_found)
           )
       )
@@ -793,12 +794,8 @@ let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !cu
     match a with
         AInt(i) -> integer i                    (** An integer constant *)
       | AStr(s) -> Const(CStr s)                (** A string constant *)
-      | ACons(name, []) -> (                    (** An id *)
-        try
-          Lval (Var (find_scoped_var currFunction ppc_file name) , NoOffset)
-        with Not_found ->
-          E.s (errorLoc loc "\"%s\" was not found in the current scope" name)
-      )
+      | ACons(name, []) ->                    (** An id *)
+          Lval (Var (find_scoped_var loc currFunction ppc_file name) , NoOffset)
       (* We don't support function calls as argument size *)
       | ACons(name, args) ->                 (** A function call *)
           E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as as argument size in #pragma css task..." name)

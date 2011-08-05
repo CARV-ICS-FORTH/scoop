@@ -158,7 +158,7 @@ let rec scoop_process_args typ args loc =
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
    | (ACons(varname, [])::rest) ->
-      let vi = find_scoped_var !currentFunction !ppc_file varname in
+      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
       let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)

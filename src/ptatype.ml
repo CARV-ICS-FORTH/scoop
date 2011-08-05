@@ -2459,16 +2459,16 @@ let rec css_task_process_args typ args task_d loc : unit = begin
       AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz)) ->
         let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
         let tmp_size = attrParamToExp' varsize in
-        let var_i = find_scoped_var !currentFunction !program_file varname in
+        let var_i = find_scoped_var loc !currentFunction !program_file varname in
   (*      let tmp_els = attrParamToExp' var_els in
         let tmp_elsz = attrParamToExp' var_elsz in*)
         Sdam.addArg (varname, ("s"^typ, var_i, tmp_size), task_d); 
     | AIndex(ACons(varname, []), varsize) -> 
     		let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
-    		let var_i = find_scoped_var !currentFunction !program_file varname in
+    		let var_i = find_scoped_var loc !currentFunction !program_file varname in
     		Sdam.addArg (varname, (typ, var_i, tmp_size), task_d); 
     | ACons(varname, []) -> ( 
-        let var_i = find_scoped_var !currentFunction !program_file varname in
+        let var_i = find_scoped_var loc !currentFunction !program_file varname in
     		let tmp_size = SizeOfE (Lval (var var_i)) in 
 				Sdam.addArg (varname, (typ, var_i, tmp_size), task_d);
 			)

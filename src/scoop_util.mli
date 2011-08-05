@@ -134,7 +134,7 @@ val __find_local_var : Cil.fundec -> string -> Cil.varinfo
 
 (* find the variable named <name> in fundec <fd>
    else look if it's a global of file <f> *)
-val find_scoped_var : Cil.fundec -> Cil.file -> string -> Cil.varinfo
+val find_scoped_var : Cil.location -> Cil.fundec -> Cil.file -> string -> Cil.varinfo
 
 (* find the enum named <name> in file f *)
 val find_enum : Cil.file -> string -> Cil.enuminfo
