@@ -151,7 +151,8 @@ let special_functions : handler Strmap.t ref = ref (
   Strmap.add "__builtin_stdarg_start" Va_start (
   Strmap.add "memset" Memset (
   Strmap.add "__memset_generic" Memset (
-  Strmap.empty)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  Strmap.add "tpc_malloc" Alloc (
+  Strmap.empty))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 let add_to_sf h s =
   special_functions := Strmap.add s h !special_functions

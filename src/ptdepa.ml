@@ -31,6 +31,10 @@ let options = [
   "--verbose-output",
   Arg.Set(do_verbose_output),
   "PtDepa: Verbose output.";
+
+  "--debug-ptdepa",
+  Arg.Set(debug),
+  "PtDepa: debugging output.";
 ]
 
 (* return true if arg_t is In or SIn *)
@@ -48,7 +52,7 @@ let get_rhoSet (arg: arg_type) : LF.rhoSet =
   (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
             LF.d_rho argaddress PT.d_tau argtype); *)
   match argtype.PT.t with
-  | PT.ITPtr(_, r) -> LF.close_rhoset_m (LF.RhoSet.singleton r)
+  | PT.ITPtr(_, r) -> LF.close_rhoset_pn (LF.RhoSet.singleton r)
   | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
@@ -63,11 +67,12 @@ let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
   else
     let set1 = get_rhoSet arg1 in
     let set2 = get_rhoSet arg2 in
-    let final_set = LF.RhoSet.inter set1 set2 in
+    let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in
     if !do_verbose_output then begin
       let (argname1, _, _) = arg1 in
       let (argname2, _, _) = arg2 in
 			if !debug then (
+        ignore(E.log "comparing %s - %s\n" argname1 argname2);
       	ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
       	ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
       	ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
@@ -278,8 +283,11 @@ let find_dependencies (f: file) : unit = begin
   PT.generate_constraints f;
   LF.done_adding ();
 	BS.solve();
-    (*Dotpretty.init_file "graph-begin.dot" "initial constraints";*)
-    (*Labelflow.print_graph !Dotpretty.outf;*)
+  if !do_graph_out then begin
+    Dotpretty.init_file "graph-begin.dot" "initial constraints";
+    Labelflow.print_graph !Dotpretty.outf;
+    Dotpretty.close_file ();
+  end;
     
     (*Semiunification.print_graph !Dotpretty.outf;*)
     (*Lockstate.print_graph !Dotpretty.outf;*)
