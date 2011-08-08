@@ -105,11 +105,11 @@ let options =
 
     "--trace",
       Arg.Set(dotrace),
-      " SCOOP: Trace scoop compiler.";
+      " SCOOP: Trace SCOOP.";
 
     "--out-name",
       Arg.String(fun s -> out_name := s),
-      " SCOOP: Specify the output files' prefix. e.g. (default: final) will produce final.c and final_func.c";
+      " SCOOP: Specify the output files' prefix. e.g. (default: final) will produce final.c (and final_func.c for cell)";
 
     "--queue-size",
       Arg.String(fun s -> queue_size := s),
@@ -125,15 +125,15 @@ let options =
 
     "--with-blocking",
       Arg.Set(blocking),
-      " SCOOP: Enable bocking arguemts. for use with -DBLOCKING";
+      " SCOOP: Enable blocking arguments in x86. for use with -DBLOCKING";
 
     "--threaded",
       Arg.Set(thread),
-      " SCOOP: Generate thread safe code, for use with -DTPC_MULTITHREADED";
+      " SCOOP: Generate thread safe code for Cell, for use with -DTPC_MULTITHREADED";
 
     "--disable-sdam",
       Arg.Set(dis_sdam),
-      " SCOOP: Disable static dependence analysis module";
+      " SCOOP: Disable the static dependence analysis module";
   ]
 
 (* create 1 global list (the spe output file) *)

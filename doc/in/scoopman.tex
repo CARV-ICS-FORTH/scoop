@@ -12,75 +12,77 @@
 
 \begin{document}
 \title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
-\date{last update: 29/05/11}
+\date{last update: 08/08/11}
 \maketitle
 
 \section{License}
 
-Copyright (c) 2010, \\
- Dimitris Hassapis  <hassapis@ics.forth.gr>\\
- Foivos Zakkak        <zakkak@ics.forth.gr>\\
- Polyvios Pratikakis  <polyvios@ics.forth.gr>\\
-All rights reserved.\\
+\begin{tabbing}
+Copyright (c) 2010,\\
+\ \ \=Dimitris Hassapis\ \ \ \ \=hassapis@ics.forth.gr\\
+\>Foivos Zakkak        \>zakkak@ics.forth.gr\\
+\>Polyvios Pratikakis  \>polyvios@ics.forth.gr\\
+All rights reserved.
+\end{tabbing}
 
-Redistribution and use in source and binary forms, with or without\\
-modification, are permitted provided that the following conditions are\\
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
 met:\\
 
-1. Redistributions of source code must retain the above copyright\\
+1. Redistributions of source code must retain the above copyright
 notice, this list of conditions and the following disclaimer.\\
 
-2. Redistributions in binary form must reproduce the above copyright\\
-notice, this list of conditions and the following disclaimer in the\\
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
 documentation and/or other materials provided with the distribution.\\
 
-3. The names of the contributors may not be used to endorse or promote\\
-products derived from this software without specific prior written\\
+3. The names of the contributors may not be used to endorse or promote
+products derived from this software without specific prior written
 permission.\\
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS\\
-IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED\\
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A\\
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\\
-OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\\
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\\
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\\
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\\
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\\
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\\
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
 
 \section{Annotation Syntax}
 
-\begin{verbatim}
-    #pragma css wait all
-    #pragma css wait on(list of expressions) //Not implemented yet
-    #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
-    (highpriority is simply ignored)
+    \verb!  #pragma css wait all!\\
+    \verb!  #pragma css wait on(list of variables)! //Not implemented yet\\
+    \verb!  #pragma css task [input(<input parameters>)]!\\
+    \verb!                   [inout(<input parameters>)]!\\
+    \verb!                   [output(<input parameters>)]!\\
+    \verb!                   [highpriority] (highpriority is simply ignored)!\\[1em]
+    Parameter notation:\\
 
-    Parameter notation:
-      Non stride:
-        <parameter>[\[parameter size\]]
+      Non stride: \ \verb!<parameter>[\[parameter size\]]!\\
       
-      Stride:
-        <parameter>\[stride]\[ els | elsz \]
-        where stride is the step (original row length)
-        els is the blocks number of rows
-        elsz is the blocks row length
+      Stride: \ \ \ \ \ \ \ \verb!<parameter>\[stride]\[ els | elsz \]!\\
+        \hspace{2cm}where stride is the step (original row length)\\
+        \hspace{2cm}els is the block's number of rows\\
+        \hspace{2cm}elsz is the block's row length\\
 
       The parameter size/stride/els/elsz must be an expression, thus
       we don't allow function calls. Also there is no support for the
-      conditional operator (? :)
+      conditional operator (? :)\\
       
-
     Example:
-      #pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])
-\end{verbatim}
+      \verb!#pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])!
 
 
 \section{Dependencies}
 
-\begin{enumerate}
+\begin{itemize}
+  \setlength{\itemsep}{1pt}
+  \setlength{\parskip}{0pt}
+  \setlength{\parsep}{0pt}
   \item ocaml
   \item camlp4/ocaml-camlp4/ocaml-camlp4-devel
   \item flex
@@ -88,65 +90,60 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
   \item indent
   \item ncurses-devel
   \item emacs
-\end{enumerate}
+\end{itemize}
 
-for CELL\\
-  you will also need the cell development package including ppu\_intrinsics.h\\
-  ,altivec.h etc in your include path (C\_INCLUDE\_PATH)\\
-  (e.g. export C\_INCLUDE\_PATH=$C\_INCLUDE\_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include )\\
+\begin{tabbing}
+for \emph{CELL B.E} runtimes you will also need the cell development package
+including ppu\_intrinsics.h,\\ altivec.h etc in your include path
+(C\_INCLUDE\_PATH)\\
+  (e.g. \=\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include!\\
+   \>\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include!)\\
   and ppu32-gcc in your PATH\\
-  (e.g. export PATH=$PATH:/opt/cell/toolchain/bin )\\
+  (e.g. \verb!export PATH=$PATH:/opt/cell/toolchain/bin!)\\
+\end{tabbing}
 
 \section{Install}
 
-  ./configure \&\& make
+  \verb!  ./configure && make!
 
-\section{Run (Needs update)}
+\section{Run}
 
-  scoop --arch=<x86/cell> [options] <file> [file2 ...]
+  \verb!  scoop --runtime=<x86/cell/cellgod/cellBlade/cellgodBlade> [options] <file> [file2 ...]!
 
 \subsection{Options (Needs update)}
 
-  --arch  Defines the target architecture (x86/cell)\\
-
-  --debug Enable debugging information printing.\\
-
-  --out-name Specify the output files' prefix.\\
-          e.g. (default: final) will produce \\
-          final.c and final\_func.c for the cell architecture\\
-\textbf{FIXME}         and final.c? for the x86 architecture\\
-
-\textbf{FIXME} to god x86 exei queue?\\
-  --queue-size\\
-          Specify the queue size for Cell. The value must match the one defined\\
-          in the Makefile as MAX\_QUEUE\_ENTRIES\\
-
-  --block-size\\
-          Specify the block size for x86.  The value must match the one defined\\
-          in the Makefile as BLOCK\_SZ\\
-
-  --with-stats\\
-          Enable code for statistics (for use with -DSTATISTICS)\\
-
-  --with-unaligned-arguments\\
-          Allow unalligned arguments in x86\\
-          (for use with -DUNALIGNED\_ARGUMENTS\_ALLOWED)\\
-
-  --threaded\\
-          Generate thread safe code (for use with -DTPC\_MULTITHREADED)\\
+  \begin{tabbing}
+  \ \ \=\verb!--runtime!\hspace{9em} \=
+  Defines the target runtime/architecture\\
+                                    \>\>(x86/cell/cellgod/cellBlade/cellgodBlade)\\[1ex]
+  \>\verb!--cflags!                   \>Defines the flags you want to pass to gcc\\[1ex]
+  \>\verb!--tpcIncludePath!           \>Defines the include path for the tpc runtime\\[1ex]
+  \>\verb!--debugSCOOP!               \>Print debugging information\\[1ex]
+  \>\verb!--trace!                    \>Trace SCOOP\\[1ex]
+  \>\verb!--out-name!                 \>Specify the output files' prefix. e.g. (default: final) will produce final.c\\
+                                    \>\>(and final\_func.c for cell)\\[1ex]
+  \>\verb!--queue-size!               \>Specify the queue size for Cell. Defined in the Makefile as\\
+                                    \>\>MAX\_QUEUE\_ENTRIES\\[1ex]
+  \>\verb!--with-stats!               \>Enable code for statistics, for use with -DSTATISTICS\\[1ex]
+  \>\verb!--with-unaligned-arguments! \>Allow unaligned arguments in x86, for use with\\
+                                    \>\>-DUNALIGNED\_ARGUMENTS\_ALLOWED\\[1ex]
+  \>\verb!--with-blocking!            \>Enable blocking arguments in x86. for use with -DBLOCKING\\[1ex]
+  \>\verb!--threaded!                 \>Generate thread safe code for Cell, for use with\\
+                                    \>\>-DTPC\_MULTITHREADED\\[1ex]
+  \>\verb!--disable-sdam!             \>Disable the static dependence analysis module
+  \end{tabbing}
 
 \section{Common Errors}
 
-Adding a semicolon at the end of #pragma css start...
-
-Fatal error: exception Invalid_argument("Unknown") you probably have wrong argument at a call tagged with #pragma css task
-
-Using #defines in pragmas (preprocessor doesn't process them
-
-Putting "#pragma css start" directly above a declaration of a variable
-
-Error: "segment___0" not found in the #pragma css task
+\begin{itemize}
+  \item Adding a semicolon at the end of \verb!#pragma css start...!
+  \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}} you
+      probably have wrong argument at a call tagged with \verb!#pragma css task!
+  \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
+  \item Putting \verb!#pragma css start...! directly above a declaration of a variable
+  \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task} 
   usually means that the tool is renaming a variable due to previous declaration
-  try renaming it (e.g. segment2)
+  try renaming it manually (e.g. segment2)
+\end{itemize}
 
 \end{document}
