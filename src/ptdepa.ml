@@ -45,7 +45,7 @@ let is_strided_arg (arg: string): bool =
     | "sin"
     | "soutput"
     | "sout"
-    | "sinout" -> ignore(E.log "argument strided:%s\n" arg); true
+    | "sinout" -> true
     | _ -> false
 
 (* return true if arg_t is In or SIn *)
@@ -125,8 +125,8 @@ let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) 
       | (arg'::tl) -> 
         let (argname1, (t1, var1, e_size1), task_d1) = arg in
         let (argname2, (_, var2, e_size2), task_d2) = arg' in
-        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf'))) || (is_strided_arg t1)
-          && (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2)))
+        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf')))
+          && ((is_strided_arg t1) || (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2))))
         ) then 
           check_arg' ((arg', taskinf')::dep_args') tl
         else 
