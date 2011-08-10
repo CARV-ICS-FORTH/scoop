@@ -143,6 +143,7 @@ let spu_tasks = ref []
 (** processes recursively the arguments' info found in input() output() and
     inout() directives *)
 let rec scoop_process_args typ args loc =
+	ignore(E.log "****************\n");
   match args with
     (* handle strided... *)
     (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
@@ -159,7 +160,11 @@ let rec scoop_process_args typ args loc =
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
    | (ACons(varname, [])::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
+      let tmp_size = (
+      	match vi.vtype with
+      		TArray(t, Some(e), _) -> SizeOf(vi.vtype)
+      	|	_ -> SizeOf( getBType vi.vtype vi.vname )
+      ) in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     | [] -> []
