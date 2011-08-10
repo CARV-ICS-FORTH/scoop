@@ -39,6 +39,10 @@ let task_cnt = ref 0
 
 let program_file = ref dummyFile
 
+let total_tasks = ref 0
+let total_args = ref 0
+let total_safe_args = ref 0
+
 (** Utility functions **)
 
 (* return a fresh task id *)
@@ -66,10 +70,12 @@ let new_loop_d (lpi: loop_index) : loop_descr =
  * its arguments
  *)
 let addTask task_d : task_descr =
+	total_tasks := !total_tasks+1;
   tasks_l := (task_d, !args_l)::!tasks_l;
   args_l := [];
 	task_d
 
 let addArg (arg: arg_type) : unit =
+	total_args := !total_args+1;
   args_l := arg::!args_l
 
