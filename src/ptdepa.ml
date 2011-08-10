@@ -129,7 +129,7 @@ let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) 
           && ((is_strided_arg t1) || (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2))))
         ) then 
           check_arg' ((arg', taskinf')::dep_args') tl
-        else 
+        else
           check_arg' dep_args' tl
     in check_task (dep_args@(check_arg' [] args)) tl
   in check_task [] tasks
@@ -232,10 +232,20 @@ let isSafeArg (*(task: fundec)*) (argname: string) : bool =
 		| _ -> false)
 
 
+let count_safe_args (tasks: task_dep_node list) : unit = begin
+  List.iter (fun task ->
+		let (_, args) = task in
+		List.iter 
+		  (fun arg ->
+		  	let (_, deps) = arg in
+				if((List.length deps) == 0) then total_safe_args := !total_safe_args+1;
+		  ) args
+  ) tasks
+end
+
 let taskId (taskinf: task_descr) : string = 
-  let (_, taskname, (loc, _)) = taskinf in
-  ignore(taskname^"_"^(string_of_int loc.line));
-  taskname
+  let (id, taskname, (loc, _)) = taskinf in
+ 	taskname^"_"^(string_of_int id)
 
 (* writes dependencies in graphiz format *)
 let plot_task_dep_graph (outf: out_channel) : unit = begin 
@@ -288,9 +298,9 @@ let find_dependencies (f: file) : unit = begin
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
 	Cfg.computeFileCFG f;
-  ignore(E.log "Ptdepa: Generating CFG.\n");
+  ignore(E.log "SDAM: Generating CFG.\n");
   (* LT.generate_constraints f; *)
-  ignore(E.log "Ptdepa: Generating and solving flow constraints.\n");
+  ignore(E.log "SDAM: Generating and solving flow constraints.\n");
   PT.generate_constraints f;
   LF.done_adding ();
   BS.solve();
@@ -304,10 +314,10 @@ let find_dependencies (f: file) : unit = begin
     (*Lockstate.print_graph !Dotpretty.outf;*)
     (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
     (*Dotpretty.close_file (); *)
-  ignore(E.log "Ptdepa: Checking for argument dependencies.\n");
+  ignore(E.log "SDAM: Checking for argument dependencies.\n");
   List.iter find_task_dependencies !tasks_l;
   if !do_verbose_output then begin (* this is bocus... *)
-    ignore(E.log "Ptdepa: Dependencies resolved.\n");
+    ignore(E.log "SDAM: Dependencies resolved.\n");
     List.iter print_task_dependencies !task_dep_l;
   end;
   if !do_task_graph_out then begin
@@ -322,7 +332,9 @@ let find_dependencies (f: file) : unit = begin
     Lockstate.print_graph !Dotpretty.outf;
     Dotpretty.close_file ();
   end;
-  ignore(E.log "Ptdepa: static dependence analysis has now completed.\n");
+  ignore(E.log "SDAM: static dependence analysis has now completed.\n");
+  count_safe_args !task_dep_l;
+  ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
 end
 
 
