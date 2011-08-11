@@ -35,6 +35,9 @@ val task_dep_l : task_dep_node list ref
 
 val program_file : file ref
 
+val total_safe_args : int ref
+val total_tasks : int ref
+val total_args : int ref
 
 (** Utility functions **)
 
