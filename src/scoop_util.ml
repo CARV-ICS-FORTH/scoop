@@ -796,7 +796,7 @@ let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !cu
           Lval (Var (find_scoped_var loc currFunction ppc_file name) , NoOffset)
       (* We don't support function calls as argument size *)
       | ACons(name, args) ->                 (** A function call *)
-          E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as as argument size in #pragma css task..." name)
+          E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as argument size in #pragma css task..." name)
       | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
       | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
       | ASizeOfS(ts) -> SizeOf (unrollSigtype ppc_file ts)
