@@ -2464,22 +2464,22 @@ let rec css_task_process_args typ args task_d loc : unit = begin
         let tmp_elsz = attrParamToExp' var_elsz in*)
         Sdam.addArg (varname, ("s"^typ, var_i, tmp_size), task_d); 
     (* Brand new stride syntax... *)
-   | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_c, bs_r)), orig) ->
+   | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig) ->
       (* Brand new stride syntax with optional 2nd dimension of the original array... *)
-      let orig_r = 
+      let orig_c = 
         match orig with
-          ABinOp( BOr, _, orig_r) -> orig_r
+          ABinOp( BOr, _, orig_c) -> orig_c
           | _ -> orig
       in
       let vi = find_scoped_var loc !currentFunction !program_file varname in
       let size = SizeOf( getBType vi.vtype vi.vname ) in
 (*      let tmp_bs_c = attrParamToExp' bs_c in
-      let tmp_bs_r = attrParamToExp' bs_r in
-      (* block's row size = bs_r * sizeof(type) *)
-      let tmp_bs_r = BinOp(Mult, tmp_bs_r, size, intType) in*)
-      let tmp_orig_r = attrParamToExp' orig_r in
-      (* original array row size = orig_r * sizeof(type) *)
-      let tmp_size = BinOp(Mult, tmp_orig_r, size, intType) in
+      (* block's row size = bs_c * sizeof(type) *)
+      let tmp_bs_c = BinOp(Mult, tmp_bs_c, size, intType) in
+      let tmp_bs_r = attrParamToExp' bs_r in*)
+      let tmp_orig_c = attrParamToExp' orig_c in
+      (* original array row size = orig_c * sizeof(type) *)
+      let tmp_size = BinOp(Mult, tmp_orig_c, size, intType) in
       Sdam.addArg (varname, ("s"^typ, vi, tmp_size), task_d); 
     | AIndex(ACons(varname, []), varsize) -> 
         let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in

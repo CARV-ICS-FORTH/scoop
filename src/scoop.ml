@@ -153,24 +153,24 @@ let rec scoop_process_args typ args loc =
       (varname, ((translate_arg typ true loc),
           tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
     (* Brand new stride syntax... *)
-   | (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_c, bs_r)), orig)::rest) ->
+   | (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig)::rest) ->
       (* Brand new stride syntax with optional 2nd dimension of the original array... *)
-      let orig_r = 
+      let orig_c = 
         match orig with
-          ABinOp( BOr, _, orig_r) -> orig_r
+          ABinOp( BOr, _, orig_c) -> orig_c
           | _ -> orig
       in
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
       let size = SizeOf( getBType vi.vtype vi.vname ) in
       let tmp_bs_c = attrParamToExp' bs_c in
+      (* block's row size = bs_c * sizeof(type) *)
+      let tmp_bs_c = BinOp(Mult, tmp_bs_c, size, intType) in
       let tmp_bs_r = attrParamToExp' bs_r in
-      (* block's row size = bs_r * sizeof(type) *)
-      let tmp_bs_r = BinOp(Mult, tmp_bs_r, size, intType) in
-      let tmp_orig_r = attrParamToExp' orig_r in
-      (* original array row size = orig_r * sizeof(type) *)
-      let tmp_orig_r = BinOp(Mult, tmp_orig_r, size, intType) in
+      let tmp_orig_c = attrParamToExp' orig_c in
+      (* original array row size = orig_c * sizeof(type) *)
+      let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
       (varname, ((translate_arg typ true loc),
-          tmp_orig_r, tmp_bs_c, tmp_bs_r))::(scoop_process_args typ rest loc)
+          tmp_orig_c, tmp_bs_c, tmp_bs_r))::(scoop_process_args typ rest loc)
    | (AIndex(ACons(varname, []), varsize)::rest) ->
       let tmp_size = attrParamToExp !ppc_file loc varsize in
       (varname, ((translate_arg typ false loc),

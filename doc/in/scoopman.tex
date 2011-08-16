@@ -64,7 +64,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
 
       Non stride: \ \verb!<parameter>[\[parameter size\]]!\\
       
-      Stride: \ \ \ \ \ \ \ \verb!<parameter>\[stride]\[ els | elsz \]!\\
+      Stride: \ \ \ \ \ \ \ \verb!<parameter>\[Block Rows|Block Columns\]\[[Array Rows|]Array Columns\]!\\
+        \hspace{2cm}Array Rows is optional and is totally ignored\\
+      
+      Stride (Legacy): \ \ \ \ \ \ \ \verb!<parameter>\[stride\]\[ els | elsz \]!\\
         \hspace{2cm}where stride is the step (original row length)\\
         \hspace{2cm}els is the block's number of rows\\
         \hspace{2cm}elsz is the block's row length\\
