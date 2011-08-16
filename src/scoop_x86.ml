@@ -41,6 +41,9 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
+(* a unique id for the tpc_function_* *)
+let un_id = ref 0
+
 let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
  (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
@@ -266,10 +269,11 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
 let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
-  print_endline ("Creating tpc_function_" ^ func_vi.vname);
+  incr un_id;
+  print_endline ("Creating tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id));
 (*   let args = List.sort sort_args args in *)
   let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
-  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname) in
+  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id)) in
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
   setFunctionTypeMakeFormals f_new func_vi.vtype;

@@ -558,7 +558,10 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
     try
       (* First check whether the function is defined *)
       let new_fd = GFun(find_function_fundec_g (ppc_file.globals) func, locUnknown) in
-      spu_file.globals <- spu_file.globals@[new_fd];
+      try
+        (* Now check if this function is already defined in the spu file *)
+        ignore(find_function_fundec_g (spu_file.globals) func)
+      with Not_found -> spu_file.globals <- spu_file.globals@[new_fd];
       (* if not check whether we have a signature *)
     with Not_found -> ignore(find_function_sign (ppc_file) func);
 )

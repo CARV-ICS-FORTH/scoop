@@ -143,16 +143,34 @@ let spu_tasks = ref []
 (** processes recursively the arguments' info found in input() output() and
     inout() directives *)
 let rec scoop_process_args typ args loc =
-	ignore(E.log "****************\n");
+  let attrParamToExp' = attrParamToExp !ppc_file loc in
   match args with
-    (* handle strided... *)
+    (* handle strided (legacy) ... *)
     (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
-      let attrParamToExp' = attrParamToExp !ppc_file loc in
       let tmp_size = attrParamToExp' varsize in
       let tmp_els = attrParamToExp' var_els in
       let tmp_elsz = attrParamToExp' var_elsz in
       (varname, ((translate_arg typ true loc),
           tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
+    (* Brand new stride syntax... *)
+   | (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_c, bs_r)), orig)::rest) ->
+      (* Brand new stride syntax with optional 2nd dimension of the original array... *)
+      let orig_r = 
+        match orig with
+          ABinOp( BOr, _, orig_r) -> orig_r
+          | _ -> orig
+      in
+      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
+      let size = SizeOf( getBType vi.vtype vi.vname ) in
+      let tmp_bs_c = attrParamToExp' bs_c in
+      let tmp_bs_r = attrParamToExp' bs_r in
+      (* block's row size = bs_r * sizeof(type) *)
+      let tmp_bs_r = BinOp(Mult, tmp_bs_r, size, intType) in
+      let tmp_orig_r = attrParamToExp' orig_r in
+      (* original array row size = orig_r * sizeof(type) *)
+      let tmp_orig_r = BinOp(Mult, tmp_orig_r, size, intType) in
+      (varname, ((translate_arg typ true loc),
+          tmp_orig_r, tmp_bs_c, tmp_bs_r))::(scoop_process_args typ rest loc)
    | (AIndex(ACons(varname, []), varsize)::rest) ->
       let tmp_size = attrParamToExp !ppc_file loc varsize in
       (varname, ((translate_arg typ false loc),
@@ -160,11 +178,7 @@ let rec scoop_process_args typ args loc =
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
    | (ACons(varname, [])::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_size = (
-      	match vi.vtype with
-      		TArray(t, Some(e), _) -> SizeOf(vi.vtype)
-      	|	_ -> SizeOf( getBType vi.vtype vi.vname )
-      ) in
+      let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
       (varname, ((translate_arg typ false loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     | [] -> []
@@ -315,9 +329,13 @@ class findSPUDeclVisitor cgraph = object
                         ChangeTo(call)
                       in
                       try
-                        (* check if we have seen this function before *)
-                        let (new_fd, _, _) = List.assoc funname !spu_tasks in
-                        rest_f new_fd
+                        (* fast workaround *)
+                        if (!arch = "cell" ) then
+                          (* check if we have seen this function before *)
+                          let (new_fd, _, _) = List.assoc funname !spu_tasks in
+                          rest_f new_fd
+                        else
+                          raise Not_found
                       with Not_found -> (
                         let rest_f2 var_i = 
                           (* select the function to create the custom tpc_calls *)
