@@ -6219,6 +6219,59 @@ let rec isCompleteType t =
 
 module A = Alpha
   
+(** ZAKKAK A visitor that renames the pragma vars in stmts *)      
+class renameVisitorClass name newname = object
+  inherit nopCilVisitor 
+  val on = name
+  val nn = newname
+
+  method vstmt (s: stmt) =
+      if ( s.pragmas <> [] ) then (
+        let rec attrParamProcess loc (at: attrparam): attrparam = 
+          let dotype (t: typ) = 
+            match t with 
+              TComp (ci, a) when ci.cname = on -> TComp ( {ci with cname = nn}, a)
+            | TEnum (ei, a) when ei.ename = on -> TEnum ( {ei with ename = nn}, a)
+            | TNamed (ti, a) when ti.tname = on -> TNamed ( {ti with tname = nn} , a)
+            | _ -> t
+          in
+          let attrParamProcess' = attrParamProcess loc in
+          match at with 
+            AInt _ | AStr _ -> at
+          | ACons (s, al) -> ACons( (if (s=on) then nn else s), List.map attrParamProcess' al)
+          | ASizeOf t -> ASizeOf( dotype t )
+          | ASizeOfS _ -> at
+          | ASizeOfE e -> ASizeOfE( attrParamProcess' e )
+          | AAlignOf t -> AAlignOf( dotype t )
+          | AAlignOfS _ -> at
+          | AAlignOfE e -> AAlignOfE( attrParamProcess' e )
+          | AUnOp (uo, a) -> AUnOp(uo, attrParamProcess' a)
+          | ABinOp (bo, a1, a2) -> ABinOp(bo, attrParamProcess' a1, attrParamProcess' a2)
+          | AAddrOf a -> AAddrOf ( attrParamProcess' a )
+          | ADot (a, s) -> ADot (attrParamProcess' a, s)
+          | AIndex (a1, a2) -> AIndex ( attrParamProcess' a1, attrParamProcess' a2)
+          | AStar a -> AStar (attrParamProcess' a)
+          | AQuestion _ -> E.s (errorLoc loc "c?e1:e2 not allowed in #pragma css...")
+        in
+        let processPragma = function
+            (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc) -> (* TODO wait on *) (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc)
+          | (Attr("css", ACons("start", exps)::rest), loc) ->
+              (Attr("css", ACons("start", List.map (attrParamProcess loc) exps)::rest), loc)
+          | (Attr("css", AStr("task")::rest), loc) -> (
+            let rec process = function
+                  AStr("highpriority")::rest -> AStr("highpriority")::(process rest)
+                | ACons(arg_typ, args)::rest -> ACons(arg_typ, List.map (attrParamProcess loc) args)::(process rest)
+                | [] -> []
+                | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); []
+            in
+            (Attr("css", AStr("task")::(process rest) ), loc)
+          )                                                                
+          | p -> p;
+        in
+        ChangeTo({s with pragmas = List.map processPragma s.pragmas})
+      ) else
+        DoChildren
+end
 
 (** Uniquefy the variable names *)
 let uniqueVarNames (f: file) : unit = 
@@ -6269,6 +6322,11 @@ let uniqueVarNames (f: file) : unit =
             if false && newname <> v.vname then (* Disable this warning *)
               ignore (warn "uniqueVarNames: Changing the name of local %s in %s to %s (due to duplicate at %a)"
                         v.vname fdec.svar.vname newname d_loc oldloc);
+            if (newname <> v.vname) then (
+              (* ZAKKAK here apply the renaming to the #pragmas as well *)
+              let renameVisitor = new renameVisitorClass v.vname newname in
+              ignore(visitCilFunction renameVisitor fdec)
+            );
             v.vname <- newname
           in
           (* Do the formals first *)
