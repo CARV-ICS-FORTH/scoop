@@ -3103,6 +3103,13 @@ and type_pragma ((env, phi, eff), (kind, loop_d)) pragma =
       ((env, phi, eff), (kind, loop_d))
     )
   ) 
+  | (Attr("css", AStr("barrier")::_), loc) -> (
+    if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+    let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+    CF.phi_flows phi barrier_phi;
+    CF.starting_phis := barrier_phi::!CF.starting_phis;
+    ((env, barrier_phi, eff), (kind, loop_d))
+  ) 
   |  (Attr("css", AStr("task")::args), loc) -> (
     match kind with
         Instr(il) -> (

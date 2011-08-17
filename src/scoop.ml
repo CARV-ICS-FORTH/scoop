@@ -255,115 +255,110 @@ class findSPUDeclVisitor cgraph = object
         )
         | _ -> ();
       match s.skind with 
-        Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::_) -> (
+        Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
           match (List.hd prags) with 
             (* Support for CellSs syntax *)
             | (Attr("css", sub::rest), loc) -> (
               match sub with
                 (* Support #pragma css task... *)
                 AStr("task")-> (
-                  match s.skind with 
-                    Instr(Call(_, Lval((Var(vi), _)), oargs, _)::restInst) -> (
-                      let funname = vi.vname in
-                      let args = scoop_process rest loc in
-                      if (!debug) then
-                        ignore(E.log "Found task \"%s\"" funname);
-                      let rest_f new_fd = 
-                        let expS2P = expScalarToPointer loc in
-                        (* add arguments to the call *)
-                        let call_args = if (!arch <> "x86") then
-                            ref (L.rev (L.map expS2P oargs))
-                          else
-                            ref (L.rev oargs)
-                        in
+                  let funname = vi.vname in
+                  let args = scoop_process rest loc in
+                  if (!debug) then
+                    ignore(E.log "Found task \"%s\"" funname);
+                  let rest_f new_fd = 
+                    let expS2P = expScalarToPointer loc in
+                    (* add arguments to the call *)
+                    let call_args = if (!arch <> "x86") then
+                        ref (L.rev (L.map expS2P oargs))
+                      else
+                        ref (L.rev oargs)
+                    in
 (*                         let args_num = (List.length args)-1 in *)
-                        
-                        (* push call args from the start...
-                        for i = 0 to args_num do
-                          let (vname, _, _, _, _) = List.nth args i in
-                          call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
-                        done;*)
+                    
+                    (* push call args from the start...
+                    for i = 0 to args_num do
+                      let (vname, _, _, _, _) = List.nth args i in
+                      call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
+                    done;*)
 
-                        (* for each actual argument of the call find it's (pragma)
-                           declared size and push it to the argument list of them
-                           new call *)
-                        let rec getSizeNstride ex = match ex with
-                          Lval ((Var(vi),_))
-                          | StartOf ((Var(vi),_)) -> (
-                            try
-                              let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
-                              call_args := vsize::!call_args;
-                              if (is_strided arg_type) then (
-                                call_args := velsz::!call_args;
-                                call_args := vels::!call_args;
-                              );
-                            with Not_found ->
-                              E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
-                          )
-                          | CastE (_, ex') -> getSizeNstride ex';
-                          (* The following are not supported yet *)
-                          | Const _ -> raise (Invalid_argument "Const");
-                          | SizeOf _ -> raise (Invalid_argument "Sizeof");
-                          | SizeOfE _ -> raise (Invalid_argument "SizeofE");
-                          | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
-                          | AlignOf _ -> raise (Invalid_argument "Alignof");
-                          | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
-                          | UnOp _ -> raise (Invalid_argument "UnOp");
-                          | BinOp _ -> raise (Invalid_argument "BinOp");
-                          | AddrOf _ -> raise (Invalid_argument "AddrOf");
-                          | _ -> raise (Invalid_argument "Uknown");
-                        in
-                        L.iter getSizeNstride oargs;
+                    (* for each actual argument of the call find it's (pragma)
+                        declared size and push it to the argument list of them
+                        new call *)
+                    let rec getSizeNstride ex = match ex with
+                      Lval ((Var(vi),_))
+                      | StartOf ((Var(vi),_)) -> (
+                        try
+                          let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
+                          call_args := vsize::!call_args;
+                          if (is_strided arg_type) then (
+                            call_args := velsz::!call_args;
+                            call_args := vels::!call_args;
+                          );
+                        with Not_found ->
+                          E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
+                      )
+                      | CastE (_, ex') -> getSizeNstride ex';
+                      (* The following are not supported yet *)
+                      | Const _ -> raise (Invalid_argument "Const");
+                      | SizeOf _ -> raise (Invalid_argument "Sizeof");
+                      | SizeOfE _ -> raise (Invalid_argument "SizeofE");
+                      | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+                      | AlignOf _ -> raise (Invalid_argument "Alignof");
+                      | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
+                      | UnOp _ -> raise (Invalid_argument "UnOp");
+                      | BinOp _ -> raise (Invalid_argument "BinOp");
+                      | AddrOf _ -> raise (Invalid_argument "AddrOf");
+                      | _ -> raise (Invalid_argument "Uknown");
+                    in
+                    L.iter getSizeNstride oargs;
 
 (*                        for i = 0 to args_num do
-                          let (_, arg_type, vsize, velsz, vels) = List.nth args i in
+                      let (_, arg_type, vsize, velsz, vels) = List.nth args i in
 (*                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
-                          call_args := vsize::!call_args;
-                          if (is_strided arg_type) then
-                            (*call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
-                              Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
-                            call_args := vels::velsz::!call_args;
-                        done;*)
-                        let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
-                        let call = mkStmt (Instr(instr::restInst)) in
-                        ChangeTo(call)
-                      in
-                      try
-                        (* fast workaround *)
-                        if (!arch = "cell" ) then
-                          (* check if we have seen this function before *)
-                          let (new_fd, _, _) = List.assoc funname !spu_tasks in
-                          rest_f new_fd
-                        else
-                          raise Not_found
-                      with Not_found -> (
-                        let rest_f2 var_i = 
-                          (* select the function to create the custom tpc_calls *)
-                          let make_tpc_funcf = match !arch with
-                              "cell" -> Scoop_cell.make_tpc_func
-                            | "cellgod" -> Scoop_cellgod.make_tpc_func
-                            | _ ->  Scoop_x86.make_tpc_func in
-                          let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
-                          add_after_s !ppc_file var_i.vname new_fd;
-                          spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
-                          rest_f new_fd in
-                        (* try to find the function definition *)
-                        try
-                          (* checking for the function definition *)
-                          let task = find_function_fundec_g (!ppc_file.globals) funname in
-                          if (!arch <> "x86") then
-                            (* copy itself and the callees *)
-                            deep_copy_function funname callgraph !spu_file !ppc_file;
-                          rest_f2 task.svar
-                        (* else try to find the function signature/prototype *)
-                        with Not_found -> (
-                          let task = find_function_sign (!ppc_file) funname in
-                          rest_f2 task
-                        )
-                      )
+                      call_args := vsize::!call_args;
+                      if (is_strided arg_type) then
+                        (*call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
+                          Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
+                        call_args := vels::velsz::!call_args;
+                    done;*)
+                    let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
+                    let call = mkStmt (Instr(instr::restInst)) in
+                    ChangeTo(call)
+                  in
+                  try
+                    (* fast workaround *)
+                    if (!arch = "cell" ) then
+                      (* check if we have seen this function before *)
+                      let (new_fd, _, _) = List.assoc funname !spu_tasks in
+                      rest_f new_fd
+                    else
+                      raise Not_found
+                  with Not_found -> (
+                    let rest_f2 var_i = 
+                      (* select the function to create the custom tpc_calls *)
+                      let make_tpc_funcf = match !arch with
+                          "cell" -> Scoop_cell.make_tpc_func
+                        | "cellgod" -> Scoop_cellgod.make_tpc_func
+                        | _ ->  Scoop_x86.make_tpc_func in
+                      let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
+                      add_after_s !ppc_file var_i.vname new_fd;
+                      spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
+                      rest_f new_fd in
+                    (* try to find the function definition *)
+                    try
+                      (* checking for the function definition *)
+                      let task = find_function_fundec_g (!ppc_file.globals) funname in
+                      if (!arch <> "x86") then
+                        (* copy itself and the callees *)
+                        deep_copy_function funname callgraph !spu_file !ppc_file;
+                      rest_f2 task.svar
+                    (* else try to find the function signature/prototype *)
+                    with Not_found -> (
+                      let task = find_function_sign (!ppc_file) funname in
+                      rest_f2 task
                     )
-                    | Block(b) -> ignore(warnLoc loc "Ignoring block pragma"); DoChildren
-                    | _ -> ignore(warnLoc loc "Ignoring block pragma"); DoChildren
+                  )
                 )
                 | _ -> ignore(warnLoc loc "Unrecognized pragma"); DoChildren
             )

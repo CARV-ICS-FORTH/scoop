@@ -1079,6 +1079,88 @@ class renameVisitorClass = object (self)
   method vinitoffs o =
     (self#voffs o)      (* treat initializer offsets same as lvalue offsets *)
 
+  (* ZAKKAK also rename the pragma vars in stmts *)
+(*  method vstmt (s: stmt) =
+      if ( s.pragmas <> [] ) then (
+        let rec attrParamProcess loc (at: attrparam): attrparam = 
+          let dotype (t: typ) = 
+            match t with 
+              TComp (ci, a) when not ci.creferenced -> begin
+                match findReplacement true sEq !currentFidx ci.cname with
+                  None -> t
+                | Some (ci', oldfidx) -> 
+                    if debugMerge then 
+                      ignore (E.log "Renaming use of %s(%d) to %s(%d)\n"
+                                ci.cname !currentFidx ci'.cname oldfidx);
+                    TComp (ci', visitCilAttributes (self :> cilVisitor) a)
+              end
+            | TEnum (ei, a) when not ei.ereferenced -> begin
+                match findReplacement true eEq !currentFidx ei.ename with
+                  None -> t
+                | Some (ei', _) -> 
+                    if ei' == intEnumInfo then 
+                      (* This is actually our friend intEnumInfo *)
+                      TInt(IInt, visitCilAttributes (self :> cilVisitor) a)
+                    else
+                      TEnum (ei', visitCilAttributes (self :> cilVisitor) a)
+              end
+
+            | TNamed (ti, a) when not ti.treferenced -> begin
+                match findReplacement true tEq !currentFidx ti.tname with
+                  None -> t
+                | Some (ti', _) -> 
+                    TNamed (ti', visitCilAttributes (self :> cilVisitor) a)
+            end
+            | _ -> t
+          in
+          let attrParamProcess' = attrParamProcess loc in
+          match at with 
+            AInt _ -> at
+          | AStr name -> (
+            match findReplacement true vEq !currentFidx name with
+                None -> at
+              | Some (vi', oldfidx) -> 
+                if debugMerge then 
+                    ignore (E.log "Renaming var %s(%d) to %s(%d) in #pragma css...\n"
+                              name !currentFidx vi'.vname oldfidx);
+                vi'.vreferenced <- true; 
+                H.add varUsedAlready vi'.vname ();
+                AStr(vi'.vname)
+            )
+          | ACons (s, al) -> ACons(s, List.map attrParamProcess' al)
+          | ASizeOf t -> ASizeOf( dotype t )
+          | ASizeOfS _ -> at
+          | ASizeOfE e -> ASizeOfE( attrParamProcess' e )
+          | AAlignOf t -> AAlignOf( dotype t )
+          | AAlignOfS _ -> at
+          | AAlignOfE e -> AAlignOfE( attrParamProcess' e )
+          | AUnOp (uo, a) -> AUnOp(uo, attrParamProcess' a)
+          | ABinOp (bo, a1, a2) -> ABinOp(bo, attrParamProcess' a1, attrParamProcess' a2)
+          | AAddrOf a -> AAddrOf ( attrParamProcess' a )
+          | ADot (a, s) -> ADot (attrParamProcess' a, s)
+          | AIndex (a1, a2) -> AIndex ( attrParamProcess' a1, attrParamProcess' a2)
+          | AStar a -> AStar (attrParamProcess' a)
+          | AQuestion _ -> E.s (errorLoc loc "c?e1:e2 not allowed in #pragma css...")
+        in
+        let processPragma = function
+            (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc) -> (* TODO wait on *) (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc)
+          | (Attr("css", ACons("start", exps)::rest), loc) ->
+            (Attr("css", ACons("start", List.map (attrParamProcess loc) exps)::rest), loc)
+          | (Attr("css", AStr("task")::rest), loc) -> (
+            let rec process = function
+                  AStr("highpriority")::rest -> AStr("highpriority")::(process rest)
+                | ACons(arg_typ, args)::rest -> ACons(arg_typ, List.map (attrParamProcess loc) args)::(process rest)
+                | [] -> []
+                | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); []
+            in
+            (Attr("css", AStr("task")::(process rest) ), loc)
+          )                                                                
+          | p -> p;
+        in
+        ChangeTo({s with pragmas = List.map processPragma s.pragmas})
+      ) else
+        DoChildren*)
+
 end
 
 let renameVisitor = new renameVisitorClass
