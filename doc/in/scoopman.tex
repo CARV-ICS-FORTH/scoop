@@ -12,7 +12,7 @@
 
 \begin{document}
 \title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
-\date{last update: 08/08/11}
+\date{last update: 23/08/11}
 \maketitle
 
 \section{License}
@@ -143,10 +143,10 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
   \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}} you
       probably have wrong argument at a call tagged with \verb!#pragma css task!
   \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
-  \item Putting \verb!#pragma css start...! directly above a declaration of a variable
+  \item Putting \verb!#pragma css start...! directly above a declaration of a variable (pragmas are only supported above statements)
   \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task} 
   usually means that the tool is renaming a variable due to previous declaration
-  try renaming it manually (e.g. segment2)
+  try renaming it manually (e.g. segment2) (This should be fixed by now)
 \end{itemize}
 
 \end{document}
