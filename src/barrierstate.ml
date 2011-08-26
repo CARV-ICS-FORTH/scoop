@@ -18,26 +18,19 @@ module Task =
   struct
     type t = task_descr
     
-		let compare (x: t) (y: t) : int =
-			let (x_id, _, _) = x in
-			let (y_id, _, _) = y in
-			if(x_id > y_id) then 1
-			else if(x_id == y_id) then 0
+		let compare (x: task_descr) (y: task_descr) : int =
+			if(x.tid > y.tid) then 1
+			else if(x.tid == y.tid) then 0
 			else -1
  
-    let equal (x: t) (y: t) : bool = 
-      let (x_id, _, _) = x in
-			let (y_id, _, _) = y in
-			if(x_id == y_id) then true
+    let equal (x: task_descr) (y: task_descr) : bool = 
+			if(x.tid == y.tid) then true
 			else false
 
-    let hash (x: t) : int = 
-			let (id, _, _) = x in
-			id
+    let hash (x: task_descr) : int = x.tid
 
-		let task_to_string (x: t) : string =
-			let (id, taskname, _) = x in
-			"task:"^(string_of_int id)^":"^taskname;
+		let task_to_string (x: task_descr) : string =
+			"task:"^(string_of_int x.tid)^":"^x.taskname;
 
   end 
 
@@ -46,28 +39,6 @@ module TaskSet = Set.Make(Task)
 type taskSet = TaskSet.t
 
 let empty_state = TaskSet.empty
-
-(* let currState : taskSet ref = ref TaskSet.empty *)
-(* Here we store all avaible task states. FIXME: Make that a set? how? *)
-let taskStates : taskSet list ref = ref []
-
-(* Check if two tasks may happen in parallel *)
-let happen_parallel (n1: dep_node) (n2: dep_node) : bool = 
-	(* search for a set that contains both tasks *)
-	if(!disable) then true
-	else
-	let ((argname1, _, _), task1) = n1 in
-	let ((argname2, _, _), task2) = n2 in
-	if((Task.equal task1 task2) && (argname1 == argname2)) then true
-	else ( 
-		let rec contains_tasks = (function
-			[] -> false
-		| (state::rest) -> (
-			let state_l = (TaskSet.elements state) in 
-				if((List.mem task1 state_l) && (List.mem task2 state_l)) then true
-				else (contains_tasks rest)
-		)) in contains_tasks !taskStates 
-	)
 
 (* TaskSet formatting *)
 let d_taskset () (t: taskSet) : doc = 
@@ -87,19 +58,7 @@ let print_state (t: taskSet) : unit =
 			ignore(E.log "%s\n" (Task.task_to_string task));
 		) tasks
 
-let print_taskStates a = begin
-	a;
-	ignore(E.log "task_states_size=%d\n" (List.length !taskStates));
-	List.iter (fun task_s -> 
-		let tasks = TaskSet.elements task_s in
-		ignore(E.log "print task set (elmts num=%d):\n" (List.length tasks));
-		List.iter (fun task -> 
-			let (id, taskname, _) = task in
-			ignore(E.log "\ttask:%d:%s\n" id taskname);
-		) tasks;
-	) !taskStates;
-end
-
+		
 (* 
  * This analysis seeks barriers, while collecting tasks.  The set of tasks is the
  * state of the analysis.  TODO:loop detection for a task
@@ -151,6 +110,48 @@ module BarrierStateTransfer =
 
 module BS = MakeForwardsAnalysis(BarrierStateTransfer)
 
+(** if task is included in the taskset of it's phi then task is in a loop
+			@param task the task which we want to know if it's in a loop
+			@return true if task is in loop
+*)
+let isInLoop (task: task_descr) : bool =
+	let match_task task p = (
+		let k = get_phi_kind p in
+		match k with 
+			PhiTask t when (task.tid == t.tid) -> true
+		| _ -> false
+	) in 
+	let task_phi = List.find (match_task task) !starting_phis in
+	let tasks = PhiHT.find BarrierStateTransfer.state_before_phi task_phi in
+	TaskSet.mem task tasks
+
+(** return a set of tasks that can happen parallely with the task 
+			in question
+			@param task the task whose taskSet we seek
+			@return of a set of tasks that can happen in parallel
+			@exception Not_found if task is not included in any set 
+				(this is an error, it should not happen)
+*)	
+let getTaskSet (task: task_descr) : taskSet =
+	(* traverse states before barriers until we find the one that our task is in *)
+	let rec find_set = (function
+			[] -> raise Not_found
+		| (curphi::rest) -> (
+			let k = get_phi_kind curphi in
+			(match k with 
+				PhiBarrier -> (
+					let tasks = PhiHT.find BarrierStateTransfer.state_before_phi curphi in
+					if (TaskSet.mem task tasks) then tasks 
+					else find_set rest  
+				)
+			| _ -> find_set rest
+			)
+		)
+	) in find_set !starting_phis
+	
+(** make the forward analysis of barriers 
+			@return unit
+*)
 let solve () =
 	if !debug then begin
 		ignore(E.log "SDAM:solve barrier analysis\n");
@@ -162,13 +163,5 @@ let solve () =
     (fun p -> PhiHT.replace BarrierStateTransfer.state_before_phi p empty_state)
     !starting_phis;	
 		BS.solve !starting_phis;
-		(* we only need states before each barrier *)
-		let barrier_phis = List.filter 
-			(fun p -> let k = get_phi_kind p in 
-								match k with
-									PhiBarrier -> true
-								| _ -> false)	!starting_phis in
-		taskStates := List.map (fun p -> (PhiHT.find BarrierStateTransfer.state_before_phi p)) barrier_phis;
-		print_taskStates ();
 	)
 

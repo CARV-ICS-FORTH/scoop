@@ -12,6 +12,7 @@ LOCKSMITH_MODULES = \
 	uniqueness \
 	labelname \
 	labelflow \
+	sdam \
 	controlflow \
 	lockprofile \
 	lockstate \
@@ -21,19 +22,13 @@ LOCKSMITH_MODULES = \
 	locktype \
 	lockalloc \
 	scoop_util \
-	sdam \
 	barrierstate \
-	loopa \
 	ptatype \
 	ptdepa \
 	scoop_cell \
 	scoop_cellgod \
 	scoop_x86 \
-	scoop_make_exec \
-#	scoop_rmtmps \
-#	lockpick \
-#	locksmith \
-#	stmizer
+	scoop_make_exec
 
 LOCKSMITH_CMODULES = bansheeifc
 CP4S        += locksettings.p4

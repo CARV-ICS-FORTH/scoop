@@ -1,81 +1,185 @@
 open Cil
 open Printf
+open Pretty
+
+module LF = Labelflow
 module E = Errormsg
-          (* (id * taskname * (callsiteloc * taskscope)) *) 
-type task_descr = (int * string * (location * fundec))
-					(* in/out type * arg varinfo * arg size*)
-and arg_info = (string * varinfo * exp) (* FIXME: add size info *)
-            (* argname * in/out type * task it belongs to *)
-and arg_type = (string * arg_info * task_descr) (* FIXME:fundec is the global one, not the function it belogs to *)
-          (* (task scope * taskname) * argument list *)
-and task_type = (task_descr * arg_type list) 
-                      (* parent task_descr  *)
-and dep_node = arg_type * task_descr
 
-and arg_dep_node = (arg_type * dep_node list)
+(** the type that describes a task argument *)
+type arg_descr = {
+	aid: int;
+	argname: string;
+	iotype: string; 
+	arginfo: varinfo;
+	argsize: exp;
+	mutable safe: bool;
+}
+(** the type that describes a task *) 
+and task_descr = {
+	tid: int;
+	taskname: string;
+	callsite: location;
+	scope: fundec;
+	read_vars: LF.rhoSet;
+	write_vars: LF.rhoSet;
+	arguments: arg_descr list;
+}
+(** the type that describes a loop *)
+and loop_descr = {
+	lid: int;
+	index_info: varinfo;
+	index_exp: exp;
+}
+(** the type that describes an array or pointer referenced in a loop *)
+and array_descr = {
+	array_info: varinfo;
+	a_index_exp: exp;
+}
 
-and task_dep_node = (task_descr * arg_dep_node list)
-			 (* loop index info * loop index expr *)
-and loop_index = (varinfo * exp) option
-					 (* loop id * loop index  *)
-and loop_descr = (int * loop_index) option
-			(* same as arg type but without in/out flag, it is used when we work on actuals *)
-and arg_descr = (string * task_descr)
-						(* array name * index *)
-and array_descr = (varinfo * exp)
-														(* array * loop descriptor*)
-and array_loop_descr = (array_descr * loop_descr)
+(** global lists of tasks *)
+let tasks_l : task_descr list ref = ref []
 
-
-(* each node is a task, with a list of tasks that are not depended with each other *)
-let tasks_l : task_type list ref = ref []
-(* temp list, used to collect task arguments *)
-let args_l : arg_type list ref = ref []
-(* each node is a task with its arguments, for each argument there is a list
-  of depended arguments *)
-let task_dep_l : task_dep_node list ref = ref []
-
-let task_cnt = ref 0
-
+(** the current program file *)
 let program_file = ref dummyFile
 
+(** total number of tasks *)
 let total_tasks = ref 0
+(** total number of task arguments *)
 let total_args = ref 0
+(** total number of safe task arguments *)
 let total_safe_args = ref 0
+
+let next_task_id = ref 0
+let next_arg_id = ref 0
+let next_loop_id = ref 0
 
 (** Utility functions **)
 
-(* return a fresh task id *)
-let next_id = 
-	let counter = ref 0 in
-	fun id ->
-		incr counter;
-		!counter
-
-(* return a string representation for a Cil.location *)
+(** returns a string representation for a Cil.location 
+		@param loc the Cil.location
+		@return the string representation
+*)
 let location_to_string (loc: location) : string = 
 	loc.file^":"^(string_of_int loc.line)
 
-let new_task_d (taskname: string) (callsite: location) (scope: fundec) : task_descr =
-	((next_id 0), taskname, (callsite, scope))
+	
+(** Constructors **)
+	
+(**	constructor for task_descr struct
+		@param tname the name of the task
+		@param csite the callsite of the task (line in code)
+		@param scp the function in which the task is called (e.g. main)
+		@param args the list of the task arguments (acutals)
+		@return a new task_descr
+*)	
+let make_task_descr (tname: string) (csite: location) (scp: fundec) 
+										(read_v: LF.rhoSet) (write_v: LF.rhoSet) 
+										(args: arg_descr list) : task_descr =
+	incr next_task_id;
+	{	tid = !next_task_id;
+		taskname = tname;
+		callsite = csite;
+		scope = scp;
+		read_vars = read_v;
+		write_vars = write_v;
+		arguments = args;
+	}
 
-let new_loop_d (lpi: loop_index) : loop_descr = 
-	Some((next_id 0), lpi)
+(**	constructor of the arg_descr struct
+		@param a_name the name of the argument
+		@param iot the input/output type of the argument
+		@param a_inf the varinfo of the argument variable
+		@param a_size the size of the argument used in the task
+		@return a new arg_descr
+*)
+let make_arg_descr (a_name: string) (iot: string) (a_inf: varinfo) (a_size: exp) : arg_descr =
+	incr next_arg_id;
+	{ aid = !next_arg_id;
+		argname = a_name;
+		iotype = iot;
+		arginfo = a_inf;
+		argsize = a_size;
+		safe = false;
+	}
 
+(** constructor of the loop_descr struct
+		@param i_inf the varinfo of the index variable
+		@param i_exp the expression of the index step in the loop
+		@return a new loop descriptor
+*)
+let make_loop_descr (i_inf: varinfo) (i_exp: exp) : loop_descr =
+	incr next_loop_id;
+	{ lid = !next_loop_id;
+		index_info = i_inf;
+		index_exp = i_exp;
+	}
+
+(** constructor of the array_descr struct
+		@param a_inf the varinfo of the array variable
+		@param i_exp the expression of the array index
+		@return a new array_descr
+*)
+let make_array_descr (a_inf: varinfo) (i_exp: exp) : array_descr = 
+	{ array_info = a_inf;
+		a_index_exp = i_exp;
+	}
+	
+	
 (** SDAM API **)
 
-(*
- * first collect all task arguments, then 
- * call addTask to add a new task with 
- * its arguments
- *)
-let addTask task_d : task_descr =
-	total_tasks := !total_tasks+1;
-  tasks_l := (task_d, !args_l)::!tasks_l;
-  args_l := [];
-	task_d
+(** appends a task to the global list of tasks
+		@param task descriptor of the task that is to be 
+		added to the list
+		@return unit
+*)
+let addTask (task_d: task_descr) : unit = begin
+	incr total_tasks;
+  tasks_l := task_d::!tasks_l;
+end
 
-let addArg (arg: arg_type) : unit =
-	total_args := !total_args+1;
-  args_l := arg::!args_l
+(** Checks if the argument with argname is safe
+		@param argname the name of the argument under question
+		@return true if argument is safe, else false
+*)
+let isSafeArg (argname: string) : bool =
+	let rec check_task = (function
+			[] -> raise Not_found
+		| (task::rest) -> (
+					try (List.find (fun arg -> if(argname == arg.argname) then true else false) task.arguments) 
+					with Not_found -> check_task rest
+				)
+	) in 
+	try (let arg = check_task !tasks_l in arg.safe) 
+	with Not_found -> false
 
+(** Printing functions **)
+
+(* prints a task argument *)
+let print_arg arg = begin 
+	incr total_args;
+	ignore(E.log "\tArgument:%s(id:%d), iotype:%s, size:%a, " arg.argname arg.aid arg.iotype d_exp arg.argsize);
+	if(arg.safe) then (ignore(E.log "safe\n"); incr total_safe_args;)
+	else (ignore(E.log "not safe\n");) 
+end
+
+(** Prints list of tasks
+		@param a unit
+		@return unit
+*)
+let print_tasks (tasks: task_descr list) : unit = 
+	let rec print_tasks' = (function
+			[] -> ();
+		| (task::rest) -> (
+				ignore(E.log "Task:%s\n" task.taskname);
+				ignore(E.log "\tArgs:\n");
+				List.iter print_arg task.arguments; 
+				ignore(E.log "\tRead/Write vars:\n");
+				ignore(E.log "\tread-vars:%a\n" LF.d_rhoset task.read_vars);
+				ignore(E.log "\twrite-vars:%a\n" LF.d_rhoset task.write_vars);
+				print_tasks' rest
+			);
+		) in print_tasks' tasks
+		
+(* Pretty print task *)
+let d_task () (task: task_descr) : doc =
+	text(task.taskname^":"^(string_of_int task.tid))

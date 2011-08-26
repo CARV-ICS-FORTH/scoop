@@ -1,9 +1,10 @@
 open Cil
+open Sdam
 
 val options : (string * Arg.spec * string) list
 
-(* Static analysis for task dependencies *)
-val find_dependencies : file -> unit
+(*	find dependencies between task arguments *)
+val solve_task_dependencies : task_descr list -> unit
 
-(* returns true if the argument has no dependencies  *)
-val isSafeArg : (*fundec ->*) string -> bool
+(* Entrance function to call the static analysis for task dependencies *)
+val find_dependencies : file -> unit	

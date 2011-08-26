@@ -1,21 +1,15 @@
-open Pretty
 open Cil
-open Printf
 open Sdam
 
-module LT = Locktype
-module PT = Ptatype
-module LF = Labelflow
 module E = Errormsg
-module CF = Controlflow
+module LT = Locktype
+module LF = Labelflow
 module BS = Barrierstate
-module LP = Loopa
+module PT = Ptatype
 
 let do_graph_out = ref false
 
 let do_task_graph_out = ref false
-
-let do_verbose_output = ref true
 
 let debug = ref false
 
@@ -28,19 +22,20 @@ let options = [
   Arg.Set(do_task_graph_out),
   "SDAM-Pointer analysis: Write task dependecies in \"task-dep.dot\".";
 
-  "--verbose-output",
-  Arg.Set(do_verbose_output),
-  "SDAM-Pointer analysis: Verbose output.";
-
   "--debug-ptdepa",
   Arg.Set(debug),
   "SDAM-Pointer analysis: debugging output.";
 ]
 
-(* return true if arg_t is strided *)
-(* return true if arg_t is In or SIn *)
-let is_strided_arg (arg: string): bool = 
-  match arg with 
+let taskScope1 = ref dummyFunDec
+let taskScope2 = ref dummyFunDec
+
+(** return true if iotype is strided 
+			@param t the iotype of the argument
+			@return true if argument type is strided
+*)
+let is_strided_arg (t: string): bool = 
+  match t with 
       "sinput"
     | "sin"
     | "soutput"
@@ -48,273 +43,129 @@ let is_strided_arg (arg: string): bool =
     | "sinout" -> true
     | _ -> false
 
-(* return true if arg_t is In or SIn *)
-let is_in_arg (arg: string): bool = 
-  match arg with 
-      "input" (* for css tags  *)
-    | "in" -> true    (* for tpc legacy tags *)
+(** return true if iotype is input, works only 
+			for non-strided args
+			@param t the iotype of the argument
+			@return true if argument is input
+*)
+let is_in_arg (t: string): bool = 
+  match t with 
+      "input" (* legacy, remove *)
+    | "in" -> true
     | _ -> false
 
-(* return rhoSet for the specific arg (argument is argname * function descriptor) *)
-let get_rhoSet (arg: arg_type) : LF.rhoSet =
-  let (argname, _, (_, _, (_, func))) = arg in
-  let env = List.assoc func !PT.global_fun_envs in
-  let (argtype, argaddress) = PT.env_lookup argname env in
+(** return rhoSet for arg
+			@param arg the argument whose aliasing set we seek
+			@return the rhoSet with variables that alias with arg
+*)
+let get_rhoSet (arg: arg_descr) (scope: fundec) : LF.rhoSet =
+  let env = List.assoc scope !PT.global_fun_envs in
+  let (argtype, argaddress) = PT.env_lookup arg.argname env in
   (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
             LF.d_rho argaddress PT.d_tau argtype); *)
   match argtype.PT.t with
   | PT.ITPtr(_, r) -> LF.close_rhoset_pn (LF.RhoSet.singleton r)
-  | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" argname);
+  | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" arg.argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
 
-(* check if arg1 aliases to arg2 *)
-let is_aliased (arg1: arg_type) (arg2: arg_type) : bool =
+				 
+(** checks if arg1 aliases to arg2 
+			@param arg1 the arg description of the first task argument
+			@param arg2 the arg description of the second task argument
+			@return true, if rhoSets intersection is not empty
+*)
+let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
   (* if both arguments are only inputs, return false (they could 
      be aliased, but we treat them as if the were not) *)
-  let (_, (t, _, _), _) = arg1 in
-  let (_, (t', _, _), _) = arg2 in
-  if((is_in_arg t) && (is_in_arg t')) then false
-  else
-    let set1 = get_rhoSet arg1 in
-    let set2 = get_rhoSet arg2 in
-    let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in
-    if !do_verbose_output then begin
-      let (argname1, _, _) = arg1 in
-      let (argname2, _, _) = arg2 in
-      if !debug then (
-        ignore(E.log "comparing %s - %s\n" argname1 argname2);
-        ignore(E.log "%s set           : %a\n" argname1 LF.d_rhoset set1);
-        ignore(E.log "%s set           : %a\n" argname2 LF.d_rhoset set2);
-        ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
-      );
-    end;
+  if((is_in_arg arg1.iotype) && (is_in_arg arg2.iotype)) then false
+  else (
+    let set1 = get_rhoSet arg1 !taskScope1 in
+    let set2 = get_rhoSet arg2 !taskScope2 in
+    (* get concrete rhoSet, meaning get only array and mallocs *)
+		(* FIXME: concrete set always empty???? *)
+		(* let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in *)
+		let final_set = LF.RhoSet.inter set1 set2 in
+		if !debug then (
+			ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+			ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
+			ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
+			ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+		);
     not (LF.RhoSet.is_empty final_set)
+	)
+            
 
-(*
-(* 
- * traverses a list of arguments and check if arg1 aliases 
- * with any of them.
- * returns all depended args to arg1
- *)
-let rec check_args (arg1: arg_type) 
-                  (args: arg_type list) 
-                  (taskinf: string) 
-                  (dep_args: dep_node list) : dep_node list = 
-  match args with 
-    [] -> dep_args
-  | (arg2::tl) -> if(is_aliased arg1 arg2) then 
-                    check_args arg1 tl taskinf ((arg2, taskinf)::dep_args)
-                  else 
-                    check_args arg1 tl taskinf dep_args
-
-*)                  
-(*
- * traverses a list of arguments (args), for each, it calls 
- * check_arg to check for any dependencies with args'.
- * return a list of arguments and for each a list of 
- * dependencies
- *)
-let rec check_arg (taskinf: task_descr) (arg: arg_type) (tasks: task_type list) : dep_node list =
-  let rec check_task dep_args = function
-    [] -> dep_args
-  | (task::tl) ->
-    let (taskinf', args) = task in
-    let rec check_arg' dep_args' = function
-        [] -> dep_args'
-      | (arg'::tl) -> 
-        let (argname1, (t1, var1, e_size1), task_d1) = arg in
-        let (argname2, (_, var2, e_size2), task_d2) = arg' in
-        if( ((is_aliased arg arg') && (BS.happen_parallel (arg, taskinf) (arg', taskinf')))
-          && ((is_strided_arg t1) || (not (LP.array_bounds_safe (argname1, var1, e_size1, task_d1) (argname2, var2, e_size2, task_d2))))
-        ) then 
-          check_arg' ((arg', taskinf')::dep_args') tl
-        else
-          check_arg' dep_args' tl
-    in check_task (dep_args@(check_arg' [] args)) tl
-  in check_task [] tasks
-
-
-(* checks for any dependencies with task *)
-let find_task_dependencies (task: task_type) : unit = begin
-  let (taskinf, args) = task in
-  let rec find_task_dependencies' arg_dep = function 
-    [] -> arg_dep  
-  | (arg::tl) -> find_task_dependencies' ((arg, (check_arg taskinf arg !tasks_l))::arg_dep) tl
-  in    
-  let task_dep = (taskinf, (find_task_dependencies' [] args)) in 
-  task_dep_l := (task_dep::!task_dep_l)
-end
-
-(* prints dependencies list *)
-let print_task_dependencies (task: task_dep_node) : unit = begin
-  let ((id, taskname, (loc, _)), args) = task in
-  ignore(E.log "%d:%s:%s:%d\n" id taskname loc.file loc.line); 
-  List.iter 
-    (fun arg ->
-      let ((argname, _, _), dependencies) = arg in 
-      ignore(E.log "\t%s\n" argname);
-      List.iter 
-        (fun dep -> 
-          let ((argname, _, _), (id, taskname, (loc, _))) = dep in
-            ignore(E.log "\tdep:%s in task:%d:%s:%s:%d\n" argname id taskname loc.file loc.line)
-        ) dependencies
-    ) args
-
-end
-
-(* 
- * Traverses the argument list and checks if the dependence list is empty,
- * in which case it return false, no dependences, or true if the list is not
- * empty.
+(** find dependencies between arguments 	
+			@param task1 the task descriptor whose taks argument we check for dependencies
+			@param task2 the task descriptor of the task whose argument we want to check with arg
+			@param arg the current argumetn under question
+			@return unit
 *)
-let hasDependencies (args: arg_dep_node list) (argname: string) : bool = 
-  let rec hasDependencies' = function
-    [] -> false
-  | (arg_n::tl) -> let ((argname', _, _), deps) = arg_n in
-   ignore(E.log "arg:%s\n" argname);
-    ignore(E.log "arg':%s\n" argname');
-    if(argname' = argname) then 
-    begin
-      match deps with
-        [] -> false
-      | _ -> true
-    end
-    else 
-      hasDependencies' tl
-  in hasDependencies' args
+exception Done
+let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_descr)  : unit =
+	try (
+		BS.TaskSet.iter (fun task2 -> 
+			List.iter (fun arg' -> 
+				taskScope1 := task1.scope;
+				taskScope2 := task2.scope;
+				(* do not check with self  if task is not in a loop *)
+				if (not (BS.isInLoop task1) && arg.aid == arg'.aid) then (
+					arg.safe <- true;
+				)
+				else (
+					arg.safe <- not (alias arg arg');
+					if (not arg.safe) then (
+						raise Done
+					)
+				)
+			) task2.arguments
+		) tasks
+	) with Done -> ()
 
-(* return true if the argument has no dependencies  *)
-(*let isSafeArg (task: fundec) (argname: string) : bool =*)
-(*  let rec search_list = function (* FIXME: Need a way to get scope of argument? *)*)
-(*      [] -> false*)
-(*    | (task_n::tl) -> begin*)
-(*      let ((_, (_, fund)), args) = task_n in*)
-(*				List.iter (fun argument' -> *)
-(*					let ((argname', _, _), _) = argument in*)
-(*					match *)
-(*        not (hasDependencies args argname)*)
-(*    end*)
-(*  in*)
-(*  search_list (!task_dep_l)*)
+	
+(**	find dependencies between task arguments
+			@param tasks the list of tasks in the prorgram
+			@return unit
+*)
+let solve_task_dependencies (tasks_l: task_descr list) : unit =
+	(* traverse the list of tasks, find the taskSet that can happen in parallel with
+			current task, and check between their arguments for dependencies. *)
+	let solve_task_deps task = (
+		if !debug then ignore(E.log "checking Task:%a\n" d_task task);
+		let tasks = BS.getTaskSet task in
+		if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
+		(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
+		if (not (BS.isInLoop task)) then ( 
+			if !debug then ignore(E.log "Not self dependent\n");
+			List.iter (fun a -> a.safe <- true;) task.arguments
+		);
+		(* 2. check for dependencies with other tasks *)
+		List.iter (solve_arg_dependencies (task, tasks)) task.arguments
+	) in List.iter solve_task_deps tasks_l
 
-
-let isSafeArg (*(task: fundec)*) (argname: string) : bool =
-	(*  if task_deos empty, then teh analysis has not run, return false *)
-	match !task_dep_l with
-		[] -> false
-	| _ ->(
-		let rec find_task_deps task_deps = begin
-				match task_deps with
-					[] -> [];
-				| (task_n::rest) -> begin 
-					let (_, arg_dep_l) = task_n in
-					let rec find_argument_deps arg_dep_l = begin
-						match arg_dep_l with
-							[] -> []
-					| (arg_dep_n::rest) -> begin
-							let ((argname', _, _), arg_deps) = arg_dep_n in
-							if(argname = argname') then
-								arg_deps
-							else
-								find_argument_deps rest
-						end
-					end in
-					let arg_deps = (find_argument_deps arg_dep_l) in
-					match arg_deps with
-						[] -> find_task_deps rest
-					| _ -> arg_deps 	
-				end
-		end in
-		let arg_deps = (find_task_deps !task_dep_l) in
-		match arg_deps with
-			[] -> true
-		| _ -> false)
-
-
-let count_safe_args (tasks: task_dep_node list) : unit = begin
-  List.iter (fun task ->
-		let (_, args) = task in
-		List.iter 
-		  (fun arg ->
-		  	let (_, deps) = arg in
-				if((List.length deps) == 0) then total_safe_args := !total_safe_args+1;
-		  ) args
-  ) tasks
-end
-
-let taskId (taskinf: task_descr) : string = 
-  let (id, taskname, (loc, _)) = taskinf in
- 	taskname^"_"^(string_of_int id)
-
-(* writes dependencies in graphiz format *)
-let plot_task_dep_graph (outf: out_channel) : unit = begin 
-  let rec plot_task edges = function
-    [] -> edges
-  | (task::tl) -> 
-      let(taskinf, args) = task in
-      let tasknode = (taskId taskinf) in
-      Printf.fprintf outf "\tsubgraph cluster_%s {\n" tasknode;
-      Printf.fprintf outf "\t\tlabel = \"%s\"\n" tasknode;
-      Printf.fprintf outf "\t\tcolor=blue;\n";
-      let rec plot_args edges = function
-        [] -> Printf.fprintf outf "\t}\n";
-              edges
-      | (arg::tl) ->  
-        let ((argname, _, _), dependencies) = arg in
-	Printf.fprintf outf "\t\t%s_%s [label = \"%s\"];\n" tasknode argname argname;
-	let rec plot_dependencies edges' = function
-          [] -> edges'
-        | (dep::tl) -> 
-          let ((argname', _, _), taskinf') = dep in
-          let tasknode' = (taskId taskinf') in
-          let edge = ("\t\t"^tasknode^"_"^argname^" -> "^tasknode'^"_"^argname'^"\n") in
-          plot_dependencies  (edges'^edge) tl	    
-        in 
-        plot_args (edges^(plot_dependencies "" dependencies)) tl
-      in	
-      plot_task (edges^(plot_args "" args)) tl
-  in
-  Printf.fprintf outf "%s" (plot_task "" !task_dep_l)
-end
-
-(* prints argument  *)
-let print_arg (arg: arg_type) : unit = begin
-  let (argname, (typ, _, _), _) = arg in
-  ignore(E.log "\targ:%s, type:%s\n" argname typ);
-end
-
-(* print taks and argument list  *)
-let print_task (task: task_type) : unit = begin
-   let ((_, taskname, _), args) = task in
-   ignore(E.log "task:%s\n" taskname);
-   List.iter print_arg args;
-end
-
-(* Static analysis for task dependencies *)
+(** Entrance function to call the static analysis for task dependencies 
+			@param the file we apply the analysis
+			@return unit
+*)
 let find_dependencies (f: file) : unit = begin	
-  (* List.iter print_task !tasks_l; *)
   program_file := f;
+	ignore(E.log "SDAM:Initializing Cil...\n");
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
 	Cfg.computeFileCFG f;
-  ignore(E.log "SDAM: Generating CFG.\n");
-  (* LT.generate_constraints f; *)
-  ignore(E.log "SDAM: Generating and solving flow constraints.\n");
+  ignore(E.log "SDAM:Finding data dependencies...\n");
   PT.generate_constraints f;
   LF.done_adding ();
-  BS.solve();
-  if !do_graph_out then begin
+	BS.solve();
+	solve_task_dependencies (List.rev !tasks_l);
+  (* BS.solve(); *)
+(*   if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
     Labelflow.print_graph !Dotpretty.outf;
     Dotpretty.close_file ();
-  end;
-    
-    (*Semiunification.print_graph !Dotpretty.outf;*)
-    (*Lockstate.print_graph !Dotpretty.outf;*)
-    (*CF.print_graph !Dotpretty.outf (fun a -> true);*)
-    (*Dotpretty.close_file (); *)
-  ignore(E.log "SDAM: Checking for argument dependencies.\n");
+  end; *)
+(*   ignore(E.log "SDAM: Checking for argument dependencies.\n");
   List.iter find_task_dependencies !tasks_l;
   if !do_verbose_output then begin (* this is bocus... *)
     ignore(E.log "SDAM: Dependencies resolved.\n");
@@ -322,8 +173,6 @@ let find_dependencies (f: file) : unit = begin
   end;
   if !do_task_graph_out then begin
     ignore(E.log "Creating dot file\n");
-    (* instantiate_depList ();  
-    List.iter print_task_dependencies !inst_task_dep_l; *)
     Dotpretty.init_file "task-dep.dot" "task dependencies";
     plot_task_dep_graph !Dotpretty.outf;
     Dotpretty.close_file ();
@@ -331,10 +180,9 @@ let find_dependencies (f: file) : unit = begin
 		Dotpretty.init_file "cf-graph.dot" "control flow graph";
     Lockstate.print_graph !Dotpretty.outf;
     Dotpretty.close_file ();
-  end;
+  end; *)
   ignore(E.log "SDAM: static dependence analysis has now completed.\n");
-  count_safe_args !task_dep_l;
-  ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
+(*   count_safe_args !task_dep_l; *)
+	print_tasks (List.rev !tasks_l);
+	ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
 end
-
-
