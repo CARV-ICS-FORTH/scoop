@@ -80,9 +80,9 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
   this->closure.arguments[this->closure.total_arguments].size = arg_size;
   this->closure.arguments[this->closure.total_arguments].flag = arg_flag;*)
   let eal_in = mkFieldAccess idxlv "eal_in" in
-  il := Set(eal_in, CastE(uint64_t, Lval arg_addr), locUnknown)::!il;
+  il := Set(eal_in, CastE(voidPtrType, Lval arg_addr), locUnknown)::!il;
   let eal_out = mkFieldAccess idxlv "eal_out" in
-  il := Set(eal_out, CastE(uint64_t, Lval arg_addr), locUnknown)::!il;
+  il := Set(eal_out, CastE(voidPtrType, Lval arg_addr), locUnknown)::!il;
   il := Set(size, Lval arg_size, locUnknown)::!il;
 (*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
 
@@ -266,7 +266,7 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
+let make_tpc_func (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file ref) (spu_file: file ref)
     : (fundec * (int * arg_descr) list) = (
   incr un_id;
@@ -318,18 +318,31 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   let e_addr = var (makeLocalVar f_new "e_addr" uint64_t) in
   
   let args_n =
-  (* if we have arguments *)
-  if (f_new.sformals <> []) then (
-    (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
-    let args_n = number_args args oargs in
-    let args_n = List.sort sort_args_n args_n in
-    let i_n = ref (args_num+1) in
-    let mapped = L.flatten (List.map 
-      (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f)
-      args_n) in
-    stmts := mapped@(!stmts);
-    args_n
-  ) else [] in
+    (* if we have arguments *)
+    if (f_new.sformals <> []) then (
+      (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+      let args_n = number_args args oargs in
+      let args_n = List.sort sort_args_n args_n in
+      let i_n = ref (args_num+1) in
+      let mapped = L.flatten (List.map
+        (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f)
+        args_n) in
+      stmts := mapped@(!stmts);
+      args_n
+    ) else [] in
+
+
+  (*if(TPC_IS_HIGHPRIORITYARG(highpriority_arg))
+    {
+    this->highpriority = 1;
+    }
+  *)
+  if (is_hp) then (
+    let this_highpriority = mkPtrFieldAccess this "highpriority" in
+    let hp_set = Set(this_highpriority, one, locUnknown) in
+    stmts := (mkStmtOneInstr hp_set)::(!stmts);
+  );
+
 
   (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
     for x86*)

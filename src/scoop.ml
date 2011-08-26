@@ -187,10 +187,13 @@ let rec scoop_process_args typ args loc =
 (** parses the #pragma css task arguments *)
 let rec scoop_process pr loc =
   match pr with
-      (AStr("highpriority")::rest) -> scoop_process rest loc
-    | (ACons(arg_typ, args)::rest) -> (scoop_process_args arg_typ args loc)@(scoop_process rest loc)
-    | [] -> []
-    | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); []
+      (AStr("highpriority")::rest) -> let (hp, lst) = scoop_process rest loc in
+      (true, lst)
+    | (ACons(arg_typ, args)::rest) ->
+      let (hp, lst) = scoop_process rest loc in
+      (hp, (scoop_process_args arg_typ args loc)@lst)
+    | [] -> (false, [])
+    | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); (false, [])
 
 (** populates the global list of spu tasks [spu_tasks] *)
 class findSPUDeclVisitor cgraph = object
@@ -263,7 +266,7 @@ class findSPUDeclVisitor cgraph = object
                 (* Support #pragma css task... *)
                 AStr("task")-> (
                   let funname = vi.vname in
-                  let args = scoop_process rest loc in
+                  let (is_hp, args) = scoop_process rest loc in
                   if (!debug) then
                     ignore(E.log "Found task \"%s\"" funname);
                   let rest_f new_fd = 
@@ -340,7 +343,7 @@ class findSPUDeclVisitor cgraph = object
                       let make_tpc_funcf = match !arch with
                           "cell" -> Scoop_cell.make_tpc_func
                         | "cellgod" -> Scoop_cellgod.make_tpc_func
-                        | _ ->  Scoop_x86.make_tpc_func in
+                        | _ ->  Scoop_x86.make_tpc_func is_hp in
                       let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
                       add_after_s !ppc_file var_i.vname new_fd;
                       spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;

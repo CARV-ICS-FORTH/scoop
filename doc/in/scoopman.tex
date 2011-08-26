@@ -140,6 +140,7 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
 
 \begin{itemize}
   \item Adding a semicolon at the end of \verb!#pragma css start...!
+  \item Putting \verb!#pragma css barrier! at the end of a block (fix, add a semicolon right below of it)
   \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}} you
       probably have wrong argument at a call tagged with \verb!#pragma css task!
   \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
