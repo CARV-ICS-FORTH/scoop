@@ -87,7 +87,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 (*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Ptdepa.isSafeArg arg_name) then (
+  if (Sdam.isSafeArg arg_name) then (
 (*       let (Var vi, _) = arg_addr in *)
 (*       print_endline ("And it's safe "^vi.vname); *)
 (*       print_endline ("And it's safe "^arg_name); *)

@@ -7,4 +7,4 @@ val options : (string * Arg.spec * string) list
 val solve_task_dependencies : task_descr list -> unit
 
 (* Entrance function to call the static analysis for task dependencies *)
-val find_dependencies : file -> unit	
+val find_dependencies : file -> bool -> unit	

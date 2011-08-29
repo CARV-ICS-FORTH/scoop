@@ -6,6 +6,9 @@ module LT = Locktype
 module LF = Labelflow
 module BS = Barrierstate
 module PT = Ptatype
+ 
+(* zakkak stupid way to support only scalar checking *)
+let dis_sdam = ref false
 
 let do_graph_out = ref false
 
@@ -148,8 +151,9 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 			@param the file we apply the analysis
 			@return unit
 *)
-let find_dependencies (f: file) : unit = begin	
+let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
+  dis_sdam := disable_sdam;
 	ignore(E.log "SDAM:Initializing Cil...\n");
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;

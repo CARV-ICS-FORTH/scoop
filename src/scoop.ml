@@ -450,8 +450,8 @@ let feature : featureDescr =
         );
 
         (* SDAM *)
-        if ((!arch <> "cell") && (not !dis_sdam)) then
-          (Ptdepa.find_dependencies f);
+        if ((!arch <> "cell") (*&& (not !dis_sdam)*)) then
+          (Ptdepa.find_dependencies f !dis_sdam);
 
 
         Cil.iterGlobals !ppc_file 
