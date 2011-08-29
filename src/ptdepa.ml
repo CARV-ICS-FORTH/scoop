@@ -72,6 +72,16 @@ let get_rhoSet (arg: arg_descr) (scope: fundec) : LF.rhoSet =
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
 
+(** return true if argument arg is scalar
+			@param arg the argument we want to check
+			@return true if arg is scalar
+*)
+let is_scalar (arg: arg_descr) (scope: fundec) : bool =
+  let env = List.assoc scope !PT.global_fun_envs in
+  let (argtype, argaddress) = PT.env_lookup arg.argname env in
+  match argtype.PT.t with
+  | PT.ITPtr(_, r) -> false
+  | _ ->  true
 				 
 (** checks if arg1 aliases to arg2 
 			@param arg1 the arg description of the first task argument
@@ -137,14 +147,26 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 	let solve_task_deps task = (
 		if !debug then ignore(E.log "checking Task:%a\n" d_task task);
 		let tasks = BS.getTaskSet task in
-		if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
-		(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
-		if (not (BS.isInLoop task)) then ( 
-			if !debug then ignore(E.log "Not self dependent\n");
-			List.iter (fun a -> a.safe <- true;) task.arguments
-		);
-		(* 2. check for dependencies with other tasks *)
-		List.iter (solve_arg_dependencies (task, tasks)) task.arguments
+		(* 0. if sdam is disabled then mark only scalars as safe, do not run the analysis *)
+		if !dis_sdam then (
+			List.iter (fun a -> if (is_scalar a task.scope) then (
+														a.safe <- true; 
+													)
+													else ( 
+														a.safe <- false;
+													)
+								) task.arguments
+		)
+		else (
+			if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
+			(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
+			if (not (BS.isInLoop task)) then ( 
+				if !debug then ignore(E.log "Not self dependent\n");
+				List.iter (fun a -> a.safe <- true;) task.arguments
+			);
+			(* 2. check for dependencies with other tasks *)
+			List.iter (solve_arg_dependencies (task, tasks)) task.arguments
+		)
 	) in List.iter solve_task_deps tasks_l
 
 (** Entrance function to call the static analysis for task dependencies 
