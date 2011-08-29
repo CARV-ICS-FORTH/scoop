@@ -1,17 +1,30 @@
 open Cil
 open Printf
 
+(* the type that describes a loop *)
+type loop_descr = {
+	lid: int;
+	l_index_info: varinfo;
+	l_index_exp: exp;
+}
+(* the type that describes an array or pointer referenced in a loop *)
+and array_descr = {
+	array_info: varinfo;
+	a_index_exp: exp;
+}
 (* the type that describes a task argument *)
-type arg_descr = {
+and arg_descr = {
 	aid: int;
 	argname: string;
 	iotype: string; 
 	arginfo: varinfo;
 	argsize: exp;
+	loop_d: loop_descr option;
+	array_d: array_descr option;
 	mutable safe: bool;
 }
 (* the type that describes a task *) 
-type task_descr= {
+and task_descr= {
 	tid: int;
 	taskname: string;
 	callsite: location;
@@ -20,10 +33,6 @@ type task_descr= {
 	write_vars: Labelflow.rhoSet;
 	arguments: arg_descr list;
 }
-(* the type that describes a loop *)
-type loop_descr
-(* the type that describes an array or pointer referenced in a loop *)
-type array_descr
 
 (* global lists of tasks *)
 val tasks_l : task_descr list ref
@@ -40,8 +49,11 @@ val total_safe_args : int ref
 
 (** Utility functions **)
 
-(* returns a string representation for a Cil.location *)
-val location_to_string : location -> string
+(* return true if iotype is strided *)
+val is_strided_arg : string -> bool
+
+(* return true if iotype is input *)
+val is_in_arg : string -> bool
 
 (** Constructors **)
 	
@@ -49,7 +61,7 @@ val location_to_string : location -> string
 val make_task_descr : string -> location -> fundec -> Labelflow.rhoSet -> Labelflow.rhoSet -> arg_descr list -> task_descr
 
 (*	constructor of the arg_descr struct *)
-val make_arg_descr : string ->  string -> varinfo ->  exp -> arg_descr
+val make_arg_descr : string ->  string -> varinfo ->  exp -> loop_descr option -> array_descr option -> arg_descr
 
 (* constructor of the loop_descr struct *)	
 val make_loop_descr : varinfo -> exp -> loop_descr
@@ -66,6 +78,9 @@ val addTask : task_descr -> unit
 val isSafeArg : string -> bool
 
 (** Printing functions **)
+
+(* returns a string representation for a Cil.location *)
+val location_to_string : location -> string
 
 (* Prints list of tasks	*)
 val print_tasks : task_descr list -> unit	

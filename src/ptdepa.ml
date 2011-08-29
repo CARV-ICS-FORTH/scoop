@@ -6,6 +6,7 @@ module LT = Locktype
 module LF = Labelflow
 module BS = Barrierstate
 module PT = Ptatype
+module LP = Loopa
  
 (* zakkak stupid way to support only scalar checking *)
 let dis_sdam = ref false
@@ -32,30 +33,6 @@ let options = [
 
 let taskScope1 = ref dummyFunDec
 let taskScope2 = ref dummyFunDec
-
-(** return true if iotype is strided 
-			@param t the iotype of the argument
-			@return true if argument type is strided
-*)
-let is_strided_arg (t: string): bool = 
-  match t with 
-      "sinput"
-    | "sin"
-    | "soutput"
-    | "sout"
-    | "sinout" -> true
-    | _ -> false
-
-(** return true if iotype is input, works only 
-			for non-strided args
-			@param t the iotype of the argument
-			@return true if argument is input
-*)
-let is_in_arg (t: string): bool = 
-  match t with 
-      "input" (* legacy, remove *)
-    | "in" -> true
-    | _ -> false
 
 (** return rhoSet for arg
 			@param arg the argument whose aliasing set we seek
@@ -127,7 +104,12 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 					arg.safe <- true;
 				)
 				else (
-					arg.safe <- not (alias arg arg');
+					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
+						arg.safe <- not(alias arg arg') || LP.array_bounds_safe arg;
+					)
+					else (
+						arg.safe <- not (alias arg arg');
+					));
 					if (not arg.safe) then (
 						raise Done
 					)

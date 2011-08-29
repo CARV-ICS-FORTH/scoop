@@ -23,6 +23,7 @@ LOCKSMITH_MODULES = \
 	lockalloc \
 	scoop_util \
 	barrierstate \
+	loopa \
 	ptatype \
 	ptdepa \
 	scoop_cell \

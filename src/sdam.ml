@@ -5,13 +5,26 @@ open Pretty
 module LF = Labelflow
 module E = Errormsg
 
+(** the type that describes a loop *)
+type loop_descr = {
+	lid: int;
+	l_index_info: varinfo;
+	l_index_exp: exp;
+}
+(** the type that describes an array or pointer referenced in a loop *)
+and array_descr = {
+	array_info: varinfo;
+	a_index_exp: exp;
+}
 (** the type that describes a task argument *)
-type arg_descr = {
+and arg_descr = {
 	aid: int;
 	argname: string;
 	iotype: string; 
 	arginfo: varinfo;
 	argsize: exp;
+	loop_d: loop_descr option;
+	array_d: array_descr option;
 	mutable safe: bool;
 }
 (** the type that describes a task *) 
@@ -23,17 +36,6 @@ and task_descr = {
 	read_vars: LF.rhoSet;
 	write_vars: LF.rhoSet;
 	arguments: arg_descr list;
-}
-(** the type that describes a loop *)
-and loop_descr = {
-	lid: int;
-	index_info: varinfo;
-	index_exp: exp;
-}
-(** the type that describes an array or pointer referenced in a loop *)
-and array_descr = {
-	array_info: varinfo;
-	a_index_exp: exp;
 }
 
 (** global lists of tasks *)
@@ -92,13 +94,16 @@ let make_task_descr (tname: string) (csite: location) (scp: fundec)
 		@param a_size the size of the argument used in the task
 		@return a new arg_descr
 *)
-let make_arg_descr (a_name: string) (iot: string) (a_inf: varinfo) (a_size: exp) : arg_descr =
+let make_arg_descr (a_name: string) (iot: string) (a_inf: varinfo) (a_size: exp) 
+									 (ld: loop_descr option) (ad: array_descr option) : arg_descr =
 	incr next_arg_id;
 	{ aid = !next_arg_id;
 		argname = a_name;
 		iotype = iot;
 		arginfo = a_inf;
 		argsize = a_size;
+		loop_d = ld;
+		array_d = ad;
 		safe = false;
 	}
 
@@ -110,8 +115,8 @@ let make_arg_descr (a_name: string) (iot: string) (a_inf: varinfo) (a_size: exp)
 let make_loop_descr (i_inf: varinfo) (i_exp: exp) : loop_descr =
 	incr next_loop_id;
 	{ lid = !next_loop_id;
-		index_info = i_inf;
-		index_exp = i_exp;
+		l_index_info = i_inf;
+		l_index_exp = i_exp;
 	}
 
 (** constructor of the array_descr struct
@@ -152,6 +157,35 @@ let isSafeArg (argname: string) : bool =
 	try (let arg = check_task !tasks_l in arg.safe) 
 	with Not_found -> false
 
+
+(** Utility Functions **)
+
+(** return true if iotype is strided 
+			@param t the iotype of the argument
+			@return true if argument type is strided
+*)
+let is_strided_arg (t: string): bool = 
+  match t with 
+      "sinput"
+    | "sin"
+    | "soutput"
+    | "sout"
+    | "sinout" -> true
+    | _ -> false
+
+(** return true if iotype is input
+			@param t the iotype of the argument
+			@return true if argument is input
+*)
+let is_in_arg (t: string): bool = 
+  match t with 
+      "input" (* legacy, remove *)
+    | "in"
+    | "sinput"
+    | "sin" -> true
+    | _ -> false
+
+
 (** Printing functions **)
 
 (* prints a task argument *)
@@ -180,6 +214,9 @@ let print_tasks (tasks: task_descr list) : unit =
 			);
 		) in print_tasks' tasks
 		
-(* Pretty print task *)
+(** Pretty print task 
+		@param task the descriptor of the task to print
+		@return the task in doc format
+*)
 let d_task () (task: task_descr) : doc =
 	text(task.taskname^":"^(string_of_int task.tid))

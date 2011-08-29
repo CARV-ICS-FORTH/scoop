@@ -7,7 +7,7 @@ open Int64
 module E = Errormsg
 module RD = Reachingdefs
 
-let debug = ref false
+let debug = ref true
 
 let options = [
   "--debug-loopa",
@@ -15,127 +15,124 @@ let options = [
   "SDAM-Simple loop analysis: debugging output.";
 ]
 
-let aaaInfoHT : (arg_descr, array_loop_descr) Hashtbl.t = Hashtbl.create 100
+(*let eval_step = (function*)
+(*		Const(CInt64(v, _, _)) -> ignore(E.log "step is an integer constant (%Ld)\n" v);*)
+(*	| Const(CChr(_)) -> ignore(E.log "step is a character constant\n");*)
+(*	| Const(CReal(_)) -> ignore(E.log "step is a float constant\n");*)
+(*	| Const(CEnum(_)) -> ignore(E.log "step is an enumeration\n");*)
+(*	| _ -> ignore(E.log "SDAM: Loop step too compilcated...\n");*)
+(* ) *)
 
-let curr_index = ref None 
-
-let addElmt arg ald = 
-	let (argname, _) = arg in
-	ignore(E.log "adding argument %s\n" argname);
-(*	if(isSome lpi) then ignore(E.log "is indeed some\n");*)
-	Hashtbl.add aaaInfoHT arg ald
-
-let eval_step = (function
-		Const(CInt64(v, _, _)) -> ignore(E.log "step is an integer constant (%Ld)\n" v);
-	| Const(CChr(_)) -> ignore(E.log "step is a character constant\n");
-	| Const(CReal(_)) -> ignore(E.log "step is a float constant\n");
-	| Const(CEnum(_)) -> ignore(E.log "step is an enumeration\n");
-	| _ -> ignore(E.log "SDAM: Loop step too compilcated...\n");
-)
-
-let get_loop_step vi e = 
-begin
-	if !debug then (
-		ignore(E.log "loop index var is %s\n" vi.vname);
-		ignore(E.log "BinOp: %a\n" d_exp e);
-	);
-	match e with
-		BinOp(PlusA, Lval(Var(vi'), _), step, _) when (vi' = vi) -> ( 
-			ignore(E.log "increase by %a\n" d_exp step); 
-			curr_index := Some (vi, step)
-		) 
-	| BinOp(MinusA, Lval(Var(vi'), _), step, _) when (vi' = vi) -> (
-			if !debug then ignore(E.log "decrease by %a\n" d_exp step);
-			curr_index := Some (vi, step)		
-		)
-	| _ -> if !debug then ignore(E.log "SDAM: Loop index too compilcated...\n"); curr_index := None
-end
-
-let get_loop_index body_stmts =
+(** analyzes the instruction in the body of the loop and returns the index variable
+		and step expression.  If the analysis fails then it return None. If the loop index
+		is referenced or modified  then the analysis  fails
+		@param body_stmts the list of statements in the loop body
+		@return Some loop descriptor for the current loop, or None if index is modified 
+			or did not match pattern
+*)
+let getLoopIndex (body_stmts: stmt list) : loop_descr option = 
 	let last_stmt = (List.hd (List.rev body_stmts)) in 
 	let rec get_loop_index' il = (
 		match il with 
 			Instr(Set((Var(vi), NoOffset), e, _)::[]) -> ( 
-				(if !debug then ignore(E.log "Found index %s\n" vi.vname););
-				if(vi.vreferenced || vi.vaddrof) then None (* FIXME: this does not seem to work... *)
+				if !debug then ignore(E.log "Found index %s\n" vi.vname);
+				if(vi.vreferenced || vi.vaddrof) then None
 				else (
-					let rec isModified = function
-						[] -> false
-					| (stmt::rest) -> (
-						let rec isModified' il =
-							match il with 
-							Instr([]) -> false
-						| Instr(_::[]) -> false (* last stmt should be ignored *)
-						|	Instr(Set((Var(vi'), NoOffset), _, _)::_) when vi.vname == vi'.vname -> (
-							ignore(E.log "why am i here? instr\n");
-							true
+					let rec isModified = (function
+							[] -> false
+						| (stmt::rest) -> (
+							let rec isModified' il = (
+								match il with 
+								Instr([]) -> false
+							| Instr(_::[]) -> false (* last stmt should be ignored *)
+							|	Instr(Set((Var(vi'), NoOffset), _, _)::_) when vi.vname == vi'.vname -> true
+							| Instr(_::rest) -> isModified' (Instr rest) 
+							| _ -> false 
+							) 
+							in
+							if !debug then ignore(E.log "Checking stmt:%a\n" d_stmt stmt);		 
+							if(isModified' stmt.skind) then (
+								if !debug then ignore(E.log "il is modified\n"); 
+								true
+							)
+							else isModified	rest
 						)
-						| Instr(_::rest) -> isModified' (Instr rest) 
-						| _ -> false
-						in
-						if !debug then ignore(E.log "Checking stmt:%a\n" d_stmt stmt);		 
-						if(isModified' stmt.skind) then (ignore(E.log "il is modified\n"); true)
-						else isModified	rest
 					)
 					in			
 					if(isModified body_stmts) then None
-					else Some(vi, e)
+					else Some (make_loop_descr vi e) 
 				)				
 			)
-		| Instr(_::[]) -> (if !debug then ignore(E.log "Loop pattern did not match\n");); None
+		| Instr(_::[]) -> if !debug then ignore(E.log "Loop pattern did not match\n"); None
 		|	Instr(_::rest) -> get_loop_index' (Instr rest)
-		| _ -> (if !debug then ignore(E.log "Loop pattern did not match\n");); None
+		| _ -> if !debug then ignore(E.log "Loop pattern did not match\n"); None
 	) in get_loop_index' last_stmt.skind
 
-let process_call_actuals acts loc currSid task_d loop_d = begin
-		List.iter (fun acts -> 
-			match acts with
-				Lval(Var(vi), _) -> (
-          try
-            let reaching_defs = RD.getRDs currSid in	
-            let (_, _, iosh) = getSome reaching_defs in
-            let ios =	(Inthash.find iosh vi.vid) in 
-            if !debug then (
-              ignore(E.log "argument:%s-%d\n" vi.vname vi.vid);	
-              (*  ignore(E.log "RDs table_size=%d\n" (Inthash.length iosh));*)
-              (*  Inthash.iter (fun a b -> ignore(E.log "vi:%d\n" a);) iosh;*)
-            );
-            if ((RD.IOS.cardinal ios) <= 1) then (
-              RD.IOS.iter (function
-                            Some i ->  let r = getSome (RD.getSimpRhs i) in
-                            (match r with
-                              RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
-                                (match e with 
-                                  AddrOf(Var(va), Index(index, NoOffset)) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-                                |	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-                                |	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> addElmt (vi.vname, task_d) ((va, index), loop_d);
-                                | _ -> if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname); 
-                                ); 
-                            | RD.RDCall i -> if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); (* FIXME: maybe we need to remove malloc, etc (probably doesn't matter) *)
-                            );
-                          | None -> if !debug then ignore(E.log "No reaching definitions\n"); ) ios;
-            )
-            else (if !debug then ignore(E.log "More than one reaching defs\n"); ); (* TODO:check if all paths are monotonal instead *)
-          with Not_found ->
-            (* zakkak workaround *)
-            ignore(E.log "Inthash.find failed\n");
-        );
-			| _ -> ignore(warnLoc loc "SDAM:Actual expr too complicated, no analysis possible\n");
-		) acts; 
-end
-
-(* get the variable name of array index *)
-let get_array_index array_d : varinfo =
-		let (_, index_expr) = array_d in
-		match  index_expr with
-			Lval(Var(vi), NoOffset) -> vi
-		|	_ -> if !debug then ignore(E.log "Array index too complicated\n"); raise (Failure "Index too complicated\n")
-
-let get_loop_step vi loop_i : exp = 
-	let (_, e) = loop_i in
-	if !debug then ignore(E.log "Index is %s with exp:%a\n" vi.vname d_exp e);
-	(* we only handle index+1 and index-1 *)
-	match e with
+(** find reaching defs, and return the array descriptor if argument is or refers
+		to an array variable.  Return None if argument is not such a variable or
+		there are more than one reaching definitions
+		@param loc the location of the arument in the file
+		@param currSid the current sid used by reaching_defs module
+		@return the array descriptor of the array tha reaches the argument variable or None
+		 if variable does not reach an array or has multiple reaching definitions a the given
+		 program point
+*)
+let getArrayDescr (vi: varinfo) (loc: location) currSid : array_descr option = 
+	try (
+		let reaching_defs = RD.getRDs currSid in	
+		let (_, _, iosh) = getSome reaching_defs in
+		let ios =	(Inthash.find iosh vi.vid) in 
+		if !debug then (
+		  ignore(E.log "argument:%s-%d\n" vi.vname vi.vid);	
+		  (*  ignore(E.log "RDs table_size=%d\n" (Inthash.length iosh));*)
+		  (*  Inthash.iter (fun a b -> ignore(E.log "vi:%d\n" a);) iosh;*)
+		);
+		if ((RD.IOS.cardinal ios) <= 1) then (
+			let elmt = RD.IOS.choose ios in (* there should be only one element *)
+		 	(match elmt with
+		      Some i ->  let r = getSome (RD.getSimpRhs i) in
+		      (match r with
+		        RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
+		        (match e with 
+		          AddrOf(Var(va), Index(index, NoOffset)) -> Some (make_array_descr va index)
+		        |	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
+		        |	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
+		        | _ -> (
+		        	if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname);
+		        	None	
+		        	) 
+		        ) 
+		      | RD.RDCall i -> (
+		      	if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); 
+		      	None
+		      	)
+		      )
+		    | None -> (
+		    	if !debug then ignore(E.log "No reaching definitions\n"); 
+		    	None
+		    )
+      )
+		)
+		else (
+			if !debug then ignore(E.log "More than one reaching defs\n"); (* TODO:check if all paths are monotonal instead *)
+			None
+		)
+	) 
+	with Not_found -> (
+		(* zakkak workaround *)
+		ignore(E.log "Inthash.find failed\n");
+		None
+	)
+									
+(** returns the expression by which the loop index is increased/decreased
+		@param loop_d the descriptor of the loop whose step we seek
+		@return the expression by which the loop index is increased/decreased
+		@exception failure if loop index expression is too complicated for the analysis to handle
+*)
+let get_loop_step (loop_d: loop_descr) : exp = 
+	if !debug then ignore(E.log "Index is %s with exp:%a\n" loop_d.l_index_info.vname d_exp loop_d.l_index_exp);
+	let vi = loop_d.l_index_info in
+	match loop_d.l_index_exp with
 		BinOp(PlusA, Lval(Var(vi'), _), step, _) when (vi' = vi) -> ( 
 			if !debug then ignore(E.log "Loop step increases by %a\n" d_exp step);
 			step 
@@ -153,13 +150,25 @@ let get_loop_step vi loop_i : exp =
 			step
 		)
 	| _ -> if !debug then ignore(E.log "Loop index too compilcated...\n"); raise (Failure "Loop index too compilcated...\n")
-	
-	
-let get_array_elmt_size arg_elmnt_size : exp =
-	let e_size = arg_elmnt_size in
-	if !debug then ignore(E.log "array element size=%a\n" d_exp e_size);
-	arg_elmnt_size
 
+(** returns the varinfo of the array index variable
+		@param array_d the array descriptor whose index we seek
+		@return the varinfo of the array index variables
+		@exception failure when index is too complicated for the analysis to handle 
+*)
+let get_array_index_info (array_d: array_descr) : varinfo =
+		match  array_d.a_index_exp with
+			Lval(Var(vi), NoOffset) -> vi
+		|	_ -> if !debug then ignore(E.log "Array index too complicated\n"); raise (Failure "Index too complicated\n")
+
+	
+(** comares the sizes of the the task argument consumed by the task with the
+		loop step.
+		@param vi the variable info of the task argument
+		@param arg_e_size the size epxression of the argument
+		@param l_step the step expression of the loop
+		@return true is sizes are equal, false otherwize
+*)
 let size_equal vi arg_e_size l_step = 
 	let e_size = arg_e_size in
 	if !debug then ignore(E.log "Comparing e_size:%a and l_step:%a\n" d_exp e_size d_exp l_step);
@@ -179,6 +188,7 @@ let size_equal vi arg_e_size l_step =
 						if !debug then ignore(E.log "SizeOf(t)->... vtype=%a-type=%a\n" d_type vi.vtype d_type t);
 						match vi.vtype with 
 							TPtr(t', _) when t == t' -> true
+						| TArray(t', _, _) when t == t' -> true
 						| _ when t == vi.vtype -> true  
 						| _ -> false
 					)
@@ -199,53 +209,43 @@ let size_equal vi arg_e_size l_step =
 		| _ -> false 
 	)
 
-let array_bounds_safe arg1 arg2 : bool =
-	(* only do this check if argument is compared to itself *)
-	let (argname1, var_inf1, arg_elmnt_size, (id1, taskname1, scope1)) = arg1 in
-	let (argname2, _, _, (id2, taskname2, _)) = arg2 in 
-	if !debug then ignore(E.log "Checking array index of argument %s\n" argname1);
-	if(argname1 != argname2 || id1 != id2 || taskname1 != taskname2) then (
-		if !debug then ignore(E.log "Arg1 =/= Arg2\n");
-		false (* TODO: maybe expand to deal with simple cases of diff arguments *)
-	)
+(**	checks if an argument that refers to an array is self dependent by analyzing 
+		the array's and loop's indexes
+		@param arg the descriptor of the argument that we want to check
+		@return true if argument is not self dependent
+*)
+let array_bounds_safe (arg: arg_descr) : bool =
+	(* cannot handle strided args *)
+	if(is_strided_arg arg.iotype) then false
 	else (
 		try (
-			let (array_d, loop_d) = Hashtbl.find aaaInfoHT (argname1, (id1, taskname1, scope1)) in
-			if (not (isSome loop_d)) then (
-				if !debug then ignore(E.log "Argument is not in a loop\n");
-				true (* We return no self-dep, since argument is not in loop, only valid if we check with itself *)	
-			)
-			else (
-				let (_, loop_index) = getSome loop_d in
-				if(not (isSome loop_index)) then (
-					if !debug then ignore(E.log "Loop index is modified\n");
-					false		
+			if (not (isSome arg.loop_d)) then raise (Failure "Loop cannot be analyzed\n");		
+			if (not (isSome arg.array_d)) then raise (Failure "Argument does is not or does not refer to an array\n");
+			let loop_d = getSome arg.loop_d in
+			let array_d = getSome arg.array_d in
+			(* 1. check if array index is more complicated than *[i] *)
+			(* 2. check if array index matches loop index *)
+			let a_index_var = get_array_index_info array_d in
+			let l_index_var = loop_d.l_index_info in
+			if (a_index_var.vname == l_index_var.vname) then (
+				if !debug then ignore(E.log "Loop index matches array index\n");
+				(* 3. check if loop step matches array element size *)
+				let loop_step = get_loop_step loop_d in
+				if(size_equal arg.arginfo arg.argsize loop_step) then (
+					if !debug then ignore(E.log "Array bounds safe\n");
+					true
 				)
-				else (				
-					(* 1. check if array index is more complicated than *[i] *)
-					(* 2. check if array index matches loop index *)
-					if !debug then ignore(E.log "Loop index is not modified\n");
-					let a_index = get_array_index array_d in
-					let (l_index_var, _) = getSome loop_index in
-					if (a_index.vname == l_index_var.vname) then (
-						if !debug then ignore(E.log "Loop index matches array index\n");
-						(* 3. check if loop step matches array element size *)
-						let loop_step = get_loop_step l_index_var (getSome loop_index) in
-						let array_elmt_size = get_array_elmt_size arg_elmnt_size in
-						if(size_equal var_inf1 array_elmt_size loop_step) then (
-							if !debug then ignore(E.log "Array bounds safe\n");
-							true
-						)
-						else (
-							 if !debug then ignore(E.log "Array bounds not safe\n");
-							false
-					 ) 
-					)
-					else
-						false
-				)
+				else (
+					if !debug then ignore(E.log "Array bounds not safe\n");
+					false
+			 	) 
 			)
+			else
+				false
 		)
-		with _ -> if !debug then ignore(E.log "Array bounds analysis inconclusive\n"); false
+		with _ -> (
+			if !debug then ignore(E.log "Array bounds analysis inconclusive\n"); 
+			false
+		)
 	)
 
