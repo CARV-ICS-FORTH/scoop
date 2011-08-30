@@ -97,7 +97,6 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 	try (
 		BS.TaskSet.iter (fun task2 -> 
 			List.iter (fun arg' -> 
-				ignore(E.log "working on %s:%s\n" task1.taskname arg.argname);
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
 				(* do not check with self  if task is not in a loop *)
