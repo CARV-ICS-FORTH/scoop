@@ -163,6 +163,9 @@ val translate_arg : string -> bool -> Cil.location -> arg_t
  *)
 val arg_t2integer : arg_t -> Cil.exp
 
+(* Checks if tag is data annotation *)
+val is_dataflow_tag : string -> bool
+
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h) int *)
 val arg_t2int : arg_t -> int
 

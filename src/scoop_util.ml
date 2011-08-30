@@ -521,6 +521,15 @@ let arg_t2int = function
     | SOut -> 2 (*6*)
     | SInOut -> 3 (*7*)
 
+(** Checks if tag is data annotation.
+		@param typ the dataflow annotation
+		@return true if it is dataflow annotation
+ *)
+let is_dataflow_tag (typ: string): bool =
+	match typ with 
+			"safe" -> false 
+		| _ -> true
+
 (** Maps the arg_t to ints as defined by the TPC headers
     @return the corrensponding int *)
 let arg_t2integer = function

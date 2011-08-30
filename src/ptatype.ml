@@ -59,6 +59,7 @@ module Q = Worklist.QueueWorklist
 module CF = Controlflow
 module BS = Barrierstate
 module PhiSet = CF.PhiSet
+module LP = Loopa 
 
 type phiSet = PhiSet.t
 type phi = CF.phi
@@ -2454,27 +2455,37 @@ and type_offcinit (c: cinfo)
 (*	parses recursively the arguments in an argument data annotation team and returns 
 		a list with the corresponding argument descriptors 
 *)
-let css_task_process_arg (iotyp, loc, args_l) arg =
+let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr list), (loop_d: loop_descr option)) arg =
 	match arg with
 		(* handle strided... *)
 		AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz)) -> (
 			let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
 			let tmp_size = attrParamToExp' varsize in
 			let var_i = find_scoped_var loc !currentFunction !program_file varname in
-			let arg_d = Sdam.make_arg_descr varname ("s"^iotyp) var_i tmp_size in
-			(iotyp, loc, arg_d::args_l)
+			let array_d = LP.getArrayDescr var_i loc !currSid in
+			let arg_d = Sdam.make_arg_descr varname ("s"^iotyp) var_i tmp_size loop_d array_d in
+			(iotyp, loc, arg_d::args_l, loop_d)
 		)
 	| AIndex(ACons(varname, []), varsize) -> (
 			let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
 			let var_i = find_scoped_var loc !currentFunction !program_file varname in
-			let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size in
-			(iotyp, loc, arg_d::args_l)
+			let array_d = LP.getArrayDescr var_i loc !currSid in
+			let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size loop_d array_d in
+			(iotyp, loc, arg_d::args_l, loop_d)
 		)
 	| ACons(varname, []) -> ( 
-			let var_i = find_scoped_var loc !currentFunction !program_file varname in
-			let tmp_size = SizeOfE (Lval (var var_i)) in 
-			let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size in
-			(iotyp, loc, arg_d::args_l)
+			if(not (is_dataflow_tag iotyp)) then (
+				(* we need to find the argument in the current arg_l to mark it as safe *)
+				List.iter (fun a -> if(varname == a.argname) then a.safe <- true;) args_l;
+				(iotyp, loc, args_l, loop_d)
+			)
+			else (
+				let var_i = find_scoped_var loc !currentFunction !program_file varname in
+				let tmp_size = SizeOfE (Lval (var var_i)) in 
+				let array_d = LP.getArrayDescr var_i loc !currSid in
+				let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size loop_d array_d in
+				(iotyp, loc, arg_d::args_l, loop_d)
+			)
 		)
 	| _ -> ( 
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
@@ -2483,12 +2494,12 @@ let css_task_process_arg (iotyp, loc, args_l) arg =
 (*	parses recursively the arguments of the pragma task, and returns 
 		a list with the corresponding argument descriptors 
 *)
-let css_task_process (loc, args_l) arg =
+let css_task_process (loc, args_l, loop_d) arg =
 	match arg with 
-		AStr("highpriority") -> (loc, args_l) (* TODO: learn what this is... *)
+		AStr("highpriority") -> (loc, args_l, loop_d) (* TODO: learn what this is... *)
 	|	ACons(iotyp, args) -> (
-			let (_, _, args_l') = List.fold_left css_task_process_arg (iotyp, loc, []) args in
-			(loc, List.append args_l args_l')
+			let (_, _, args_l', _) = List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args in
+			(loc, args_l', loop_d)
 		)
 	| _ -> (
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
@@ -2506,7 +2517,7 @@ let css_task_process (loc, args_l) arg =
 let handle_css_task il env args loc loop_d : task_descr =  begin
 	match il with 
   	Call(_, Lval((Var(vi), _)), acts, loc) -> (
-			let (_, args_l) = List.fold_left css_task_process (loc, []) args in
+			let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in
 (* 		LP.process_call_actuals acts loc !currSid task_d loop_d; *)
 			try (
 		    let (tau, _) = env_lookup vi.vname env in
@@ -3089,7 +3100,7 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
       (env, phi, eff)
     ) else (input_env, input_phi, input_effect)
 
-and type_pragma ((env, phi, eff), (kind, loop_d)) pragma =
+and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
   match pragma with
     (Attr("css", ACons("start", _)::_), loc) -> (
 		if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
@@ -3236,7 +3247,8 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
 (*      CF.phi_flows begin_phi loopstart_phi;*)
 (*      let (_, smth) = loop_d in*)
 (*      if(isSome smth) then ignore(E.log "put something there\n");*)
-      let ((env2,p2,ef2), _) = type_stmt_list ((env, begin_phi, eff), loop_d) b.bstmts in
+			let loop_d' = LP.getLoopIndex b.bstmts in
+      let ((env2,p2,ef2), _) = type_stmt_list ((env, begin_phi, eff), loop_d') b.bstmts in
       CF.phi_flows p2 begin_phi;
       effect_flows eff ef2;
       effect_flows ef2 eff;

@@ -191,7 +191,12 @@ let rec scoop_process pr loc =
       (true, lst)
     | (ACons(arg_typ, args)::rest) ->
       let (hp, lst) = scoop_process rest loc in
-      (hp, (scoop_process_args arg_typ args loc)@lst)
+      (* kasas' mess here *)
+      (* ignore safe tags, it's a hint for the analysis *)
+      if(not (is_dataflow_tag arg_typ)) then 
+      	(hp, lst)
+      else
+      	(hp, (scoop_process_args arg_typ args loc)@lst)
     | [] -> (false, [])
     | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); (false, [])
 
@@ -378,7 +383,6 @@ let feature : featureDescr =
     fd_enabled = ref true;
     fd_description = "find all pragmas declaring spu tasks";
     fd_extraopt = options
-    @ Ptatype.options
     @ Uniqueness.options
     @ Locksettings.options
     (*@ Livevars.options*)
@@ -388,7 +392,6 @@ let feature : featureDescr =
     @ Bansheemlifc.options
     @ Labelflow.options
     @ Lprof.options
-    @ Ptdepa.options
     ;
     fd_doit = 
     (function (f: file) ->

@@ -105,10 +105,20 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 				)
 				else (
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
-						arg.safe <- not(alias arg arg') || LP.array_bounds_safe arg;
+						let res = not (alias arg arg') || LP.array_bounds_safe arg in
+						if(arg.safe && not res) then (
+							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
+							raise Done
+						);
+						arg.safe <- res
 					)
 					else (
-						arg.safe <- not (alias arg arg');
+						let res = not (alias arg arg') in
+						if(arg.safe && not res) then (
+							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
+							raise Done
+						);
+						arg.safe <- res;
 					));
 					if (not arg.safe) then (
 						raise Done

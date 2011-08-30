@@ -20,6 +20,7 @@ and array_descr = {
 and arg_descr = {
 	aid: int;
 	argname: string;
+	argloc: location;
 	iotype: string; 
 	arginfo: varinfo;
 	argsize: exp;
@@ -94,11 +95,12 @@ let make_task_descr (tname: string) (csite: location) (scp: fundec)
 		@param a_size the size of the argument used in the task
 		@return a new arg_descr
 *)
-let make_arg_descr (a_name: string) (iot: string) (a_inf: varinfo) (a_size: exp) 
+let make_arg_descr (a_name: string) (loc: location) (iot: string) (a_inf: varinfo) (a_size: exp) 
 									 (ld: loop_descr option) (ad: array_descr option) : arg_descr =
 	incr next_arg_id;
 	{ aid = !next_arg_id;
 		argname = a_name;
+		argloc = loc;
 		iotype = iot;
 		arginfo = a_inf;
 		argsize = a_size;

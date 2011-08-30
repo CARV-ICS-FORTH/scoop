@@ -7,7 +7,7 @@ open Int64
 module E = Errormsg
 module RD = Reachingdefs
 
-let debug = ref true
+let debug = ref false
 
 let options = [
   "--debug-loopa",
@@ -120,7 +120,7 @@ let getArrayDescr (vi: varinfo) (loc: location) currSid : array_descr option =
 	) 
 	with Not_found -> (
 		(* zakkak workaround *)
-		ignore(E.log "Inthash.find failed\n");
+		if !debug then ignore(E.log "Inthash.find failed\n");
 		None
 	)
 									
