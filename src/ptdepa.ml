@@ -97,6 +97,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 	try (
 		BS.TaskSet.iter (fun task2 -> 
 			List.iter (fun arg' -> 
+				ignore(E.log "working on %s:%s\n" task1.taskname arg.argname);
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
 				(* do not check with self  if task is not in a loop *)
@@ -106,7 +107,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 				else (
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
 						let res = not (alias arg arg') || LP.array_bounds_safe arg in
-						if(arg.safe && not res) then (
+						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
 							raise Done
 						);
@@ -114,7 +115,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 					)
 					else (
 						let res = not (alias arg arg') in
-						if(arg.safe && not res) then (
+						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
 							raise Done
 						);

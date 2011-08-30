@@ -27,6 +27,7 @@ and arg_descr = {
 	loop_d: loop_descr option;
 	array_d: array_descr option;
 	mutable safe: bool;
+	mutable force_safe: bool;
 }
 (** the type that describes a task *) 
 and task_descr = {
@@ -107,6 +108,7 @@ let make_arg_descr (a_name: string) (loc: location) (iot: string) (a_inf: varinf
 		loop_d = ld;
 		array_d = ad;
 		safe = false;
+		force_safe = false;
 	}
 
 (** constructor of the loop_descr struct

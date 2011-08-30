@@ -2463,27 +2463,27 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
 			let tmp_size = attrParamToExp' varsize in
 			let var_i = find_scoped_var loc !currentFunction !program_file varname in
 			let array_d = LP.getArrayDescr var_i loc !currSid in
-			let arg_d = Sdam.make_arg_descr varname ("s"^iotyp) var_i tmp_size loop_d array_d in
+			let arg_d = Sdam.make_arg_descr varname loc ("s"^iotyp) var_i tmp_size loop_d array_d in
 			(iotyp, loc, arg_d::args_l, loop_d)
 		)
 	| AIndex(ACons(varname, []), varsize) -> (
 			let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
 			let var_i = find_scoped_var loc !currentFunction !program_file varname in
 			let array_d = LP.getArrayDescr var_i loc !currSid in
-			let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size loop_d array_d in
+			let arg_d = Sdam.make_arg_descr varname loc iotyp var_i tmp_size loop_d array_d in
 			(iotyp, loc, arg_d::args_l, loop_d)
 		)
 	| ACons(varname, []) -> ( 
 			if(not (is_dataflow_tag iotyp)) then (
 				(* we need to find the argument in the current arg_l to mark it as safe *)
-				List.iter (fun a -> if(varname == a.argname) then a.safe <- true;) args_l;
+				List.iter (fun a -> if(varname == a.argname) then (a.safe <- true; a.force_safe <- true;)) args_l;
 				(iotyp, loc, args_l, loop_d)
 			)
 			else (
 				let var_i = find_scoped_var loc !currentFunction !program_file varname in
 				let tmp_size = SizeOfE (Lval (var var_i)) in 
 				let array_d = LP.getArrayDescr var_i loc !currSid in
-				let arg_d = Sdam.make_arg_descr varname iotyp var_i tmp_size loop_d array_d in
+				let arg_d = Sdam.make_arg_descr varname loc iotyp var_i tmp_size loop_d array_d in
 				(iotyp, loc, arg_d::args_l, loop_d)
 			)
 		)
@@ -3143,7 +3143,8 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
 		match kind with
 				Instr(il) -> ( (* task pragmas must be coupled with function calls *)
 				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
-				let task_d = handle_css_task (List.hd il) env args loc loop_d in	
+				let task_d = 
+				handle_css_task (List.hd il) env args loc loop_d in	
 				let task_phi = make_phi "Task" (CF.PhiTask task_d) in
 				CF.phi_flows phi task_phi;
 				CF.starting_phis := task_phi::!CF.starting_phis;

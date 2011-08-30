@@ -16,13 +16,14 @@ and array_descr = {
 and arg_descr = {
 	aid: int;
 	argname: string;
-	argloc: location
+	argloc: location;
 	iotype: string; 
 	arginfo: varinfo;
 	argsize: exp;
 	loop_d: loop_descr option;
 	array_d: array_descr option;
 	mutable safe: bool;
+	mutable force_safe: bool;
 }
 (* the type that describes a task *) 
 and task_descr= {
@@ -62,7 +63,7 @@ val is_in_arg : string -> bool
 val make_task_descr : string -> location -> fundec -> Labelflow.rhoSet -> Labelflow.rhoSet -> arg_descr list -> task_descr
 
 (*	constructor of the arg_descr struct *)
-val make_arg_descr : string ->  string -> location -> varinfo ->  exp -> loop_descr option -> array_descr option -> arg_descr
+val make_arg_descr : string -> location -> string -> varinfo ->  exp -> loop_descr option -> array_descr option -> arg_descr
 
 (* constructor of the loop_descr struct *)	
 val make_loop_descr : varinfo -> exp -> loop_descr
