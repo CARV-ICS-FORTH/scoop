@@ -141,10 +141,9 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 		let tasks = BS.getTaskSet task in
 		(* 0. if sdam is disabled then mark only scalars as safe, do not run the analysis *)
 		if !dis_sdam then (
-			List.iter (fun a -> if (is_scalar a task.scope) then (
+			List.iter (fun a -> if ( (is_scalar a task.scope) or a.force_safe) then (
 														a.safe <- true; 
-													)
-													else ( 
+                          ) else ( 
 														a.safe <- false;
 													)
 								) task.arguments
