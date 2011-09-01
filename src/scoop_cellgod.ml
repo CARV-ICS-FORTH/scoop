@@ -44,6 +44,9 @@ module E = Errormsg
 (** keeps the current funcid for the new tpc_function_* *)
 let func_id = ref 0
 
+(* XXX:this is for sdam *)
+let querie_no = ref 0
+
 (* a unique id for the tpc_function_* *)
 let un_id = ref 0
 
@@ -113,7 +116,8 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
     @return a statement including the produced instructions
 *)
 let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_descr) )
-  (spu_file: file) (unaligned_args: bool) (ppc_file: file) : stmt = (
+  (spu_file: file) (unaligned_args: bool) (ppc_file: file)
+  (orig_tname: string) (tid: int) : stmt = (
   let (i_m, (arg_name, (arg_type, _, _, _))) = arg in
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
@@ -140,7 +144,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Sdam.isSafeArg (*fd*) arg_name) then (
+  if (Sdam.isSafeArg (*fd*) orig_tname tid arg_name) then (
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;
@@ -274,9 +278,10 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
     let args_n = number_args args oargs in
     let i_n = ref (args_num+1) in
+    incr querie_no;
     let mapped = (List.map 
       (fun arg -> decr i_n; doArgument !i_n this bis f_new arg !spu_file
-                  !unaligned_args !ppc_file)
+                  !unaligned_args !ppc_file func_vi.vname !querie_no)
       args_n) in
     stmts := mapped@(!stmts);
     args_n

@@ -78,7 +78,7 @@ val make_array_descr : varinfo -> exp -> array_descr
 val addTask : task_descr -> unit
 
 (* Checks if the argument with argname is safe *)
-val isSafeArg : string -> bool
+val isSafeArg : string -> int -> string -> bool
 
 (** Printing functions **)
 

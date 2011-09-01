@@ -41,11 +41,15 @@ module E = Errormsg
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
+(* XXX: this is for sdam *)
+let querie_no = ref 0
+
 (* a unique id for the tpc_function_* *)
 let un_id = ref 0
 
-let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
- (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) : stmt list = (
+let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval) 
+ (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) 
+ (orig_tname: string) (tid: int) : stmt list = (
   let closure = mkPtrFieldAccess this "closure" in
   let uint32_t = (find_type ppc_file "uint32_t") in
   let uint64_t = (find_type ppc_file "uint64_t") in
@@ -87,7 +91,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 (*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Sdam.isSafeArg arg_name) then (
+  if (Sdam.isSafeArg orig_tname tid arg_name) then (
 (*       let (Var vi, _) = arg_addr in *)
 (*       print_endline ("And it's safe "^vi.vname); *)
 (*       print_endline ("And it's safe "^arg_name); *)
@@ -324,8 +328,9 @@ let make_tpc_func (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp l
       let args_n = number_args args oargs in
       let args_n = List.sort sort_args_n args_n in
       let i_n = ref (args_num+1) in
+      incr querie_no;
       let mapped = L.flatten (List.map
-        (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f)
+        (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f func_vi.vname !querie_no)
         args_n) in
       stmts := mapped@(!stmts);
       args_n

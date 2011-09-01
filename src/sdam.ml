@@ -57,7 +57,7 @@ let total_safe_args = ref 0
 let next_task_id = ref 0
 let next_arg_id = ref 0
 let next_loop_id = ref 0
-
+let next_querie_no = ref 0
 (** Utility functions **)
 
 (** returns a string representation for a Cil.location 
@@ -152,11 +152,23 @@ end
 		@param argname the name of the argument under question
 		@return true if argument is safe, else false
 *)
-let isSafeArg (argname: string) : bool =
+let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 	let rec check_task = (function
 			[] -> raise Not_found
 		| (task::rest) -> (
-					try (List.find (fun arg -> if(argname == arg.argname) then true else false) task.arguments) 
+					try (
+						if(taskname == task.taskname && tid == task.tid) then (
+							List.find (fun arg -> 
+								if(argname == arg.argname) then (
+									true 
+								)
+								else 
+									false
+							) task.arguments
+						)
+						else
+							raise Not_found
+					) 
 					with Not_found -> check_task rest
 				)
 	) in 
