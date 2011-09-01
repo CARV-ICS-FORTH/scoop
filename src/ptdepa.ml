@@ -8,9 +8,6 @@ module BS = Barrierstate
 module PT = Ptatype
 module LP = Loopa
  
-(* zakkak stupid way to support only scalar checking *)
-let dis_sdam = ref false
-
 let do_graph_out = ref false
 
 let do_task_graph_out = ref false
@@ -141,24 +138,14 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 		if !debug then ignore(E.log "checking Task:%a\n" d_task task);
 		let tasks = BS.getTaskSet task in
 		(* 0. if sdam is disabled then mark only scalars as safe, do not run the analysis *)
-		if !dis_sdam then (
-			List.iter (fun a -> if ( (is_scalar a task.scope) or a.force_safe) then (
-														a.safe <- true; 
-                          ) else ( 
-														a.safe <- false;
-													)
-								) task.arguments
-		)
-		else (
-			if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
-			(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
-			if (not (BS.isInLoop task)) then ( 
-				if !debug then ignore(E.log "Not self dependent\n");
-				List.iter (fun a -> a.safe <- true;) task.arguments
-			);
-			(* 2. check for dependencies with other tasks *)
-			List.iter (solve_arg_dependencies (task, tasks)) task.arguments
-		)
+		if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
+		(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
+		if (not (BS.isInLoop task)) then ( 
+			if !debug then ignore(E.log "Not self dependent\n");
+			List.iter (fun a -> a.safe <- true;) task.arguments
+		);
+		(* 2. check for dependencies with other tasks *)
+		List.iter (solve_arg_dependencies (task, tasks)) task.arguments
 	) in List.iter solve_task_deps tasks_l
 
 
@@ -195,7 +182,6 @@ end
 *)
 let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
-  dis_sdam := disable_sdam;
 	ignore(E.log "SDAM:Initializing Cil...\n");
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
@@ -203,8 +189,19 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   ignore(E.log "SDAM:Finding data dependencies...\n");
   PT.generate_constraints f;
   LF.done_adding ();
-	BS.solve();
-	solve_task_dependencies (List.rev !tasks_l);
+  if(disable_sdam) then (
+  	List.iter(fun task -> 
+			List.iter (fun a -> if ( (is_scalar a task.scope) or a.force_safe) then (
+											a.safe <- true; 
+                    ) else ( 
+											a.safe <- false;
+										)
+			) task.arguments
+  	) !tasks_l;
+  )
+  else (
+		BS.solve();
+		solve_task_dependencies (List.rev !tasks_l);
   (* BS.solve(); *)
 (*   if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
@@ -229,14 +226,13 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   end; *)
   ignore(E.log "SDAM: static dependence analysis has now completed.\n");
 (*   count_safe_args !task_dep_l; *)
-	if(not disable_sdam) then (
 		if !do_task_graph_out then (
 			Dotpretty.init_file "task-dep.dot" "task dependencies";
 			plot_task_dep_graph !tasks_l !Dotpretty.outf;
 			Dotpretty.close_file ();
 		);
 		print_tasks (List.rev !tasks_l);
-		 ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
+		ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
 	)
 end
 
