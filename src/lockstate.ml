@@ -167,6 +167,7 @@ module LockStateTransfer =
             let a = PhiHT.find saved_split_state p in
             Some (LockSet.union acq a)
           with Not_found -> None
+      | _ -> Some acq (* XXX:not sure it is correct *) 
     end
 
     let starting_state (p: phi) : state option = None

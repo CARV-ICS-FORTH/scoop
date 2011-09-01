@@ -22,6 +22,7 @@ and arg_descr = {
 	argsize: exp;
 	loop_d: loop_descr option;
 	array_d: array_descr option;
+	dependencies: arg_descr list ref;
 	mutable safe: bool;
 	mutable force_safe: bool;
 }

@@ -110,7 +110,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
 							raise Done
 						);
-						arg.safe <- res
+						arg.safe <- res;
 					)
 					else (
 						let res = not (alias arg arg') in
@@ -121,6 +121,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 						arg.safe <- res;
 					));
 					if (not arg.safe) then (
+						arg.dependencies := arg'::!(arg.dependencies);
 						raise Done
 					)
 				)
@@ -159,6 +160,34 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 			List.iter (solve_arg_dependencies (task, tasks)) task.arguments
 		)
 	) in List.iter solve_task_deps tasks_l
+
+
+(** print dependencies in graphiz format 
+		@param task_l is the list of tasks in the program
+		@param outf is the output channel/file
+		@return unit
+*)
+let plot_task_dep_graph (task_l: task_descr list) (outf: out_channel) : unit = begin
+	(* print nodes *)
+	List.iter (fun task -> 
+		let tasknode = task.taskname^"_"^(string_of_int task.tid) in
+		Printf.fprintf outf "\tsubgraph cluster_%s{\n" tasknode;
+		Printf.fprintf outf "\t\tlabel=\"%s\";\n" task.taskname;
+    Printf.fprintf outf "\t\tcolor=blue;\n";
+    List.iter (fun arg -> 
+    	Printf.fprintf outf "\t\t%s [label=\"%s\"]\n" (arg.argname^"_"^(string_of_int arg.aid)) arg.argname ; 
+    ) task.arguments;
+    Printf.fprintf outf "\t}\n";
+	) task_l;
+	(* print edges *)
+	List.iter (fun task -> 
+		List.iter (fun arg -> 
+			List.iter (fun arg' ->
+				Printf.fprintf outf "\t%s -> %s\n" (arg.argname^"_"^(string_of_int arg.aid)) (arg'.argname^"_"^(string_of_int arg'.aid));
+			) !(arg.dependencies);
+		) task.arguments;
+	) task_l;
+end
 
 (** Entrance function to call the static analysis for task dependencies 
 			@param the file we apply the analysis
@@ -200,6 +229,14 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   end; *)
   ignore(E.log "SDAM: static dependence analysis has now completed.\n");
 (*   count_safe_args !task_dep_l; *)
-	print_tasks (List.rev !tasks_l);
-	ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
+	if(not disable_sdam) then (
+		if !do_task_graph_out then (
+			Dotpretty.init_file "task-dep.dot" "task dependencies";
+			plot_task_dep_graph !tasks_l !Dotpretty.outf;
+			Dotpretty.close_file ();
+		);
+		print_tasks (List.rev !tasks_l);
+		 ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
+	)
 end
+

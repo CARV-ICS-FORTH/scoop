@@ -26,6 +26,7 @@ and arg_descr = {
 	argsize: exp;
 	loop_d: loop_descr option;
 	array_d: array_descr option;
+	dependencies: arg_descr list ref;
 	mutable safe: bool;
 	mutable force_safe: bool;
 }
@@ -107,6 +108,7 @@ let make_arg_descr (a_name: string) (loc: location) (iot: string) (a_inf: varinf
 		argsize = a_size;
 		loop_d = ld;
 		array_d = ad;
+		dependencies = ref [];
 		safe = false;
 		force_safe = false;
 	}

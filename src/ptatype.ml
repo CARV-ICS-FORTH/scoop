@@ -2460,16 +2460,19 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
     match arg with
       (* handle strided... *)
       AIndex(AIndex(ACons(varname, []), _), ABinOp( BOr, _, _))
+    | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, _)), _) 
     | AIndex(ACons(varname, []), _)
     | ACons(varname, []) ->
       (* we need to find the argument in the current arg_l to mark it as safe *)
       List.iter (fun a -> if(varname == a.argname) then (a.safe <- true; a.force_safe <- true;)) args_l;
       (iotyp, loc, args_l, loop_d)
+    | _ ->	ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
+        		raise Ignore_pragma
   )
   else (
     match arg with
       (* handle strided... *)
-      AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz)) -> (
+      AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) -> (
         let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
         let tmp_size = attrParamToExp' varsize in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
@@ -2477,6 +2480,15 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         let arg_d = Sdam.make_arg_descr varname loc ("s"^iotyp) var_i tmp_size loop_d array_d in
         (iotyp, loc, arg_d::args_l, loop_d)
       )
+      (* Brand new stride syntax... *)
+   	| AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) -> (
+    		let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
+        let tmp_size = attrParamToExp' bs_c in
+        let var_i = find_scoped_var loc !currentFunction !program_file varname in
+        let array_d = LP.getArrayDescr var_i loc !currSid in
+        let arg_d = Sdam.make_arg_descr varname loc ("s"^iotyp) var_i tmp_size loop_d array_d in
+        (iotyp, loc, arg_d::args_l, loop_d)
+       )
     | AIndex(ACons(varname, []), varsize) -> (
         let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
