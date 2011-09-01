@@ -147,7 +147,10 @@ let getTaskSet (task: task_descr) : taskSet =
 			| _ -> find_set rest
 			)
 		)
-	) in find_set !starting_phis
+	) 
+	in 
+	try (find_set !starting_phis)
+	with Not_found -> TaskSet.empty (* if task is not found, we can presume that is never run *)
 	
 (** make the forward analysis of barriers 
 			@return unit
