@@ -1,6 +1,7 @@
 open Cil
 open Printf
 open Pretty
+open Ptatypes
 
 module LF = Labelflow
 module E = Errormsg
@@ -22,6 +23,7 @@ and arg_descr = {
 	argname: string;
 	argloc: location;
 	iotype: string; 
+	strided: bool;
 	arginfo: varinfo;
 	argsize: exp;
 	loop_d: loop_descr option;
@@ -29,15 +31,15 @@ and arg_descr = {
 	dependencies: arg_descr list ref;
 	mutable safe: bool;
 	mutable force_safe: bool;
+	mutable iotype_deduction: string;
 }
 (** the type that describes a task *) 
 and task_descr = {
-	tid: int;
+	taskid: int;
 	taskname: string;
 	callsite: location;
 	scope: fundec;
-	read_vars: LF.rhoSet;
-	write_vars: LF.rhoSet;
+	t_inf: fdinfo;
 	arguments: arg_descr list;
 }
 
@@ -53,6 +55,8 @@ let total_tasks = ref 0
 let total_args = ref 0
 (** total number of safe task arguments *)
 let total_safe_args = ref 0
+(** total number of scalar variables passed as task arguments *)
+let total_scalar_args = ref 0
 
 let next_task_id = ref 0
 let next_arg_id = ref 0
@@ -74,19 +78,18 @@ let location_to_string (loc: location) : string =
 		@param tname the name of the task
 		@param csite the callsite of the task (line in code)
 		@param scp the function in which the task is called (e.g. main)
-		@param args the list of the task arguments (acutals)
+		@param ti the fdinfo from typing
+		@param args the list of the task arguments (actuals)
 		@return a new task_descr
 *)	
 let make_task_descr (tname: string) (csite: location) (scp: fundec) 
-										(read_v: LF.rhoSet) (write_v: LF.rhoSet) 
-										(args: arg_descr list) : task_descr =
+																(ti: fdinfo) (args: arg_descr list) : task_descr =
 	incr next_task_id;
-	{	tid = !next_task_id;
+	{ taskid = !next_task_id;
 		taskname = tname;
 		callsite = csite;
 		scope = scp;
-		read_vars = read_v;
-		write_vars = write_v;
+		t_inf = ti;
 		arguments = args;
 	}
 
@@ -97,13 +100,14 @@ let make_task_descr (tname: string) (csite: location) (scp: fundec)
 		@param a_size the size of the argument used in the task
 		@return a new arg_descr
 *)
-let make_arg_descr (a_name: string) (loc: location) (iot: string) (a_inf: varinfo) (a_size: exp) 
+let make_arg_descr (a_name: string) (loc: location) (iot: string) (st: bool) (a_inf: varinfo) (a_size: exp) 
 									 (ld: loop_descr option) (ad: array_descr option) : arg_descr =
 	incr next_arg_id;
 	{ aid = !next_arg_id;
 		argname = a_name;
 		argloc = loc;
 		iotype = iot;
+		strided = st;
 		arginfo = a_inf;
 		argsize = a_size;
 		loop_d = ld;
@@ -111,6 +115,7 @@ let make_arg_descr (a_name: string) (loc: location) (iot: string) (a_inf: varinf
 		dependencies = ref [];
 		safe = false;
 		force_safe = false;
+		iotype_deduction = "inout"; (* init everything to inout, most conservative *)
 	}
 
 (** constructor of the loop_descr struct
@@ -157,7 +162,7 @@ let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 			[] -> raise Not_found
 		| (task::rest) -> (
 					try (
-						if(taskname == task.taskname && tid == task.tid) then (
+						if(taskname == task.taskname && tid == task.taskid) then (
 							List.find (fun arg -> 
 								if(argname == arg.argname) then (
 									true 
@@ -178,19 +183,6 @@ let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 
 (** Utility Functions **)
 
-(** return true if iotype is strided 
-			@param t the iotype of the argument
-			@return true if argument type is strided
-*)
-let is_strided_arg (t: string): bool = 
-  match t with 
-      "sinput"
-    | "sin"
-    | "soutput"
-    | "sout"
-    | "sinout" -> true
-    | _ -> false
-
 (** return true if iotype is input
 			@param t the iotype of the argument
 			@return true if argument is input
@@ -198,9 +190,7 @@ let is_strided_arg (t: string): bool =
 let is_in_arg (t: string): bool = 
   match t with 
       "input" (* legacy, remove *)
-    | "in"
-    | "sinput"
-    | "sin" -> true
+    | "in" -> true
     | _ -> false
 
 
@@ -209,7 +199,7 @@ let is_in_arg (t: string): bool =
 (* prints a task argument *)
 let print_arg arg = begin 
 	incr total_args;
-	ignore(E.log "\tArgument:%s(id:%d), iotype:%s, size:%a, " arg.argname arg.aid arg.iotype d_exp arg.argsize);
+	ignore(E.log "\tArgument:%s(id:%d), iotype:%s(%s), size:%a, " arg.argname arg.aid arg.iotype arg.iotype_deduction d_exp arg.argsize);
 	if(arg.safe) then (ignore(E.log "safe\n"); incr total_safe_args;)
 	else (ignore(E.log "not safe\n");) 
 end
@@ -225,9 +215,6 @@ let print_tasks (tasks: task_descr list) : unit =
 				ignore(E.log "Task:%s\n" task.taskname);
 				ignore(E.log "\tArgs:\n");
 				List.iter print_arg task.arguments; 
-				ignore(E.log "\tRead/Write vars:\n");
-				ignore(E.log "\tread-vars:%a\n" LF.d_rhoset task.read_vars);
-				ignore(E.log "\twrite-vars:%a\n" LF.d_rhoset task.write_vars);
 				print_tasks' rest
 			);
 		) in print_tasks' tasks
@@ -237,4 +224,4 @@ let print_tasks (tasks: task_descr list) : unit =
 		@return the task in doc format
 *)
 let d_task () (task: task_descr) : doc =
-	text(task.taskname^":"^(string_of_int task.tid))
+	text(task.taskname^":"^(string_of_int task.taskid))

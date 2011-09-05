@@ -216,7 +216,7 @@ let size_equal vi arg_e_size l_step =
 *)
 let array_bounds_safe (arg: arg_descr) : bool =
 	(* cannot handle strided args *)
-	if(is_strided_arg arg.iotype) then false
+	if arg.strided then false
 	else (
 		try (
 			if (not (isSome arg.loop_d)) then raise (Failure "Loop cannot be analyzed\n");		

@@ -12,7 +12,6 @@ LOCKSMITH_MODULES = \
 	uniqueness \
 	labelname \
 	labelflow \
-	sdam \
 	controlflow \
 	lockprofile \
 	lockstate \
@@ -21,6 +20,8 @@ LOCKSMITH_MODULES = \
 	semiunification \
 	locktype \
 	lockalloc \
+	ptatypes \
+	sdam \
 	scoop_util \
 	barrierstate \
 	loopa \

@@ -1,5 +1,6 @@
 open Cil
 open Sdam
+open Ptatypes
 
 module E = Errormsg
 module LT = Locktype
@@ -31,18 +32,18 @@ let options = [
 let taskScope1 = ref dummyFunDec
 let taskScope2 = ref dummyFunDec
 
-(** return rhoSet for arg
-			@param arg the argument whose aliasing set we seek
+(** return rhoSet for arg. If arg is a scalar it will return an empty set
+			@param argname the argument whose aliasing set we seek
 			@return the rhoSet with variables that alias with arg
 *)
-let get_rhoSet (arg: arg_descr) (scope: fundec) : LF.rhoSet =
+let get_rhoSet (argname: string) (scope: fundec) : LF.rhoSet =
   let env = List.assoc scope !PT.global_fun_envs in
-  let (argtype, argaddress) = PT.env_lookup arg.argname env in
+  let (argtype, argaddress) = PT.env_lookup argname env in
   (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
             LF.d_rho argaddress PT.d_tau argtype); *)
-  match argtype.PT.t with
-  | PT.ITPtr(_, r) -> LF.close_rhoset_pn (LF.RhoSet.singleton r)
-  | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" arg.argname);
+  match argtype.Ptatypes.t with
+  | Ptatypes.ITPtr(_, r) -> LF.close_rhoset_pn (LF.RhoSet.singleton r)
+  | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
 
@@ -53,8 +54,8 @@ let get_rhoSet (arg: arg_descr) (scope: fundec) : LF.rhoSet =
 let is_scalar (arg: arg_descr) (scope: fundec) : bool =
   let env = List.assoc scope !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup arg.argname env in
-  match argtype.PT.t with
-  | PT.ITPtr(_, r) -> false
+  match argtype.Ptatypes.t with
+  | Ptatypes.ITPtr(_, r) -> false
   | _ ->  true
 				 
 (** checks if arg1 aliases to arg2 
@@ -67,8 +68,8 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
      be aliased, but we treat them as if the were not) *)
   if((is_in_arg arg1.iotype) && (is_in_arg arg2.iotype)) then false
   else (
-    let set1 = get_rhoSet arg1 !taskScope1 in
-    let set2 = get_rhoSet arg2 !taskScope2 in
+    let set1 = get_rhoSet arg1.argname !taskScope1 in
+    let set2 = get_rhoSet arg2.argname !taskScope2 in
     (* get concrete rhoSet, meaning get only array and mallocs *)
 		(* FIXME: concrete set always empty???? *)
 		(* let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in *)
@@ -90,12 +91,17 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
 			@return unit
 *)
 exception Done
-let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_descr)  : unit =
+let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg: arg_descr)  : unit =
 	try (
-		BS.TaskSet.iter (fun task2 -> 
+		List.iter (fun task2 -> 
 			List.iter (fun arg' -> 
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
+				if(is_scalar arg task1.scope) then (
+					ignore(E.log "task:%s:%s is scalar and safe\n" task1.taskname arg.argname);
+					arg.safe <- true;
+					raise Done
+				);
 				(* do not check with self  if task is not in a loop *)
 				if (not (BS.isInLoop task1) && arg.aid == arg'.aid) then (
 					arg.safe <- true;
@@ -126,6 +132,20 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: BS.taskSet)) (arg: arg_
 		) tasks
 	) with Done -> ()
 
+
+(** returns a list of task descriptor for the corresponding task id's found
+			in the taskset
+			@param taskset the set of tasks from BS module
+			@param tasks_l a list of tasks descriptors to match with the taskid's
+			from the taskset
+			@return the list of tasks whose taskid's are present in the taskset
+*)
+exception Found_tasks of (task_descr list)
+let getTasks (taskset: BS.taskSet) (tasks_l: task_descr list) : task_descr list = 
+		if !debug then ignore(E.log "BS.taskset=%a\n" BS.d_taskset taskset);
+		BS.TaskSet.fold (fun (_, taskid) tasks -> 
+			List.append (List.find_all (fun t -> taskid == t.taskid) tasks_l) tasks
+		) taskset []
 	
 (**	find dependencies between task arguments
 			@param tasks the list of tasks in the prorgram
@@ -136,9 +156,10 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 			current task, and check between their arguments for dependencies. *)
 	let solve_task_deps task = (
 		if !debug then ignore(E.log "checking Task:%a\n" d_task task);
-		let tasks = BS.getTaskSet task in
+		let tasks = getTasks (BS.getTaskSet task) tasks_l in
 		(* 0. if sdam is disabled then mark only scalars as safe, do not run the analysis *)
-		if !debug then ignore(E.log "TaskSet:%a\n" BS.d_taskset tasks);
+		List.iter (fun task -> if !debug then ignore(E.log "TaskSet:%a\n" d_task task);
+		) tasks;
 		(* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
 		if (not (BS.isInLoop task)) then ( 
 			if !debug then ignore(E.log "Not self dependent\n");
@@ -149,6 +170,31 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 	) in List.iter solve_task_deps tasks_l
 
 
+let type_arguments (tasks_l: task_descr list) : unit =
+	List.iter (fun task ->
+		List.iter (fun arg -> 
+			let (read_vars, write_vars) = Labelflow.solve_chi_m task.t_inf.fd_chi in
+			let (argname, arg_t) = arg in 
+			(match arg_t.t with
+						ITPtr(_, r) -> (
+							if((LF.RhoSet.mem r read_vars) && (LF.RhoSet.mem r write_vars)) then (
+									ignore(E.log "Task:%s:formal:%s - inout\n" task.taskname argname);
+								)
+								else if((LF.RhoSet.mem r write_vars)) then (
+									ignore(E.log "Task:%s:formal:%s - out\n" task.taskname argname);
+								)
+								else if((LF.RhoSet.mem r read_vars)) then (
+									ignore(E.log "Task:%s:formal:%s - in\n" task.taskname argname);
+								)
+								else ( 
+									ignore(E.log "Task:%s:formal:%s - inconclusive\n" task.taskname argname);
+								)	
+						)
+					| _ -> ignore(E.log "Task:%s:formal:%s - in(scalar)\n" task.taskname argname);
+			)
+		) (task.t_inf).fd_arg_tau_list
+	) tasks_l
+
 (** print dependencies in graphiz format 
 		@param task_l is the list of tasks in the program
 		@param outf is the output channel/file
@@ -157,7 +203,7 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 let plot_task_dep_graph (task_l: task_descr list) (outf: out_channel) : unit = begin
 	(* print nodes *)
 	List.iter (fun task -> 
-		let tasknode = task.taskname^"_"^(string_of_int task.tid) in
+		let tasknode = task.taskname^"_"^(string_of_int task.taskid) in
 		Printf.fprintf outf "\tsubgraph cluster_%s{\n" tasknode;
 		Printf.fprintf outf "\t\tlabel=\"%s\";\n" task.taskname;
     Printf.fprintf outf "\t\tcolor=blue;\n";
@@ -191,7 +237,7 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   LF.done_adding ();
   if(disable_sdam) then (
   	List.iter(fun task -> 
-			List.iter (fun a -> if ( (is_scalar a task.scope) or a.force_safe) then (
+			List.iter (fun a -> if ( (is_scalar a task.scope) || a.force_safe) then (
 											a.safe <- true; 
                     ) else ( 
 											a.safe <- false;
@@ -200,9 +246,17 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   	) !tasks_l;
   )
   else (
+  	(* count scalar args *)
+    List.iter(fun task -> 
+			List.iter (fun a -> 
+				if (is_scalar a task.scope) then (incr total_scalar_args);
+			) task.arguments;
+  	) !tasks_l;
+		(* Run the analysis *)
 		BS.solve();
 		solve_task_dependencies (List.rev !tasks_l);
-  (* BS.solve(); *)
+		type_arguments (List.rev !tasks_l);
+  (* BS.solve(); *) 
 (*   if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
     Labelflow.print_graph !Dotpretty.outf;
@@ -232,7 +286,7 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
 			Dotpretty.close_file ();
 		);
 		print_tasks (List.rev !tasks_l);
-		ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_safe_args);
+		ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
 	)
 end
 

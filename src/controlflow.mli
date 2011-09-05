@@ -46,10 +46,8 @@ type phi_kind =
   | PhiVar
   | PhiForked
   | PhiPacked
-	| PhiLoopStart of Sdam.loop_descr
-	| PhiLoopEnd
 	| PhiBarrier
-	| PhiTask of Sdam.task_descr
+	| PhiTask of (string * int) (* taskname * tid *)
   | PhiNewlock of Labelflow.lock
   | PhiAcquire of Labelflow.lock
   | PhiRelease of Labelflow.lock

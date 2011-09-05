@@ -16,21 +16,28 @@ let options = [
 
 module Task =
   struct
-    type t = task_descr
+    type t = (string * int) (* taskname * tid *)
     
-		let compare (x: task_descr) (y: task_descr) : int =
-			if(x.tid > y.tid) then 1
-			else if(x.tid == y.tid) then 0
+		let compare (x: (string * int)) (y: (string * int)) : int =
+			let (_, xtid) = x in
+			let (_, ytid) = y in
+			if(xtid > ytid) then 1
+			else if(xtid == ytid) then 0
 			else -1
  
-    let equal (x: task_descr) (y: task_descr) : bool = 
-			if(x.tid == y.tid) then true
+    let equal (x: (string * int)) (y: (string * int)) : bool = 
+			let (_, xtid) = x in
+			let (_, ytid) = y in
+			if(xtid == ytid) then true
 			else false
 
-    let hash (x: task_descr) : int = x.tid
+    let hash (x: (string * int)) : int = 
+			let (_, xtid) = x in 
+			xtid
 
-		let task_to_string (x: task_descr) : string =
-			"task:"^(string_of_int x.tid)^":"^x.taskname;
+		let task_to_string (x: (string * int)) : string =
+			let (taskname, tid) = x in
+			"task:"^(string_of_int tid)^":"^taskname;
 
   end 
 
@@ -79,7 +86,6 @@ module BarrierStateTransfer =
 			| PhiBarrier -> (
 					Some TaskSet.empty
 				)
-			| PhiLoopStart _ -> ignore(E.log "Loop!!!\n"); Some acq
 			| _ -> Some acq
     end
 
@@ -118,19 +124,17 @@ let isInLoop (task: task_descr) : bool =
 	let match_task task p = (
 		let k = get_phi_kind p in
 		match k with 
-			PhiTask t when (task.tid == t.tid) -> true
+			PhiTask (_, tid) when (task.taskid == tid) -> true
 		| _ -> false
 	) in 
 	let task_phi = List.find (match_task task) !starting_phis in
 	let tasks = PhiHT.find BarrierStateTransfer.state_before_phi task_phi in
-	TaskSet.mem task tasks
+	TaskSet.mem (task.taskname, task.taskid) tasks
 
 (** return a set of tasks that can happen parallely with the task 
 			in question
 			@param task the task whose taskSet we seek
-			@return of a set of tasks that can happen in parallel
-			@exception Not_found if task is not included in any set 
-				(this is an error, it should not happen)
+			@return of a set of task id's and names that can happen in parallel
 *)	
 let getTaskSet (task: task_descr) : taskSet =
 	(* traverse states before barriers until we find the one that our task is in *)
@@ -141,7 +145,7 @@ let getTaskSet (task: task_descr) : taskSet =
 			(match k with 
 				PhiBarrier -> (
 					let tasks = PhiHT.find BarrierStateTransfer.state_before_phi curphi in
-					if (TaskSet.mem task tasks) then tasks 
+					if (TaskSet.mem (task.taskname, task.taskid) tasks) then tasks 
 					else find_set rest  
 				)
 			| _ -> find_set rest
@@ -150,7 +154,7 @@ let getTaskSet (task: task_descr) : taskSet =
 	) 
 	in 
 	try (find_set !starting_phis)
-	with Not_found -> TaskSet.empty (* if task is not found, we can presume that is never run *)
+	with Not_found -> TaskSet.empty (* if task is not found, we can presume that is never called *)
 	
 (** make the forward analysis of barriers 
 			@return unit

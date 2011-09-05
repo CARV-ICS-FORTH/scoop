@@ -42,6 +42,7 @@ open Lockutil
 open Labelflow
 open Scoop_util
 open Shared
+open Ptatypes 
  
 module E = Errormsg
 module U = Uref
@@ -57,12 +58,8 @@ module GB = Correlation
 module Conf = Locksettings
 module Q = Worklist.QueueWorklist
 module CF = Controlflow
-module BS = Barrierstate
 module PhiSet = CF.PhiSet
 module LP = Loopa 
-
-type phiSet = PhiSet.t
-type phi = CF.phi
 
 let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
@@ -219,130 +216,7 @@ end
 
 (*****************************************************************************)
 
-type tau_sig =
-    STVoid
-  | STInt
-  | STFloat
-  | STPtr of tau_sig
-  | STFun of tau_sig * tau_sig list
-  | STComp of bool * string
-  | STBuiltin_va_list
-  | STAbs of tau_sig
-  | STExists of tau_sig
-
-type tau_t =
-    ITVoid of vinfo option (* types flowing to and from void *)
-  | ITInt of bool (* true if number is 0 (can be used as NULL) *)
-  | ITFloat (* true if number is 0 (can be used as NULL) *)
-  | ITPtr of tau ref * rho
-  (*
-    functions:
-      1) a list of arguments (string: name of variable, tau: it's type),
-      2) input phi
-      3) input effect (really output-instantiated, because they flow backwards)
-      4) return type
-      5) output phi
-      6) output effect (is input-instantiated)
-   *)
-  | ITFun of fdinfo
-
-  (* struct/union *)
-  | ITComp of cinfo
-  | ITBuiltin_va_list of vinfo
-
-  (* universal type.  can safely assume tau is a ITFun type.
-   *)
-  | ITAbs of tau ref
-
-  | ITExists of existinfo
-
-and tau = {
-  t: tau_t;    (* the actual type structure *)
-  ts: tau_sig; (* summary used as a hash *)
-  tid: int;    (* unique identifier used to compare in O(1) *)
-  tau_free_rho: rho option;  (* obsolete, used to lazily compute the free labels of a type *)
-}
-
-  (* existential types. tau usually is a ITComp, but so far I think
-     the implementation is generic.
-       --no it's not, because of the way we mark quantified stuff.
-   *)
-and existinfo = {
-  mutable exist_tau: tau;
-  exist_effect: effect;
-  exist_phi: phi;
-  mutable exist_abs: exp list;
-  mutable exist_rhoset: rhoSet;
-  mutable exist_effectset: effectSet;
-  mutable exist_initialized: bool;
-}
-and fdinfo = {
-  mutable fd_arg_tau_list: (string * tau) list;
-  fd_input_phi: phi;
-  fd_input_effect: effect;
-  mutable fd_output_tau: tau;
-  fd_output_phi: phi;
-  fd_output_effect: effect;
-  fd_chi: chi;
-}
-
-and field_set = (rho * tau) StrHT.t
-
-and compdata = {
-  cinfo_id: int;
-  compinfo: compinfo;
-
-  (* used to print (semi) readable information about labels in the fields *)
-  mutable cinfo_label_name : LN.label_name;
-
-  mutable cinfo_loc: Cil.location;
-
-  (* these are used in case this struct is conflated *)
-  mutable cinfo_from_rho: rho option;
-  mutable cinfo_to_rho: rho option;
-
-  cinfo_field_rho: rho option; (* only used when field-insensitive *)
-
-  cinfo_fields: field_set;
-
-  mutable cinfo_known: (tau_sig * tau) list;
-  mutable cinfo_alloc: Cil.location list;
-  mutable cinfo_inst_in_edges: cinfo InstHT.t;
-  mutable cinfo_inst_out_edges: cinfo InstHT.t;
-}
-
-and voiddata_t =
-  | ListTypes of (tau_sig * tau) list
-  | ConflatedRho
-
-and voiddata = {
-    vinfo_id: int;
-    vinfo_rho: rho option;      (* only used if void* conflation on *)
-    vinfo_phi_in: phi option;   (* only used if void* conflation on *)
-    vinfo_phi_out: phi option;  (* only used if void* conflation on *)
-    mutable vinfo_loc: Cil.location;
-    mutable vinfo_known: (tau_sig * tau) list;
-    mutable vinfo_alloc: Cil.location list;
-    mutable vinfo_inst_in_edges: vinfo InstHT.t;
-    mutable vinfo_inst_out_edges: vinfo InstHT.t;
-
-    mutable vinfo_types: voiddata_t;  (* types this void stands for *)
-}
-
-and cinfo = compdata U.uref
-and vinfo = voiddata U.uref
-
-type uniq = 
-    UnqVar      (* a variable that is unique (both lval and storage) *)
-  | UnqStorage  (* storage pointed to be a unique pointer *)
-  | NotUnq      (* non-unique storage *)
-
-type env = {
-  goto_tbl : (stmt, gamma) Hashtbl.t;
-  var_map : (tau * rho) Strmap.t;
-  unpacked_map : existinfo Strmap.t;
-}
-and gamma = (env * phi * effect)
+(* XXX: types moved to ptatype_type.ml *)
 
 type special_function_t = exp list -> lval option -> (tau*uniq) list -> env ->
                           phi -> effect -> gamma
@@ -2477,7 +2351,7 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         let tmp_size = attrParamToExp' varsize in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc ("s"^iotyp) var_i tmp_size loop_d array_d in
+        let arg_d = Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d in
         (iotyp, loc, arg_d::args_l, loop_d)
       )
       (* Brand new stride syntax... *)
@@ -2486,21 +2360,21 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         let tmp_size = attrParamToExp' bs_c in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc ("s"^iotyp) var_i tmp_size loop_d array_d in
+        let arg_d = Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d in
         (iotyp, loc, arg_d::args_l, loop_d)
        )
     | AIndex(ACons(varname, []), varsize) -> (
         let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp var_i tmp_size loop_d array_d in
+        let arg_d = Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d in
         (iotyp, loc, arg_d::args_l, loop_d)
       )
     | ACons(varname, []) -> (
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let tmp_size = SizeOfE (Lval (var var_i)) in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp var_i tmp_size loop_d array_d in
+        let arg_d = Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d in
         (iotyp, loc, arg_d::args_l, loop_d)
       )
     | _ -> (
@@ -2538,37 +2412,31 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
 (* 		LP.process_call_actuals acts loc !currSid task_d loop_d; *)
 			try (
 		    let (tau, _) = env_lookup vi.vname env in
-		    let (read_vars, write_vars) = (
-				  match tau.t with
-						ITAbs tau_ref -> (
-							match !tau_ref.t with
-								ITFun fd -> (
-									ignore(E.log "found task:%s in enviroment\n" vi.vname);
-									let (read, write) = Labelflow.solve_chi_m fd.fd_chi in
-									ignore(E.log "read=%a\n" d_rhoset read);
-									ignore(E.log "write=%a\n" d_rhoset write);
-									(read, write)
+				let fd = (
+					match tau.t with
+							ITAbs tau_ref -> (
+								match !tau_ref.t with
+								ITFun fd -> fd
+							| _ -> 	(
+									ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
+									raise Ignore_pragma
 								)
-							| _ -> (
-								ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ingoring pragma\n" d_loc loc);
+							)
+						| _ -> (
+								ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
 								raise Ignore_pragma
-							) 		
-						)
-					|	_ -> (
-						ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ingoring pragma\n" d_loc loc);
-						raise Ignore_pragma
-					) 
-		   ) in
-				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction read_vars write_vars args_l in      
+							)
+				) in
+				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd args_l in      
 				Sdam.addTask task_d;
 				task_d
 			) with Not_found -> (
-					ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ingoring pragma\n" d_loc loc);
+					ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
 					raise Ignore_pragma
 				)
 		)
   | _ -> ( 
-			ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ingoring pragma" d_loc loc); 
+			ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ignoring pragma" d_loc loc); 
 			raise Ignore_pragma
 		)
 end
@@ -3162,7 +3030,7 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
 				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
 				let task_d = 
 				handle_css_task (List.hd il) env args loc loop_d in	
-				let task_phi = make_phi "Task" (CF.PhiTask task_d) in
+				let task_phi = make_phi "Task" (CF.PhiTask (task_d.taskname, task_d.taskid)) in
 				CF.phi_flows phi task_phi;
 				CF.starting_phis := task_phi::!CF.starting_phis;
 				((env, task_phi, eff), (kind, loop_d))
