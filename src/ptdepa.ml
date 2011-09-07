@@ -51,6 +51,14 @@ let get_rhoSet (argname: string) (scope: fundec) : LF.rhoSet =
 			@param arg the argument we want to check
 			@return true if arg is scalar
 *)
+let is_scalar2 (arg: arg_descr) (scope: fundec) : bool =
+  let env = List.assoc scope !PT.global_fun_envs in
+  let (argtype, argaddress) = PT.env_lookup arg.argname env in
+  match argtype.Ptatypes.t with
+  | Ptatypes.ITPtr(_, r) -> ignore (E.log "argument %s is of pointer type\n" arg.argname); false
+	| Ptatypes.ITAbs _ -> ignore (E.log "argument %s is of abstract type\n" arg.argname); false
+  | _ ->  ignore (E.log "argument %s is of unknown type\n" arg.argname); true
+	
 let is_scalar (arg: arg_descr) (scope: fundec) : bool =
   let env = List.assoc scope !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup arg.argname env in
@@ -93,15 +101,15 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
 exception Done
 let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg: arg_descr)  : unit =
 	try (
+		if(is_scalar arg task1.scope) then (
+			if !debug then ignore(E.log "Argument:%s(%d) is scalar and safe\n" arg.argname arg.aid);
+			arg.safe <- true;
+			raise Done
+		);
 		List.iter (fun task2 -> 
 			List.iter (fun arg' -> 
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
-				if(is_scalar arg task1.scope) then (
-					ignore(E.log "task:%s:%s is scalar and safe\n" task1.taskname arg.argname);
-					arg.safe <- true;
-					raise Done
-				);
 				(* do not check with self  if task is not in a loop *)
 				if (not (BS.isInLoop task1) && arg.aid == arg'.aid) then (
 					arg.safe <- true;
@@ -110,7 +118,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
 						let res = not (alias arg arg') || LP.array_bounds_safe arg in
 						if(arg.force_safe && not res) then (
-							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
+							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
 							raise Done
 						);
 						arg.safe <- res;
@@ -118,7 +126,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 					else (
 						let res = not (alias arg arg') in
 						if(arg.force_safe && not res) then (
-							ignore(E.log "Warning:Argument has manually been marked as safe but the analysis found dependencies!\n");
+							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
 							raise Done
 						);
 						arg.safe <- res;
@@ -244,6 +252,7 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
 										)
 			) task.arguments
   	) !tasks_l;
+		print_tasks (List.rev !tasks_l);
   )
   else (
   	(* count scalar args *)
