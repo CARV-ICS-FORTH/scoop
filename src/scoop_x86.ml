@@ -354,6 +354,9 @@ let make_tpc_func (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp l
   let map_fun = (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (List.rev !stmts)) in
   f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
 
+  (* inline f_new  *)
+(*   f_new.svar.vinline <- true; *)
+
   incr func_id;
   (f_new, args_n)
 )
