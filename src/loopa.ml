@@ -161,7 +161,25 @@ let get_array_index_info (array_d: array_descr) : varinfo =
 			Lval(Var(vi), NoOffset) -> vi
 		|	_ -> if !debug then ignore(E.log "Array index too complicated\n"); raise (Failure "Index too complicated\n")
 
-	
+(** checks if lv is a variable
+			@param lv the lhost of an lvalue
+			@return true if lv is a variable, else false
+*)
+let isVar (lv: lhost) : bool =
+	match lv with 
+		Var(_) -> true
+	| _ -> false
+
+(** returns the varinfo of lv
+			@param lv the lhost of an lvalue
+			@return the varinfo of lv
+			@exception raise failure if lv is not a variable
+*)	
+let getVar (lv: lhost) : varinfo =
+	match lv with 
+		Var(vi) -> vi
+	| _ -> raise (Failure "")
+		
 (** comares the sizes of the the task argument consumed by the task with the
 		loop step.
 		@param vi the variable info of the task argument
@@ -203,8 +221,24 @@ let size_equal vi arg_e_size l_step =
 							TPtr(t', _) when ((compare v v') == 0 && t == t') -> true
 						| _ when ((compare v v') == 0 && t == vi.vtype) -> true  
 						| _ -> false
-					)
+					) 
 				|	_ -> false
+			)
+			| Lval(lh, _) -> (
+					match e_size with
+					BinOp(Mult, Lval(lh', _), SizeOf(t), res_t) -> (
+						if(not (isVar lh) || not (isVar lh)) then false
+						else (
+							let li = getVar lh in
+							let li' = getVar lh' in
+							if !debug then ignore(E.log "lval*sizeof(x) | e:%a - e':%a\n" d_exp l_step d_exp e_size);
+							match vi.vtype with 
+								TPtr(t', _) when (li  == li'  && t == t') -> true
+							| _ when (li  == li' && t == vi.vtype) -> true  
+							| _ -> false
+						)
+					) 
+					| _ -> false
 			)
 		| _ -> false 
 	)

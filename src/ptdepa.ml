@@ -179,6 +179,7 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 
 
 let type_arguments (tasks_l: task_descr list) : unit =
+	ignore(E.log "Typing formal arguments\n");
 	List.iter (fun task ->
 		List.iter (fun arg -> 
 			let (read_vars, write_vars) = Labelflow.solve_chi_m task.t_inf.fd_chi in
@@ -244,17 +245,21 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
   PT.generate_constraints f;
   LF.done_adding ();
   if(disable_sdam) then (
+  	ignore(E.log "SDAM disabled\n");
   	List.iter(fun task -> 
 			List.iter (fun a -> if ( (is_scalar a task.scope) || a.force_safe) then (
-											a.safe <- true; 
-                    ) else ( 
+											if(is_scalar a task.scope) then incr total_scalar_args;
+                      a.safe <- true; 
+                    ) else (
 											a.safe <- false;
 										)
 			) task.arguments
   	) !tasks_l;
 		print_tasks (List.rev !tasks_l);
+    ignore(E.log "SCOOP: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
   )
   else (
+  	ignore(E.log "SDAM enabled\n");
   	(* count scalar args *)
     List.iter(fun task -> 
 			List.iter (fun a -> 
