@@ -227,15 +227,18 @@ let size_equal vi arg_e_size l_step =
 			| Lval(lh, _) -> (
 					match e_size with
 					BinOp(Mult, Lval(lh', _), SizeOf(t), res_t) -> (
-						if(not (isVar lh) || not (isVar lh)) then false
+						if(not (isVar lh) || not (isVar lh')) then false
 						else (
 							let li = getVar lh in
 							let li' = getVar lh' in
-							if !debug then ignore(E.log "lval*sizeof(x) | e:%a - e':%a\n" d_exp l_step d_exp e_size);
-							match vi.vtype with 
-								TPtr(t', _) when (li  == li'  && t == t') -> true
-							| _ when (li  == li' && t == vi.vtype) -> true  
-							| _ -> false
+							if(li.vaddrof || li'.vaddrof) then false
+							else (
+								if !debug then ignore(E.log "lval*sizeof(x) | e:%a - e':%a\n" d_exp l_step d_exp e_size);
+								match vi.vtype with 
+									TPtr(t', _) when (li  == li'  && t == t') -> true
+								| _ when (li  == li' && t == vi.vtype) -> true  
+								| _ -> false
+							)
 						)
 					) 
 					| _ -> false
