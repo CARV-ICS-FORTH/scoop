@@ -79,9 +79,13 @@ val empty_phi : phi
  * graph construction
  *********************)
 
-(* creates a fresh phi node, corresponding to !currentLoc program point,
+(* creates a fresh phi node, corresponding to !currentLoc program point
  *)
 val make_phi : string -> phi
+
+(* returns how many phi nodes have been constructed
+ *)
+val count_phi : unit -> int
 
 (* info *)
 val function_of_phi : phi -> Cil.fundec option
