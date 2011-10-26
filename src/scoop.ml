@@ -134,7 +134,7 @@ let options =
     "--disable-sdam",
       Arg.Set(dis_sdam),
       " SCOOP: Disable the static dependence analysis module";
-  ]
+  ] @ Ptdepa.options
 
 (* create 1 global list (the spe output file) *)
 (** holds the processed tasks *)
