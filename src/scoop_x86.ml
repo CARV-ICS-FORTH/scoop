@@ -125,6 +125,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
     (* uint32_t block_index_start=this->closure.total_arguments; *)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
+    let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_t2string arg_type)^"Attribute_Task") in
     if (is_strided arg_type) then (
       let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i_m)))) in
       let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i_m)))) in
@@ -162,8 +163,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
   (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
   (*     ilt := (closure_flag::!ilt; *)
   (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
-      let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-      let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer (arg_t2int arg_type); arg_elsz] in
+(* TODO integer 0 is for non reductive argument FIXME *)
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; arg_elsz] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
       let start = [mkStmtOneInstr (Set(j_var, zero, locUnknown))] in
@@ -213,8 +214,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
   (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
   (*     ilt := (closure_flag::!ilt; *)
   (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
-      let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
-      let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval block_size ] in
+(* TODO integer 0 is for non reductive argument FIXME *)
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; Lval block_size ] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
       let start = [mkStmtOneInstr (Set(e_addr, CastE(uint64_t, Lval arg_addr), locUnknown))] in
@@ -234,7 +235,8 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
       ilt := [];
   (*     ilt := [closure_flag]; *)
   (*     ilt := Set(size, sub, locUnknown)::!ilt; *)
-      let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_t2integer arg_type; Lval size] in
+(* TODO integer 0 is for non reductive argument FIXME *)
+      let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; Lval size] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
       let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in

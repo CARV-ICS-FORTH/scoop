@@ -169,6 +169,8 @@ val is_dataflow_tag : string -> bool
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h) int *)
 val arg_t2int : arg_t -> int
 
+(* Converts the arg_t to the corresponding string IN/OUT/INOUT *)
+val arg_t2string : arg_t -> string
 
 (******************************************************************************)
 (*                         Copy Function                                      *)

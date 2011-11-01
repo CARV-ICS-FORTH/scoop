@@ -232,8 +232,6 @@ let d_phiset () (ps: phiSet) : doc =
 (* a counter used to generate unique phi_ids *)
 let phi_no : int ref = ref 0
 
-let count_phi () : int = !phi_no
-
 (* creates a fresh phi node, corresponding to !currentLoc program point,
  * with kind k
  *)

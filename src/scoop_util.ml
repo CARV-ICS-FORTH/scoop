@@ -514,12 +514,22 @@ let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
 (** Maps the arg_t to a number as defined by the TPC headers
     @return the corrensponding number *)
 let arg_t2int = function
+    | SIn (*-> 5*)
     | In -> 1
+    | SOut (*-> 6*)
     | Out -> 2
+    | SInOut (*-> 7*)
     | InOut -> 3
-    | SIn -> 1 (*5*)
-    | SOut -> 2 (*6*)
-    | SInOut -> 3 (*7*)
+
+(** Returns a string discribing the argument as IN/OUT/INOUT
+    @return the corrensponding string *)
+let arg_t2string = function
+    | SIn
+    | In -> "IN"
+    | SOut
+    | Out -> "OUT"
+    | SInOut
+    | InOut -> "INOUT"
 
 (** Checks if tag is data annotation.
 		@param typ the dataflow annotation

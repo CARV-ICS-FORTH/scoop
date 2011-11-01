@@ -14,8 +14,6 @@ let do_graph_out = ref false
 let do_task_graph_out = ref false
 
 let debug = ref false
-let infer = ref false
-let depstats = ref false
 
 let options = [
   "--save-graph",
@@ -29,14 +27,6 @@ let options = [
   "--debug-ptdepa",
   Arg.Set(debug),
   "SDAM-Pointer analysis: debugging output.";
-
-  "--infer-args",
-  Arg.Set(infer),
-  "Infer the footprint effect of all task arguments";
-
-  "--dep-stats",
-  Arg.Set(depstats),
-  "Report the size of the constraint graph";
 ]
 
 let taskScope1 = ref dummyFunDec
@@ -128,7 +118,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
 						let res = not (alias arg arg') || LP.array_bounds_safe arg in
 						if(arg.force_safe && not res) then (
-							ignore(E.warn "Warning: Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
+							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
 							raise Done
 						);
 						arg.safe <- res;
@@ -136,7 +126,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 					else (
 						let res = not (alias arg arg') in
 						if(arg.force_safe && not res) then (
-							ignore(E.warn "Warning: Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
+							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
 							raise Done
 						);
 						arg.safe <- res;
@@ -247,15 +237,15 @@ end
 *)
 let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
-	if !debug then ignore(E.log "SDAM:Initializing Cil...\n");
+	ignore(E.log "SDAM:Initializing Cil...\n");
   Rmtmps.removeUnusedTemps f;
   Rmalias.removeAliasAttr f;
 	Cfg.computeFileCFG f;
-  if !debug then ignore(E.log "SDAM:Finding data dependencies...\n");
+  ignore(E.log "SDAM:Finding data dependencies...\n");
   PT.generate_constraints f;
   LF.done_adding ();
   if(disable_sdam) then (
-  	if !debug then ignore(E.log "SDAM disabled\n");
+  	ignore(E.log "SDAM disabled\n");
   	List.iter(fun task -> 
 			List.iter (fun a -> if ( (is_scalar a task.scope) || a.force_safe) then (
 											if(is_scalar a task.scope) then incr total_scalar_args;
@@ -266,10 +256,10 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
 			) task.arguments
   	) !tasks_l;
 		print_tasks (List.rev !tasks_l);
-    if !debug then ignore(E.log "SCOOP: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
+    ignore(E.log "SCOOP: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
   )
   else (
-  	if !debug then ignore(E.log "SDAM enabled\n");
+  	ignore(E.log "SDAM enabled\n");
   	(* count scalar args *)
     List.iter(fun task -> 
 			List.iter (fun a -> 
@@ -279,7 +269,7 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
 		(* Run the analysis *)
 		BS.solve();
 		solve_task_dependencies (List.rev !tasks_l);
-		if !infer then type_arguments (List.rev !tasks_l);
+		type_arguments (List.rev !tasks_l);
   (* BS.solve(); *) 
 (*   if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
@@ -302,19 +292,15 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
     Lockstate.print_graph !Dotpretty.outf;
     Dotpretty.close_file ();
   end; *)
-    if !depstats then (
-      ignore(E.log "SDAM: %d control-flow nodes\n" (Controlflow.count_phi ()) );
-      ignore(E.log "SDAM: %d label-flow nodes\n" (LF.count_rho ()) );
-    );
-    if !debug then ignore(E.log "SDAM: static dependence analysis has now completed.\n");
-    (*   count_safe_args !task_dep_l; *)
+  ignore(E.log "SDAM: static dependence analysis has now completed.\n");
+(*   count_safe_args !task_dep_l; *)
 		if !do_task_graph_out then (
 			Dotpretty.init_file "task-dep.dot" "task dependencies";
 			plot_task_dep_graph !tasks_l !Dotpretty.outf;
 			Dotpretty.close_file ();
 		);
 		print_tasks (List.rev !tasks_l);
-		if !debug then ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
+		ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
 	)
 end
 
