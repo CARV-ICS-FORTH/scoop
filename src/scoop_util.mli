@@ -257,14 +257,19 @@ val make_null_task_table :
 
 val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stmt
 
-(** Comparator for use with [List.sort] *)
+(** Comparators for use with [List.sort] *)
 val comparator : (int * Cil.exp) -> (int * Cil.exp) -> int
 
 val sort_args : arg_descr -> arg_descr -> int
 
 val sort_args_n : (int*arg_descr) -> (int*arg_descr) -> int
 
+(** assigns to each argument description its place in the original argument list *)
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
+(** Preprocesses a header file and merges it with a file. *)
 val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
     string -> unit
+
+(** Prints {e msg} if {e flag} is true *)
+val dbg_print : bool ref -> string -> unit

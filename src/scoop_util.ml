@@ -990,3 +990,12 @@ let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
 )
+
+(** Prints {e msg} if {e flag} is true
+  @param flag the debug flag
+  @param msg the message to be printed
+*)
+let dbg_print (flag: bool ref) (msg: string): unit = (
+  if !flag then
+    ignore(E.log "%s\n" msg);
+)

@@ -51,9 +51,9 @@ module CG = Callgraph
 module Lprof = Lockprofile
 
 (* defining some Trace shortcuts *)
-let trace = T.trace "scoop"
+(*let trace = T.trace "scoop"
 let tracei = T.tracei "scoop"
-let traceu = T.traceu "scoop"
+let traceu = T.traceu "scoop"*)
 
 (* defining globals *)
 (** holds the TPC's SPEs queue size *)
@@ -61,7 +61,7 @@ let queue_size = ref "0"
 (** flag for more prints by SCOOP *)
 let debug = ref false
 (** flag for some tracing prints of SCOOP *)
-let dotrace = ref false
+(*let dotrace = ref false*)
 (** flag to support multithreading or not *)
 let thread = ref false
 (** the prefix of the files to be produced by SCOOP. Defaults to "final" *)
@@ -89,7 +89,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod/cellBlade/cellgodBlade).";
+      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod/cellBlade/cellgodBlade/XPPFX).";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -103,9 +103,9 @@ let options =
       Arg.Set(debug),
       " SCOOP: Print debugging information.";
 
-    "--trace",
+(*    "--trace",
       Arg.Set(dotrace),
-      " SCOOP: Trace SCOOP.";
+      " SCOOP: Trace SCOOP.";*)
 
     "--out-name",
       Arg.String(fun s -> out_name := s),
@@ -217,163 +217,141 @@ class findSPUDeclVisitor cgraph = object
     let prags = s.pragmas in
     if (prags <> []) then (
       match (List.hd prags) with
-        (Attr("css", AStr("wait")::rest), loc) -> (
-          (* Support #pragma css wait on(...) *)
-          match rest with 
-              ACons("on", exps)::_ -> (* TODO wait on *) DoChildren
-            | AStr("all")::_ -> ( (* wait all *)
+        (* Support #pragma css ... *)
+        (Attr("css", rest), loc) -> (
+          match rest with
+            (* Support #pragma css wait on(...) *)
+              AStr("wait")::(ACons("on", exps)::_) -> (* TODO wait on *) DoChildren
+            (* Support #pragma css wait all *)
+            | AStr("wait")::(AStr("all")::_)
+            (* Support #pragma css barrier*)
+            | AStr("barrier")::_ -> (
                 let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
                 let instr = Call (None, Lval (var twa), [], locUnknown) in
                 let s' = {s with pragmas = List.tl s.pragmas} in
                 ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
             )
-            | _ -> ignore(warnLoc loc "Ignoring wait pragma"); DoChildren
+            (* Support #pragma css start(...) *)
+            | ACons("start", exp::rest)::_ -> (
+              let ts = find_function_sign (!ppc_file) "tpc_init" in
+              let args =
+                if (!arch="cell") then
+                  [attrParamToExp !ppc_file loc exp]
+                else if (!arch="cellgod") then
+                  attrParamToExp !ppc_file loc exp::[attrParamToExp !ppc_file loc (L.hd rest)]
+                else (
+                  match rest with
+                    first::second::_ -> attrParamToExp !ppc_file loc exp::(attrParamToExp !ppc_file loc first::[attrParamToExp !ppc_file loc second])
+                    | _ -> E.s (errorLoc loc "#pragma css start takes 3 arguments")
+                )
+              in
+              let instr = Call (None, Lval (var ts), args, locUnknown) in
+              let s' = {s with pragmas = List.tl s.pragmas} in
+              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+            )
+            (* Support #pragma css finish *)
+            | AStr("finish")::_ -> (
+              (* Support #pragma css finish*)
+              let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
+              let instr = Call (None, Lval (var ts), [], locUnknown) in
+              let s' = {s with pragmas = List.tl s.pragmas} in
+              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+            )
+            (* warn about ignored #pragma css ... directives *)
+            | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr("css", rest))); DoChildren
         )
-        | (Attr("css", AStr("barrier")::_), _) -> (
-          (* Support #pragma css barrier(...) *)
-          let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
-          let instr = Call (None, Lval (var twa), [], locUnknown) in
-          let s' = {s with pragmas = List.tl s.pragmas} in
-          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-        )
-        | (Attr("css", ACons("start", exp::rest)::_), loc) -> (
-          (* Support #pragma css start(processes) *)
-          let ts = find_function_sign (!ppc_file) "tpc_init" in
-          let args = 
-            if (!arch="cell") then
-              [attrParamToExp !ppc_file loc exp]
-            else if (!arch="cellgod") then
-              attrParamToExp !ppc_file loc exp::[attrParamToExp !ppc_file loc (L.hd rest)]
-            else (
-              match rest with
-                first::second::_ -> attrParamToExp !ppc_file loc exp::(attrParamToExp !ppc_file loc first::[attrParamToExp !ppc_file loc second])
-                | _ -> E.s (errorLoc loc "#pragma css start takes 3 arguments")
-              )
-          in
-          let instr = Call (None, Lval (var ts), args, locUnknown) in
-          let s' = {s with pragmas = List.tl s.pragmas} in
-          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-        )
-        | (Attr("css", AStr("finish")::rest), loc) -> (
-          (* Support #pragma css finish*)
-          let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
-          let instr = Call (None, Lval (var ts), [], locUnknown) in
-          let s' = {s with pragmas = List.tl s.pragmas} in
-          ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-        )
-        | _ -> ();
+        | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive");
       match s.skind with 
         Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
           match (List.hd prags) with 
-            (* Support for CellSs syntax *)
-            | (Attr("css", sub::rest), loc) -> (
-              match sub with
-                (* Support #pragma css task... *)
-                AStr("task")-> (
-                  let funname = vi.vname in
-                  let (is_hp, args) = scoop_process rest loc in
-                  if (!debug) then
-                    ignore(E.log "Found task \"%s\"" funname);
-                  let rest_f new_fd = 
+            (* Support #pragma css task... *)
+            (Attr("css", AStr("task")::rest), loc) -> (
+              let funname = vi.vname in
+              let (is_hp, args) = scoop_process rest loc in
+              dbg_print debug ("Found task \""^funname^"\"");
+              let rest_f new_fd =
+                (* add arguments to the call *)
+                let call_args = if (!arch <> "x86" && !arch <> "XPPFX") then
                     let expS2P = expScalarToPointer loc in
-                    (* add arguments to the call *)
-                    let call_args = if (!arch <> "x86") then
-                        ref (L.rev (L.map expS2P oargs))
-                      else
-                        ref (L.rev oargs)
-                    in
-(*                         let args_num = (List.length args)-1 in *)
-                    
-                    (* push call args from the start...
-                    for i = 0 to args_num do
-                      let (vname, _, _, _, _) = List.nth args i in
-                      call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vname))::!call_args;
-                    done;*)
+                    ref (L.rev (L.map expS2P oargs))
+                  else
+                    ref (L.rev oargs)
+                in
 
-                    (* for each actual argument of the call find it's (pragma)
-                        declared size and push it to the argument list of them
-                        new call *)
-                    let rec getSizeNstride ex = match ex with
-                      Lval ((Var(vi),_))
-                      | StartOf ((Var(vi),_)) -> (
-                        try
-                          let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
-                          call_args := vsize::!call_args;
-                          if (is_strided arg_type) then (
-                            call_args := velsz::!call_args;
-                            call_args := vels::!call_args;
-                          );
-                        with Not_found ->
-                          E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
-                      )
-                      | CastE (_, ex') -> getSizeNstride ex';
-                      (* The following are not supported yet *)
-                      | Const _ -> raise (Invalid_argument "Const");
-                      | SizeOf _ -> raise (Invalid_argument "Sizeof");
-                      | SizeOfE _ -> raise (Invalid_argument "SizeofE");
-                      | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
-                      | AlignOf _ -> raise (Invalid_argument "Alignof");
-                      | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
-                      | UnOp _ -> raise (Invalid_argument "UnOp");
-                      | BinOp _ -> raise (Invalid_argument "BinOp");
-                      | AddrOf _ -> raise (Invalid_argument "AddrOf");
-                      | _ -> raise (Invalid_argument "Uknown");
-                    in
-                    L.iter getSizeNstride oargs;
-
-(*                        for i = 0 to args_num do
-                      let (_, arg_type, vsize, velsz, vels) = List.nth args i in
-(*                           call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vsize))::!call_args; *)
-                      call_args := vsize::!call_args;
-                      if (is_strided arg_type) then
-                        (*call_args := Lval(var (find_scoped_var !currentFunction !ppc_file vels))::
-                          Lval(var (find_scoped_var !currentFunction !ppc_file velsz))::!call_args;*)
-                        call_args := vels::velsz::!call_args;
-                    done;*)
-                    let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
-                    let call = mkStmt (Instr(instr::restInst)) in
-                    ChangeTo(call)
-                  in
-                  try
-                    (* fast workaround *)
-                    if (!arch = "cell" ) then
-                      (* check if we have seen this function before *)
-                      let (new_fd, _, _) = List.assoc funname !spu_tasks in
-                      rest_f new_fd
-                    else
-                      raise Not_found
-                  with Not_found -> (
-                    let rest_f2 var_i = 
-                      (* select the function to create the custom tpc_calls *)
-                      let make_tpc_funcf = match !arch with
-                          "cell" -> Scoop_cell.make_tpc_func
-                        | "cellgod" -> Scoop_cellgod.make_tpc_func
-                        | _ ->  Scoop_x86.make_tpc_func is_hp in
-                      let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
-                      add_after_s !ppc_file var_i.vname new_fd;
-                      spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
-                      rest_f new_fd in
-                    (* try to find the function definition *)
+                (* for each actual argument of the call find it's (pragma)
+                    declared size and push it to the argument list of the
+                    new call *)
+                let rec getSizeNstride = function
+                  | Lval ((Var(vi),_))
+                  | StartOf ((Var(vi),_)) -> (
                     try
-                      (* checking for the function definition *)
-                      let task = find_function_fundec_g (!ppc_file.globals) funname in
-                      if (!arch <> "x86") then
-                        (* copy itself and the callees *)
-                        deep_copy_function funname callgraph !spu_file !ppc_file;
-                      rest_f2 task.svar
-                    (* else try to find the function signature/prototype *)
-                    with Not_found -> (
-                      let task = find_function_sign (!ppc_file) funname in
-                      rest_f2 task
-                    )
+                      let (arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
+                      call_args := vsize::!call_args;
+                      if (is_strided arg_type) then (
+                        call_args := velsz::!call_args;
+                        call_args := vels::!call_args;
+                      );
+                    with Not_found ->
+                      if (!arch <> "x86") then (* However we would really like to have some similar check for x86 *)
+                        E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
                   )
+                  | CastE (_, ex') -> getSizeNstride ex';
+                  (* The following are not supported yet *)
+                  | Const _ -> raise (Invalid_argument "Const");
+                  | SizeOf _ -> raise (Invalid_argument "Sizeof");
+                  | SizeOfE _ -> raise (Invalid_argument "SizeofE");
+                  | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+                  | AlignOf _ -> raise (Invalid_argument "Alignof");
+                  | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
+                  | UnOp _ -> raise (Invalid_argument "UnOp");
+                  | BinOp _ -> raise (Invalid_argument "BinOp");
+                  | AddrOf _ -> raise (Invalid_argument "AddrOf");
+                  | _ -> raise (Invalid_argument "Uknown");
+                in
+                L.iter getSizeNstride oargs;
+
+                let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
+                let call = mkStmt (Instr(instr::restInst)) in
+                ChangeTo(call)
+              in
+              try
+                (* fast workaround *)
+                if (!arch = "cell" ) then
+                  (* check if we have seen this function before *)
+                  let (new_fd, _, _) = List.assoc funname !spu_tasks in
+                  rest_f new_fd
+                else
+                  raise Not_found
+              with Not_found -> (
+                let rest_f2 var_i =
+                  (* select the function to create the custom tpc_calls *)
+                  let make_tpc_funcf = match !arch with
+                      "cell" -> Scoop_cell.make_tpc_func
+                    | "cellgod" -> Scoop_cellgod.make_tpc_func
+                    | _ ->  Scoop_x86.make_tpc_func is_hp in
+                  let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
+                  add_after_s !ppc_file var_i.vname new_fd;
+                  spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
+                  rest_f new_fd in
+                (* try to find the function definition *)
+                try
+                  (* checking for the function definition *)
+                  let task = find_function_fundec_g (!ppc_file.globals) funname in
+                  if (!arch <> "x86") then
+                    (* copy itself and the callees *)
+                    deep_copy_function funname callgraph !spu_file !ppc_file;
+                  rest_f2 task.svar
+                (* else try to find the function signature/prototype *)
+                with Not_found -> (
+                  let task = find_function_sign (!ppc_file) funname in
+                  rest_f2 task
                 )
-                | _ -> ignore(warnLoc loc "Unrecognized pragma"); DoChildren
+              )
             )
-            | _ -> ignore(warnLoc loc "Unrecognized pragma"); DoChildren
+            | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
         )
         | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
-        | _ -> ignore(warn "Ignoring pragma"); DoChildren
+        | _ -> dbg_print debug "Ignoring pragma"; DoChildren
     ) else 
       DoChildren
 end
@@ -395,9 +373,10 @@ let feature : featureDescr =
     ;
     fd_doit = 
     (function (f: file) ->
-      if !dotrace then
-        Trace.traceAddSys "scoop";
-      ignore(E.log "\nWelcome to SCOOP!!!\n\n");
+(*      if !dotrace then
+        Trace.traceAddSys "scoop";*)
+      dbg_print debug "\nWelcome to SCOOP!!!\n";
+
       if (!arch = "unknown") then
         E.s (error "No architecture specified. Exiting!")
       else if (!arch = "cell" && !queue_size = "0") then
@@ -412,7 +391,7 @@ let feature : featureDescr =
         );
 
         (* if we are not on x86-SMP create two copies of the initial file *)
-        if (!arch <> "x86") then
+        if (!arch <> "x86" && !arch <> "XPPFX") then
           spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
         ppc_file := { f with fileName = (!out_name^".c");};
 
@@ -429,7 +408,7 @@ let feature : featureDescr =
         let def = " "^(!cflags)^
           ( if (!stats) then " -DSTATISTICS=1" else " ")^
           ( if (!blade) then " -DBLADE=1" else " ") in
-        if (!arch = "x86") then (
+        if (!arch = "x86" || !arch = "XPPFX") then (
           preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
@@ -453,7 +432,7 @@ let feature : featureDescr =
         );
 
         (* SDAM *)
-        if ((!arch <> "cell") (*&& (not !dis_sdam)*)) then
+        if (!arch <> "cell") then
           (Ptdepa.find_dependencies f !dis_sdam);
 
 
@@ -496,7 +475,7 @@ let feature : featureDescr =
 
 (*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
-        if (!arch <> "x86") then
+        if (!arch <> "x86" && !arch <> "XPPFX") then
           writeFile !spu_file;
       )
     );
