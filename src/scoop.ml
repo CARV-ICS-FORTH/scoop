@@ -537,7 +537,7 @@ let feature : featureDescr =
             let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
             makeGlobalVar "this_SCOOP__" task_element_t;
           )*)
-          | _ -> ();
+          | _ -> ()
         );
         add_at_top !ppc_file !globals;
 

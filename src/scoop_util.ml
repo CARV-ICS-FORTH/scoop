@@ -1010,13 +1010,20 @@ let dbg_print (flag: bool ref) (msg: string): unit = (
     ignore(E.log "%s\n" msg);
 )
 
-class addAboveMainVisitor (gl_new: global list) : cilVisitor = object (self)
+class add_at_first_decl (gl_new: global list) : cilVisitor = object (self)
   inherit nopCilVisitor
+  val mutable flag : bool = false
+
   method vglob glob =
     match glob with
-      | GFun(_, _)
-      | GVarDecl(_, _) ->
+      | GFun(_, _) when flag=false -> (
+          flag <- true;
           ChangeTo (gl_new@[glob])
+      )
+      | GVarDecl(_, _) when flag=false -> (
+          flag <- true;
+          ChangeTo (gl_new@[glob])
+      )
       | _ -> SkipChildren
   end
 
@@ -1025,5 +1032,5 @@ class addAboveMainVisitor (gl_new: global list) : cilVisitor = object (self)
   @param globals the list of the globals
  *)
 let add_at_top (f: file) (globals: global list) : unit =
-  let v = new addAboveMainVisitor globals in
+  let v = new add_at_first_decl globals in
   visitCilFile v f;
