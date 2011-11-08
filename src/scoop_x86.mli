@@ -35,7 +35,6 @@
 
 val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> unit
 
-val make_tpc_func : bool -> Cil.location -> Cil.varinfo -> Cil.exp list ->
-    (string * (Scoop_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
-    Cil.file ref -> Cil.file ref ->
-    (Cil.fundec * (int * Scoop_util.arg_descr) list)
+val make_tpc_issue : bool -> Cil.location -> Cil.varinfo -> Cil.exp list ->
+    Scoop_util.arg_descr list -> Cil.file -> Cil.fundec ->
+    (Cil.stmt list * (int * Scoop_util.arg_descr) list)

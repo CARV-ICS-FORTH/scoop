@@ -98,14 +98,14 @@ let make_exec_func (arch: string) (f: file)
   let retstmt = mkStmt (Return (Some (Lval (var lexit)), locUnknown)) in
 
   (* the case expression of the switch statement (switch(expr)) *)
-  let expr = Lval(mkPtrFieldAccess (var ex_task) "funcid") in
+  let expr = Lval(mkFieldAccess (var ex_task) "funcid") in
   let switchstmt = mkStmt(Switch(expr, mkBlock switchcases2, cases, locUnknown)) in
   (* get the task_state enuminfo *)
   let task_state_enum = find_enum f "task_state" in
   (* task_info->state = EXECUTED no need for it in every case *)
   let rec find_executed = function [] -> raise Not_found | ("EXECUTED", e, _)::_ -> e | _::tl -> find_executed tl in
   let executed = find_executed task_state_enum.eitems in
-  let exec_s = mkStmtOneInstr(Set (mkPtrFieldAccess (var task_info) "state", executed, locUnknown)) in
+  let exec_s = mkStmtOneInstr(Set (mkFieldAccess (var task_info) "state", executed, locUnknown)) in
   (* the function body: exit = 0; switch (taskid); return exit; *)
   exec_func.sbody <- mkBlock [exit0; switchstmt; exec_s; retstmt];
   GFun (exec_func, locUnknown)

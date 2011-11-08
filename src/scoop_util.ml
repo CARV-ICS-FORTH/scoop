@@ -57,7 +57,7 @@ type arg_t =
   | SInOut
 
 (** the argument description, extracted by the annotations *)
-and arg_descr = (string * (arg_t * exp * exp * exp))
+and arg_descr = (string * (exp * arg_t * exp * exp * exp))
 
 (******************************************************************************)
 (*                          Globals                                           *)
@@ -89,7 +89,7 @@ let stats = ref false
 (** keeps whether we want unaligned arguments or not *)
 let unaligned_args = ref false
 (** keeps whether we want blocking of arguments or not *)
-let blocking = ref false
+let blocking = ref true
 
 
 (******************************************************************************)
@@ -244,6 +244,7 @@ exception Found_sign of varinfo
 let __find_function_sign (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_sign vi)
+    | GFun(fd, _) when fd.svar.vname = name -> raise (Found_sign fd.svar)
     | _ -> ()
   in
   try
@@ -302,7 +303,14 @@ let find_tcomp (f: file) (name: string) : typ =
 
 (** Exception returning the found varinfo *)
 exception Found_var of varinfo
-(** this is the private function *)
+
+(** find the global variable named {e name} in the globals of {e f}
+    (doesn't print anything on fail)
+    @param f the file to look in
+    @param name the name of the local variable to search
+    @raise Not_found when there is no local variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the local variable {e name}
+ *)
 let __find_global_var (f: file) (name: string) : varinfo =
   let findit = function
     | GVarDecl(vi, _) when vi.vname = name -> raise (Found_var vi)
@@ -313,6 +321,7 @@ let __find_global_var (f: file) (name: string) : varinfo =
     iterGlobals f findit;
     raise Not_found
   with Found_var v -> v
+
 (** find the global variable named {e name} in file {e f} 
     @param f the file to look in
     @param name the name of the global variable to search
@@ -722,21 +731,16 @@ let get_loop_successor (s: stmt) : exp =
 (** takes an lvalue and a fieldname and returns lvalue.fieldname *)
 let mkFieldAccess lv fieldname =
   let lvt = Cil.typeOfLval lv in
-  let ci = getCompinfo (unrollType lvt) in
-  let field = getCompField ci fieldname in
-  addOffsetLval (Field (field, NoOffset)) lv
-
-(** takes an lvalue (pointer) and a fieldname and returns lvalue->fieldname *)
-let mkPtrFieldAccess lv fieldname =
-  let lvt = Cil.typeOfLval lv in
   (* get the type *)
-  let lvtf = match lvt with
-    | TPtr(ty, _) -> ty
-    | _ -> assert false
+  let (lvtf, isptr) = match lvt with
+    | TPtr(ty, _) -> (ty, true)
+    | _ -> (lvt, false)
   in
   let ci = getCompinfo (unrollType lvtf) in
   let field = getCompField ci fieldname in
-  addOffsetLval (Field (field, NoOffset)) (mkMem (Lval lv) NoOffset)
+  addOffsetLval (Field (field, NoOffset)) (
+    if isptr then (mkMem (Lval lv) NoOffset) else (lv)
+  )
 
 (** Defines the Task_table array for the spu file
     @param tasks the tasks to put in the task table
@@ -934,8 +938,8 @@ let comparator (a: (int * exp)) (b: (int * exp)) : int =
     takes an arg_descr list and sorts it according to the type of the arguments
     input @ inout @ output *)
 let sort_args (a: arg_descr) (b: arg_descr) : int = 
-  let (_, (arg_typa, _, _, _)) = a in
-  let (_, (arg_typb, _, _, _)) = b in
+  let (_, (_, arg_typa, _, _, _)) = a in
+  let (_, (_, arg_typb, _, _, _)) = b in
     (* if they are equal *)
     if (arg_typa = arg_typb) then 0
     (* if a is Out *)
@@ -946,13 +950,19 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
     else if (arg_typa = In || arg_typa = SIn) then (-1)
     else 1
 
-(** Comparator for use with [List.sort], 
+(** Comparator for use with [List.sort],
     takes an (int*arg_descr) list and sorts it according to the int of the elements
     (biggest first) *)
-let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int = 
+let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
     if (an = bn) then 0
     else if (an < bn) then 1
     else -1
+
+(** Comparator for use with [List.sort],
+    takes an (int*arg_descr) list and sorts it according to the int of the elements
+    (smallest first) *)
+let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
+    - sort_args_n (an, a) (bn, b)
 
 (** assigns to each argument description its place in the original argument list
     @param args the arguments extracted from the annotation
@@ -999,3 +1009,21 @@ let dbg_print (flag: bool ref) (msg: string): unit = (
   if !flag then
     ignore(E.log "%s\n" msg);
 )
+
+class addAboveMainVisitor (gl_new: global list) : cilVisitor = object (self)
+  inherit nopCilVisitor
+  method vglob glob =
+    match glob with
+      | GFun(_, _)
+      | GVarDecl(_, _) ->
+          ChangeTo (gl_new@[glob])
+      | _ -> SkipChildren
+  end
+
+(** Adds a list of globals right BEFORE the first function definition
+  @param f the file where we want to place the globals
+  @param globals the list of the globals
+ *)
+let add_at_top (f: file) (globals: global list) : unit =
+  let v = new addAboveMainVisitor globals in
+  visitCilFile v f;

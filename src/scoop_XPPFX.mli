@@ -1,9 +1,9 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2011,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -33,9 +33,6 @@
  *
  *)
 
-val make_tpc_func :  Cil.location -> Cil.varinfo -> Cil.exp list ->
-    Scoop_util.arg_descr list -> Cil.file ref -> Cil.file ref ->
-    (Cil.fundec * (int * Scoop_util.arg_descr) list)
-
-val make_case : Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
-    ((int * Scoop_util.arg_descr) list) -> Cil.stmt
+val make_tpc_issue : bool -> Cil.location -> Cil.varinfo -> Cil.exp list ->
+    Scoop_util.arg_descr list -> Cil.file -> Cil.fundec ->
+    (Cil.stmt list * (int * Scoop_util.arg_descr) list)

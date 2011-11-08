@@ -30,6 +30,7 @@ LOCKSMITH_MODULES = \
 	scoop_cell \
 	scoop_cellgod \
 	scoop_x86 \
+	scoop_XPPFX \
 	scoop_make_exec
 
 LOCKSMITH_CMODULES = bansheeifc

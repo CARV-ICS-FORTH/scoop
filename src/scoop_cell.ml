@@ -63,12 +63,12 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   assert(not hasvararg);
   let argl = match arglopt with None -> [] | Some l -> l in
   let argaddr = makeTempVar execfun voidPtrType in
-  res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
+  res := Set(var argaddr, Lval (mkFieldAccess (var task_info) "ls_addr"), locUnknown) :: !res;
 (*  else begin
-    res := Set(var argaddr, Lval (mkPtrFieldAccess (var task_info) "local"), locUnknown) :: !res;
+    res := Set(var argaddr, Lval (mkFieldAccess (var task_info) "local"), locUnknown) :: !res;
   end*)
   let nextaddr n stride =
-    let lv = mkPtrFieldAccess (var ex_task) "arguments" in
+    let lv = mkFieldAccess (var ex_task) "arguments" in
     let t = typeOfLval lv in
     assert(isArrayType t);
     let idxlv = addOffsetLval (Index(integer n, NoOffset)) lv in
@@ -90,7 +90,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let carry = ref dummyInstr in
   let args = L.rev args in
   let arglist = List.map
-    (fun (place, (name, (arg_type, _, _, _))) ->
+    (fun (place, (name, (_, arg_type, _, _, _))) ->
       let argvar = makeTempVar execfun voidPtrType in
 (*      let rec castexp atyp = match atyp with
         TInt(_, _)
@@ -153,7 +153,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 *)
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: (int * arg_descr)) (stats: bool) (spu_file: file): instr list = (
-  let (i_m, (_, (arg_type, _, _, _))) = arg in
+  let (i_m, (_, (_, arg_type, _, _, _))) = arg in
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i_m)))) in
   let actual_arg = L.nth fd.sformals i_m in
   let arg_addr = (
@@ -197,7 +197,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     il := Set(total_bytes, total_size, locUnknown)::!il
   );
   let vector_uchar_p = TPtr(TInt(IUChar, [Attr("volatile", [])]), [ppu_vector]) in
-  let av_task_arg = mkPtrFieldAccess avail_task "arguments" in
+  let av_task_arg = mkFieldAccess avail_task "arguments" in
   let av_task_arg_idx = addOffsetLval (Index(integer i,NoOffset)) av_task_arg in
   il := Set(tmpvec, mkCast (mkAddrOf av_task_arg_idx) (vector_uchar_p) , locUnknown)::!il;
 
@@ -259,7 +259,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   for i = 0 to args_num do
     let ex_arg = (L.nth oargs i) in
     let name = getNameOfExp ex_arg in
-    let (_, (arg_type, _, _, _)) = L.find 
+    let (_, (_, arg_type, _, _, _)) = L.find 
       ( fun (vname, _) -> if( vname = name) then true else false)
     args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
@@ -273,11 +273,11 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   let instrs : instr list ref = ref [] in
   let uint8_t = find_type !spu_file "uint8_t" in
   (* avail_task->funcid = (uint8_t)funcid; *)
-  instrs := Set (mkPtrFieldAccess avail_task "funcid",
+  instrs := Set (mkFieldAccess avail_task "funcid",
   mkCast (integer !func_id) uint8_t, locUnknown):: !instrs;
   (* avail_task->total_arguments = (uint8_t)arguments.size() *)
   let args_num_i = integer (args_num+1) in
-  instrs := Set (mkPtrFieldAccess avail_task "total_arguments",
+  instrs := Set (mkFieldAccess avail_task "total_arguments",
   mkCast args_num_i uint8_t, locUnknown)::!instrs;
   
   let args_n =

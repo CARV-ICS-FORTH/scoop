@@ -47,29 +47,32 @@ let querie_no = ref 0
 (* a unique id for the tpc_function_* *)
 let un_id = ref 0
 
-let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval) 
- (fd: fundec) (arg: (int * arg_descr) ) (ppc_file: file) 
- (orig_tname: string) (tid: int) : stmt list = (
-  let closure = mkPtrFieldAccess this "closure" in
+let makeGlobalVar n t f=
+  let v = makeGlobalVar n t in
+  let glob = GVar(v, {init = None;}, locUnknown) in
+  add_at_top f [glob];
+  v
+
+let doArgument (this: lval) (closure: lval) (total_arguments: lval)
+ (e_addr: lval) (bis: lval) (ppc_file: file) (orig_tname: string) (tid: int)
+ (arg: (int * arg_descr) ) : stmt list = (
   let uint32_t = (find_type ppc_file "uint32_t") in
   let uint64_t = (find_type ppc_file "uint64_t") in
-  let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
+  let (i_m, (arg_name, (arg_addr, arg_type, arg_size, arg_elsz, arg_els))) = arg in
   let block_size = var (find_global_var ppc_file "__block_sz") in
-  let arg_addr = var (List.nth fd.sformals i) in
-  let (i_m, (arg_name, (arg_type ,_ ,_ ,_))) = arg in
 (*   print_endline ("Doing "^arg_name); *)
   let stl = ref [] in
   let il = ref [] in
-  let total_arguments = mkFieldAccess closure "total_arguments" in
   let arguments = mkFieldAccess closure "arguments" in
   let t = typeOfLval arguments in
   assert(isArrayType t);
   (* this->closure.arguments[  this->closure.total_arguments ].stride=TPC_IS_STRIDEARG(arg_flag)? va_arg(arg_list, int):0; *)
   let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
   let stride = mkFieldAccess idxlv "stride" in
-  il := (* FIX here *)
+
+  il :=
     ( if (is_strided arg_type) then (
-        Set(stride, Lval arg_size, locUnknown)
+        Set(stride, arg_size, locUnknown)
       ) else
         Set(stride, (integer 0), locUnknown)
     )::!il;
@@ -84,10 +87,10 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
   this->closure.arguments[this->closure.total_arguments].size = arg_size;
   this->closure.arguments[this->closure.total_arguments].flag = arg_flag;*)
   let eal_in = mkFieldAccess idxlv "eal_in" in
-  il := Set(eal_in, CastE(voidPtrType, Lval arg_addr), locUnknown)::!il;
+  il := Set(eal_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
   let eal_out = mkFieldAccess idxlv "eal_out" in
-  il := Set(eal_out, CastE(voidPtrType, Lval arg_addr), locUnknown)::!il;
-  il := Set(size, Lval arg_size, locUnknown)::!il;
+  il := Set(eal_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
+  il := Set(size, arg_size, locUnknown)::!il;
 (*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
@@ -108,7 +111,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
       #define TPC_START_ARG   0x10
       #define TPC_SAFE_ARG    0x8
     *)
-(*     il := Set(size, Lval arg_size, locUnknown)::!il; *)
+(*     il := Set(size, arg_size, locUnknown)::!il; *)
     (* this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag|TPC_START_ARG|TPC_SAFE_ARG; *)
     il := Set(flag, integer ( (arg_t2int arg_type) lor 0x18), locUnknown)::!il;
 (*    let eal_in = mkFieldAccess idxlv "eal_in" in
@@ -127,9 +130,6 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 
     let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_t2string arg_type)^"Attribute_Task") in
     if (is_strided arg_type) then (
-      let arg_elsz = Lval (var (find_formal_var fd ("arg_elsz"^(string_of_int i_m)))) in
-      let arg_els = Lval (var (find_formal_var fd ("arg_els"^(string_of_int i_m)))) in
-
       (*  if(TPC_IS_STRIDEARG(arg_flag)){
           uint32_t j;
           uint32_t stride=this->closure.arguments[  this->closure.total_arguments ].stride ;
@@ -145,14 +145,14 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
       //this->closure.total_arguments++;
           }
         }*)
-      il :=  Set(e_addr, CastE(uint64_t, Lval arg_addr), locUnknown)::!il;
-      let j_var = 
-        try var (__find_local_var fd "j")
-        with Not_found -> var (makeLocalVar fd "j" uint32_t)
+      il :=  Set(e_addr, CastE(uint64_t, arg_addr), locUnknown)::!il;
+      let i_var =
+        try var (__find_global_var ppc_file "i_SCOOP__")
+        with Not_found -> var (makeGlobalVar "i__SCOOP__" uint32_t ppc_file)
       in
       let stride_var =
-        try var (__find_local_var fd "stride")
-        with Not_found -> var (makeLocalVar fd "stride" uint32_t)
+        try var (__find_global_var ppc_file "stride_SCOOP__")
+        with Not_found -> var (makeGlobalVar "stride_SCOOP__" uint32_t ppc_file)
       in
       il := Set(stride_var, Lval stride, locUnknown)::!il;
       if (!unaligned_args) then (
@@ -167,11 +167,11 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
       let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; arg_elsz] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
-      let start = [mkStmtOneInstr (Set(j_var, zero, locUnknown))] in
+      let start = [mkStmtOneInstr (Set(i_var, zero, locUnknown))] in
       let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval stride_var, intType) in
-      let j_plus = BinOp(PlusA, Lval j_var, one, intType) in
+      let j_plus = BinOp(PlusA, Lval i_var, one, intType) in
       let guard = BinOp(Le, j_plus, arg_els, boolType) in
-      let next = [mkStmt( Instr ([Set(j_var, j_plus, locUnknown); Set(e_addr, e_addr_plus, locUnknown)]))] in
+      let next = [mkStmt( Instr ([Set(i_var, j_plus, locUnknown); Set(e_addr, e_addr_plus, locUnknown)]))] in
       let body = [mkStmt (Instr (L.rev !ilt))] in
       stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
 
@@ -179,10 +179,10 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 
       (* const uint64_t limit=(((uint64_t)arg_addr64)+arg_size); *)
       let limit =
-        try var (__find_local_var fd "limit")
-        with Not_found -> var (makeLocalVar fd "limit" uint64_t)
+        try var (__find_global_var ppc_file "limit_SCOOP__")
+        with Not_found -> var (makeGlobalVar "limit_SCOOP__" uint64_t ppc_file)
       in
-      let plus = (BinOp(PlusA, CastE(uint64_t, Lval arg_addr), Lval arg_size, uint64_t)) in
+      let plus = (BinOp(PlusA, CastE(uint64_t, arg_addr), arg_size, uint64_t)) in
       il := Set(limit, plus, locUnknown)::!il;
 
       (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
@@ -195,12 +195,20 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
         let printf = find_function_sign ppc_file "printf" in
         let args = [Const(CStr("ADAM Warning: Unaligned argument\n"))] in
         il := Call (None, Lval (var printf), args, locUnknown)::!il;
-        let tmp_addr = var (makeLocalVar fd "tmp_addr" uint64_t) in
-        il := Set(tmp_addr, Lval arg_addr, locUnknown)::!il; 
+        let tmp_addr =
+          try var (__find_global_var ppc_file "tmp_addr_SCOOP__")
+          with Not_found -> var (makeGlobalVar "tmp_addr_SCOOP__" uint64_t ppc_file)
+        in
+        il := Set(tmp_addr, arg_addr, locUnknown)::!il;
         let div = BinOp(Div, Lval tmp_addr, Lval block_size, uint64_t) in
         let mul = BinOp(Mult, CastE(uint64_t, div), Lval block_size, voidPtrType) in
-        il := Set(arg_addr, CastE(voidPtrType, mul), locUnknown)::!il;
-        let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint64_t, Lval arg_addr), intType) in
+        let arg_addr_v =
+          match arg_addr with
+            Lval(a) -> a
+            | _ -> assert false;
+        in
+        il := Set(arg_addr_v, CastE(voidPtrType, mul), locUnknown)::!il;
+        let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint64_t, arg_addr), intType) in
         il := Set(stride, new_stride, locUnknown)::!il;
       );
 
@@ -218,7 +226,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
       let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; Lval block_size ] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
   (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
-      let start = [mkStmtOneInstr (Set(e_addr, CastE(uint64_t, Lval arg_addr), locUnknown))] in
+      let start = [mkStmtOneInstr (Set(e_addr, CastE(uint64_t, arg_addr), locUnknown))] in
       let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval block_size, intType) in
       let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
       let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
@@ -254,7 +262,7 @@ let doArgument (i: int) (this: lval) (e_addr: lval) (bis: lval)
 
     (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
   );
-  !stl
+  L.rev !stl
 )
 
 (* Preprocess the header file <header> and merges it with f.  The
@@ -272,69 +280,54 @@ let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
 (* make a tpc_ version of the function (for use on the ppc side)
  * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
  *)
-let make_tpc_func (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
-    (args: arg_descr list) (f: file ref) (spu_file: file ref)
-    : (fundec * (int * arg_descr) list) = (
+let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
+    (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
   incr un_id;
-  print_endline ("Creating tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id));
+(*   print_endline ("Creating tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id)); *)
 (*   let args = List.sort sort_args args in *)
-  let skeleton = find_function_fundec (!f) "tpc_call_tpcAD65" in
-  let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id)) in
-  f_new.sformals <- [];
-  (* set the formals to much the original function's arguments *)
-  setFunctionTypeMakeFormals f_new func_vi.vtype;
-  setFunctionReturnType f_new intType;
-(*   formalScalarsToPointers loc f_new; *)
-  (* create the arg_size*[, arg_elsz*, arg_els*] formals *)
-  let args_num = (List.length f_new.sformals)-1 in
-  if ( args_num <> (List.length args)-1 ) then
-    E.s (errorLoc loc "Number of arguments described in #pragma doesn't much the \
-          number of arguments in the function declaration");
-  for i = 0 to args_num do
-    let ex_arg = (List.nth oargs i) in
-    let name = getNameOfExp ex_arg in
-    try
-      let (_, (arg_type, _, _, _)) = List.find 
-        ( fun (vname, _) -> (vname = name) )
-      args in
-      ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-      if (is_strided arg_type) then (
-        ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
-        ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
-      );
-    with Not_found ->
-      E.s (errorLoc loc "\"%s\" not found in the #pragma css task\n" name)
-  done;
 
-  let this = var (find_local_var f_new "this") in
+  let this = var (find_global_var f "this_SCOOP__") in
   (* this->closure.funcid = (uint8_t)funcid; *)
-  let this_closure = mkPtrFieldAccess this "closure" in
-  let funcid_set = Set (mkFieldAccess this_closure "funcid",
-    CastE(find_type !f "uint8_t", integer !func_id), locUnknown) in
-  let stmts = ref [mkStmtOneInstr funcid_set] in
-  (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
-  instrs := Set (mkFieldAccess this_closure "total_arguments",
-  CastE(find_type !f "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
+  let this_closure = mkFieldAccess this "closure" in
+  let stmts = ref [] in
+  let instrs = ref [] in
 
-  let uint32_t = (find_type !f "uint32_t") in
-  let uint64_t = (find_type !f "uint64_t") in
+
+  (* G_ppe_stats.stat_tpc_per_spe[0] += 1; *)
+  let gps = var (find_global_var f "G_ppe_stats") in
+  let gps_stps = mkFieldAccess gps "stat_tpc_per_spe" in
+  let idxlv = addOffsetLval (Index(zero, NoOffset)) gps_stps in
+  instrs := Set (idxlv, (BinOp(PlusA, Lval idxlv, one, intType)), locUnknown)::!instrs;
+  (* TIMER_START(1); *)
+  let tmptime1 = var (find_global_var f "_tmptime1_SCOOP__") in
+  let rdtsc = find_function_sign f "rdtsc" in
+  instrs := Call (Some tmptime1, Lval (var rdtsc), [], locUnknown)::!instrs;
+  (* this = AddTask(); *)
+  let addTask = find_function_sign f "AddTask" in
+  instrs := Call (Some this, Lval (var addTask), [], locUnknown)::!instrs;
+  (* this->closure.funcid = (uint8_t)funcid; *)
+  instrs := Set (mkFieldAccess this_closure "funcid",
+    CastE(find_type f "uint8_t", integer !func_id), locUnknown)::!instrs;
+(*   (* this->closure.total_arguments = (uint8_t)arguments.size() *) *)
+  (* this->closure.total_arguments = 0 *)
+  let total_arguments = mkFieldAccess this_closure "total_arguments" in
+  instrs := Set (total_arguments, zero, locUnknown)::!instrs;
+
   (* uint32_t block_index_start *)
-  let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
+  let bis = var (find_global_var f "block_index_start_SCOOP__") in
   (* uint64_t e_addr; *)
-  let e_addr = var (makeLocalVar f_new "e_addr" uint64_t) in
+  let e_addr = var (find_global_var f "e_addr_SCOOP__") in
   
   let args_n =
     (* if we have arguments *)
-    if (f_new.sformals <> []) then (
-      (* volatile vector unsigned char *tmpvec   where vector is __attribute__((altivec(vector__))) *)
+    if (oargs <> []) then (
       let args_n = number_args args oargs in
-      let args_n = List.sort sort_args_n args_n in
-      let i_n = ref (args_num+1) in
+      let args_n = List.sort sort_args_n_inv args_n in
       incr querie_no;
-      let mapped = L.flatten (List.map
-        (fun arg -> decr i_n; doArgument !i_n this e_addr bis f_new arg !f func_vi.vname !querie_no)
-        args_n) in
-      stmts := mapped@(!stmts);
+      let doArgument = doArgument this this_closure total_arguments e_addr bis f func_vi.vname !querie_no in
+      let mapped = L.flatten (List.map doArgument args_n) in
+      stmts := mkStmt (Instr (List.rev !instrs))::mapped;
+      instrs := [];
       args_n
     ) else [] in
 
@@ -345,20 +338,27 @@ let make_tpc_func (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp l
     }
   *)
   if (is_hp) then (
-    let this_highpriority = mkPtrFieldAccess this "highpriority" in
+    let this_highpriority = mkFieldAccess this "highpriority" in
     let hp_set = Set(this_highpriority, one, locUnknown) in
     stmts := (mkStmtOneInstr hp_set)::(!stmts);
   );
 
+  (* assert(this->closure.total_arguments<=MAX_ARGS); *)
+  let assert_a = find_function_sign f "assert_args_SCOOP__" in
+  instrs := Call (None, Lval (var assert_a), [Lval total_arguments], locUnknown)::!instrs;
+  (* Clear_Handler(this ); *)
+  let clear_Handler = find_function_sign f "Clear_Handler" in
+  instrs := Call (None, Lval (var clear_Handler), [Lval this], locUnknown)::!instrs;
+  (* G_ppe_stats.issue_ticks += TIMER_END(1); *)
+  let gps_it = mkFieldAccess gps "issue_ticks" in
+  let tmptime2 = var (find_global_var f "_tmptime2_SCOOP__") in
+  instrs := Call (Some tmptime2, Lval (var rdtsc), [], locUnknown)::!instrs;
+  let uint64_t = (find_type f "uint64_t") in
+  let sub = BinOp(MinusA, Lval tmptime2 , Lval tmptime1, uint64_t) in
+  instrs := Set (gps_it, sub, locUnknown)::!instrs;
 
-  (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
-    for x86*)
-  let map_fun = (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (List.rev !stmts)) in
-  f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
-
-  (* inline f_new  *)
-(*   f_new.svar.vinline <- true; *)
+  stmts := !stmts@[mkStmt (Instr !instrs)];
 
   incr func_id;
-  (f_new, args_n)
+  (!stmts, args_n)
 )

@@ -75,7 +75,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let ret, arglopt, hasvararg, _ = splitFunctionType task.vtype in
   assert(not hasvararg);
   let argl = match arglopt with None -> [] | Some l -> l in
-  let lv = mkPtrFieldAccess (var task_info) "local" in
+  let lv = mkFieldAccess (var task_info) "local" in
   let t = typeOfLval lv in
   assert(isArrayType t);
   let i = ref 0 in
@@ -118,8 +118,8 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_descr) )
   (spu_file: file) (unaligned_args: bool) (ppc_file: file)
   (orig_tname: string) (tid: int) : stmt = (
-  let (i_m, (arg_name, (arg_type, _, _, _))) = arg in
-  let closure = mkPtrFieldAccess this "closure" in
+  let (i_m, (arg_name, (_, arg_type, _, _, _))) = arg in
+  let closure = mkFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
   let actual_arg = List.nth fd.sformals i_m in
@@ -248,7 +248,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   for i = 0 to args_num do
     let ex_arg = (List.nth oargs i) in
     let name = getNameOfExp ex_arg in
-    let (_, (arg_type, _, _, _)) = List.find 
+    let (_, (_, arg_type, _, _, _)) = List.find 
       ( fun (vname, _) -> if( vname = name) then true else false)
     args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
@@ -260,7 +260,7 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
 
   let this = var (find_local_var f_new "this") in
   (* this->closure.funcid = (uint8_t)funcid; *)
-  let this_closure = mkPtrFieldAccess this "closure" in
+  let this_closure = mkFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
   CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
   let stmts = ref [mkStmtOneInstr funcid_set] in

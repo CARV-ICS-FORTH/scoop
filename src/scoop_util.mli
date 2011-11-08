@@ -47,7 +47,7 @@ type arg_t =
   | SOut
   | SInOut
 
-and arg_descr = (string * (arg_t * Cil.exp * Cil.exp * Cil.exp))
+and arg_descr = (string * (Cil.exp * arg_t * Cil.exp * Cil.exp * Cil.exp))
 
 (******************************************************************************)
 (*                          Globals                                           *)
@@ -122,6 +122,9 @@ val find_tcomp : Cil.file -> string -> Cil.typ
 
 (* find the variable named <name> in file <f> *)
 val find_global_var : Cil.file -> string -> Cil.varinfo
+
+(* find the variable named <name> in file <f> *)
+val __find_global_var : Cil.file -> string -> Cil.varinfo
 
 (* find the variable named <name> in the formals of <fd> *)
 val find_formal_var : Cil.fundec -> string -> Cil.varinfo
@@ -240,9 +243,6 @@ val writeFile : Cil.file -> unit
 (* for a struct instance creates the struct.field *)
 val mkFieldAccess : Cil.lval -> string -> Cil.lval
 
-(* for a struct instance   pointer creates the struct->field *)
-val mkPtrFieldAccess : Cil.lval -> string -> Cil.lval
-
 (* Defines the Task_table for the spu file *)
 val make_task_table :
     (Cil.fundec * Cil.varinfo * (int * arg_descr) list) list -> Cil.global
@@ -264,6 +264,8 @@ val sort_args : arg_descr -> arg_descr -> int
 
 val sort_args_n : (int*arg_descr) -> (int*arg_descr) -> int
 
+val sort_args_n_inv : (int*arg_descr) -> (int*arg_descr) -> int
+
 (** assigns to each argument description its place in the original argument list *)
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
@@ -273,3 +275,6 @@ val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
 
 (** Prints {e msg} if {e flag} is true *)
 val dbg_print : bool ref -> string -> unit
+
+(** Adds a list of globals right BEFORE the first function definition *)
+val add_at_top : Cil.file -> Cil.global list -> unit

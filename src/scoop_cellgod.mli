@@ -34,8 +34,7 @@
  *)
 
 val make_tpc_func :  Cil.location -> Cil.varinfo -> Cil.exp list ->
-    (string * (Scoop_util.arg_t * Cil.exp * Cil.exp * Cil.exp )) list ->
-    Cil.file ref -> Cil.file ref ->
+    Scoop_util.arg_descr list -> Cil.file ref -> Cil.file ref ->
     (Cil.fundec * (int * Scoop_util.arg_descr) list)
 
 val make_case : Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
