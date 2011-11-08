@@ -120,6 +120,9 @@ val find_type : Cil.file -> string -> Cil.typ
 (* find the struct or union named struct/union <name> *)
 val find_tcomp : Cil.file -> string -> Cil.typ
 
+(* find the global variable named {e name} in the globals of {e f}*)
+val find_global_Gvar : Cil.file -> string -> Cil.global
+
 (* find the variable named <name> in file <f> *)
 val find_global_var : Cil.file -> string -> Cil.varinfo
 

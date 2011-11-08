@@ -102,9 +102,6 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   [mkStmt (Instr (L.rev !il))]
 )
 
-(* TODO hold the number of arguments somewhere for
-    const int tpc_task_arguments_list[] = {2, 3, 5, 9};
-*)
 (* generates the code to issue a task *)
 let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
@@ -116,6 +113,20 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let tpc_task_descriptor_pt = TPtr(find_type f "tpc_task_descriptor", []) in
   let tpc_task_argument_pt = TPtr(find_type f "tpc_task_argument", []) in
   let taskd = var (makeTempVar cur_fd tpc_task_descriptor_pt) in
+
+  (* const int tpc_task_arguments_list[] = {2, 3, 5, 9}; *)
+  let tpc_tal = find_global_Gvar f "tpc_task_arguments_list" in
+  (match tpc_tal with
+     GVar(_, initi, _) -> (
+      let init = initi.init in
+      match init with
+        Some (SingleInit _) -> initi.init <- Some (CompoundInit( intType, [(Index(integer !func_id,NoOffset), SingleInit(args_num_i))] ));
+      | Some (CompoundInit(t, clist)) -> initi.init <- Some (CompoundInit(intType, clist@[(Index(integer !func_id,NoOffset), SingleInit(args_num_i))]));
+      | None -> assert false;
+    )
+    | _ -> assert false;
+  );
+
   (* task_desc = tpc_task_descriptor_alloc(args_num); *)
   let tpc_task_descriptor_alloc = find_function_sign f "tpc_task_descriptor_alloc" in
   instrs := Call (Some taskd, Lval (var tpc_task_descriptor_alloc), [args_num_i], locUnknown)::!instrs;

@@ -488,8 +488,8 @@ let feature : featureDescr =
 
         (* Declare some globals *)
         let globals = ref [] in
-        let makeGlobalVar n t =
-          globals := GVar(makeGlobalVar n t, {init = None;}, locUnknown)::!globals;
+        let makeGlobalVar ini n t =
+          globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals;
         in
         (match !arch with
           (* Task_element *this;
@@ -497,6 +497,7 @@ let feature : featureDescr =
              uint64_t e_addr;
              uint64_t _tmptime; *)
           "x86" -> (
+            let makeGlobalVar = makeGlobalVar None in
             let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
             makeGlobalVar "this_SCOOP__" task_element_pt;
             let uint32_t = (find_type !ppc_file "uint32_t") in
@@ -508,7 +509,7 @@ let feature : featureDescr =
           )
           (* const int tpc_task_arguments_list[]; *)
           | "XPPFX" -> (
-            makeGlobalVar "tpc_task_arguments_list" (TArray(intType, None, [Attr("const", [])]));
+            makeGlobalVar (Some (SingleInit(zero))) "tpc_task_arguments_list" (TArray(intType, None, [Attr("const", [])]));
           )
           (* cell and cellgod do better with functions due to small memory *)
           (* volatile queue_entry_t *avail_task=NULL;

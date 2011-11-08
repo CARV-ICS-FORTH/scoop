@@ -301,6 +301,27 @@ let find_tcomp (f: file) (name: string) : typ =
     raise Not_found
   with Found_type t -> t
 
+(** Exception returning the found global *)
+exception Found_Gvar of global
+
+(** find the global variable named {e name} in the globals of {e f}
+    (doesn't print anything on fail)
+    @param f the file to look in
+    @param name the name of the local variable to search
+    @raise Not_found when there is no local variable with name {e name} in {e fd}
+    @return the Cil.varinfo of the local variable {e name}
+ *)
+let find_global_Gvar (f: file) (name: string) : global =
+  let findit gv = match gv with
+    GVar(vi, _, _) when vi.vname = name -> raise (Found_Gvar gv)
+    | _ -> ()
+  in
+  try
+    iterGlobals f findit;
+    ignore(error "Global variable \"%s\" not found\n" name);
+    raise Not_found
+  with Found_Gvar v -> v
+
 (** Exception returning the found varinfo *)
 exception Found_var of varinfo
 
