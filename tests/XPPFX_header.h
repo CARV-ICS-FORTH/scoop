@@ -63,4 +63,8 @@ void tpc_wait_on(tpc_task_descriptor *);
 // #pragma css wait on(x,y,z)
 // equivalent to input
 
+void wrapper_SCOOP__(tpc_task_argument *){
+	
+}
+
 #endif

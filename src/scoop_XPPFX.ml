@@ -130,10 +130,39 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* task_desc = tpc_task_descriptor_alloc(args_num); *)
   let tpc_task_descriptor_alloc = find_function_sign f "tpc_task_descriptor_alloc" in
   instrs := Call (Some taskd, Lval (var tpc_task_descriptor_alloc), [args_num_i], locUnknown)::!instrs;
-  (* TODO make the wrapper *)
-  (* task_desc->task = wrapper_func; *)
+  
+    (* task_desc->task = wrapper_func; *)
   let taskd_task = mkFieldAccess taskd "task" in
-(*   instrs := Set(taskd_task, wrapper, voidPtrType)::!instrs; *)
+    (* make the wrapper id it doesn't already exist *)
+  let wrapper =
+    try
+      find_function_fundec_g f.globals ("wrapper_SCOOP__" ^ func_vi.vname)
+    with Not_found -> (
+      let wrapper_t = find_function_fundec f "wrapper_SCOOP__" in
+      let new_fd = copyFunction wrapper_t ("wrapper_SCOOP__" ^ func_vi.vname) in
+      Lockutil.add_after_s f func_vi.vname new_fd;
+      new_fd
+    )
+  in
+    (* make the wrappers body *)
+  let _, arglopt, hasvararg, _ = splitFunctionType func_vi.vtype in
+  assert(not hasvararg);
+  let argl = match arglopt with None -> [] | Some l -> l in
+  let wr_arg = var (List.hd wrapper.sformals) in
+  let il = ref [] in
+  let doArg = function
+    | (name, t, attr) -> (
+      let ar = var (makeTempVar wrapper t) in
+      il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
+      il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, integer 32, tpc_task_argument_pt) , locUnknown)::!il;
+      Lval ar
+    )
+  in
+  let arglist = List.map doArg argl in
+  il := Call (None, Lval (var wrapper.svar), arglist, locUnknown)::!il;
+  wrapper.sbody <- mkBlock [mkStmt (Instr (List.rev !il))];
+
+  instrs := Set(taskd_task, Lval (var wrapper.svar), locUnknown)::!instrs;
   (* task_desc->args = task_desc; *)
   let taskd_args = mkFieldAccess taskd "args" in
 (*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs; *)
