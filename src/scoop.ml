@@ -299,6 +299,21 @@ class findSPUDeclVisitor cgraph = object
               let (is_hp, args) = scoop_process rest loc in
               dbg_print debug ("Found task \""^funname^"\"");
               if (!arch = "x86" || !arch = "XPPFX") then (
+
+                let check (name, _) =
+                  if ( not (L.exists (fun e ->
+                    if ((getNameOfExp e)=name) then
+                      true
+                    else (
+                      false
+                    )
+                  ) oargs)) then (
+                    let args_err = ref "(" in
+                    List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
+                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s )" name !args_err);
+                  ) in
+                L.iter check args;
+
                 let rest_f2 var_i =
                   (* select the function to create the issuer *)
                   let make_tpc_issuef = match !arch with
@@ -509,7 +524,7 @@ let feature : featureDescr =
           )
           (* const int tpc_task_arguments_list[]; *)
           | "XPPFX" -> (
-            makeGlobalVar (Some (SingleInit(zero))) "tpc_task_arguments_list" (TArray(intType, None, [Attr("const", [])]));
+            makeGlobalVar (Some (SingleInit(zero))) "tpc_task_arguments_list" (TArray(TInt(IInt, [Attr("const", [])]), None, []));
           )
           (* cell and cellgod do better with functions due to small memory *)
           (* volatile queue_entry_t *avail_task=NULL;

@@ -61,7 +61,7 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
 
   (* taskd->args[i] *)
   let tpc_task_argument_pt = TPtr(find_type f  "tpc_task_argument", []) in
-  il := Set(taskd_args, BinOp( PlusPI, Lval taskd_args, integer 32, tpc_task_argument_pt) , locUnknown)::!il;
+  il := Set(taskd_args, BinOp( PlusPI, Lval taskd_args, one, tpc_task_argument_pt) , locUnknown)::!il;
 (*   let idxlv = addOffsetLval (Index(integer i, NoOffset)) arguments in *)
   let idxlv = taskd_args in
   (*  void * addr_in;
@@ -121,7 +121,14 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
       let init = initi.init in
       match init with
         Some (SingleInit _) -> initi.init <- Some (CompoundInit( intType, [(Index(integer !func_id,NoOffset), SingleInit(args_num_i))] ));
-      | Some (CompoundInit(t, clist)) -> initi.init <- Some (CompoundInit(intType, clist@[(Index(integer !func_id,NoOffset), SingleInit(args_num_i))]));
+      | Some (CompoundInit(t, clist)) ->
+          if (not (L.exists (fun (offset, init) -> 
+              match init with
+                 SingleInit(a) when a=args_num_i -> true
+                | _ -> false
+            ) clist)
+          ) then
+          initi.init <- Some (CompoundInit(intType, clist@[(Index(integer !func_id,NoOffset), SingleInit(args_num_i))]));
       | None -> assert false;
     )
     | _ -> assert false;
@@ -154,12 +161,12 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     | (name, t, attr) -> (
       let ar = var (makeTempVar wrapper t) in
       il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
-      il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, integer 32, tpc_task_argument_pt) , locUnknown)::!il;
+      il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
       Lval ar
     )
   in
   let arglist = List.map doArg argl in
-  il := Call (None, Lval (var wrapper.svar), arglist, locUnknown)::!il;
+  il := Call (None, Lval (var func_vi), arglist, locUnknown)::!il;
   wrapper.sbody <- mkBlock [mkStmt (Instr (List.rev !il))];
 
   instrs := Set(taskd_task, Lval (var wrapper.svar), locUnknown)::!instrs;
@@ -168,7 +175,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
 (*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs; *)
   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs;
   (* task_desc->args_no = args_num; *)
-  let taskd_args_no = mkFieldAccess taskd "args_no" in
+  let taskd_args_no = mkFieldAccess taskd "args_num" in
   instrs := Set(taskd_args_no, args_num_i, locUnknown)::!instrs;
   (* Leave uninitialized
      task_desc->rfu and task_desc->extras *)
@@ -178,10 +185,14 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     (* if we have arguments *)
     if (oargs <> []) then (
       let args_n = number_args args oargs in
+
+(*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("A= "^(string_of_int i)^" "^name) ) args_n); *)
+
       let args_n = List.sort sort_args_n args_n in
+(*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
       incr querie_no;
       let doArgument = doArgument taskd_args f func_vi.vname !querie_no in
-      let mapped = L.flatten (List.map doArgument args_n) in
+      let mapped = L.flatten (List.rev_map doArgument args_n) in
       stmts := mkStmt (Instr (L.rev !instrs))::mapped;
       instrs := [];
       args_n
@@ -189,7 +200,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   in
 
   (* task_desc->args = task_desc+32; *)
-  instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs;
+  instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt) , locUnknown)::!instrs;
   (* tpc_call(taskd); *)
   let tpc_call_f = find_function_sign f "tpc_call" in
   instrs := Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown)::!instrs;

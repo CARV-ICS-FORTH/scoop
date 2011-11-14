@@ -973,7 +973,7 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
 
 (** Comparator for use with [List.sort],
     takes an (int*arg_descr) list and sorts it according to the int of the elements
-    (biggest first) *)
+    (descending) *)
 let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
     if (an = bn) then 0
     else if (an < bn) then 1
@@ -981,7 +981,7 @@ let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
 
 (** Comparator for use with [List.sort],
     takes an (int*arg_descr) list and sorts it according to the int of the elements
-    (smallest first) *)
+    (ascending) *)
 let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
     - sort_args_n (an, a) (bn, b)
 

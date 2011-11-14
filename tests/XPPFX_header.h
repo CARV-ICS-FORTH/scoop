@@ -2,6 +2,7 @@
 #define __TPC_API_H__
 
 #include <stdint.h>
+#include <stdio.h>
 
 // Bit-masks for supported argument flags and helping macros
 #define TPC_IN_ARG                      0x1
@@ -39,7 +40,7 @@ typedef struct _tpc_task_argument tpc_task_argument;
 struct _tpc_task_descriptor {
   void (*task)(tpc_task_argument *);    // Wrapper to the original function (no value returned)
   tpc_task_argument * args;
-  uint32_t args_no;
+  uint32_t args_num;
   uint32_t rfu;                         // RFU: Reserved for Future Use
   void * extras;
 }; // 32-bytes on 64-bit arch
@@ -62,6 +63,9 @@ void tpc_wait_all();
 void tpc_wait_on(tpc_task_descriptor *);
 // #pragma css wait on(x,y,z)
 // equivalent to input
+
+void* tpc_malloc(size_t);
+void tpc_free(void *);
 
 void wrapper_SCOOP__(tpc_task_argument *){
 	
