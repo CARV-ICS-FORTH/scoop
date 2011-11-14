@@ -285,11 +285,34 @@ class findSPUDeclVisitor cgraph = object
           )
           (* Support #pragma css finish *)
           | AStr("finish")::_ -> (
-            (* Support #pragma css finish*)
             let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
             let instr = Call (None, Lval (var ts), [], locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          (* Support #pragma css malloc *)
+          | AStr("malloc")::_ -> (
+            let tm = find_function_sign (!ppc_file) "tpc_malloc" in
+            match s.skind with
+                Instr(Call(Some res, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+
+
+                  let instr = Call (Some res, Lval (var tm), oargs, locUnknown) in
+                  ChangeTo(mkStmtOneInstr instr)
+                )
+              | _ -> DoChildren
+          )
+          (* Support #pragma css free *)
+          | AStr("free")::_ -> (
+            let tf = find_function_sign (!ppc_file) "tpc_free" in
+            match s.skind with
+                Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+
+
+                  let instr = Call (None, Lval (var tf), oargs, locUnknown) in
+                  ChangeTo(mkStmtOneInstr instr)
+                )
+              | _ -> DoChildren
           )
           (* Support #pragma css task... *)
           | AStr("task")::rest -> (

@@ -38,12 +38,14 @@ int main (int argc, char * argv){
   int k=4;
   int m = n/k;
   int j;
-  int* arg1;
+  int *arg1;
 
   #pragma css start
 
   //arr=(int *)malloc(1024*sizeof(int));
-  arr=(int *)tpc_malloc(n*sizeof(int));
+  //arr=(int *)tpc_malloc(n*sizeof(int));
+#pragma css malloc
+  arr=(int *)malloc(n*sizeof(int));
 
 /*
   printf("arr %p\n",arr);
@@ -54,7 +56,7 @@ int main (int argc, char * argv){
   // initialization
   for (i=0 ; i<k ; i++){
     j = i*m;
-    * arg1 = &arr[i*m];
+    arg1 = &arr[i*m];
     printf("arr %p\n",arr);
     printf("m %p\n",&m);
     printf("j %p\n",&j);
@@ -65,7 +67,7 @@ int main (int argc, char * argv){
 
   for(i=0 ; i<k ; i++){
     j=i+1;
-    * arg1 = &arr[i*m];
+    arg1 = &arr[i*m];
     printf("arr %p\n",arr);
     printf("m %p\n",&m);
     printf("j %p\n",&j);
@@ -78,6 +80,9 @@ int main (int argc, char * argv){
   printf("n %p\n",&n);
   #pragma css task in(arr[n], n)
   print_array(arr,n);
+
+#pragma css free
+  free(arr);
 
   #pragma css finish
 
