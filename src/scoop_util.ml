@@ -52,6 +52,9 @@ type arg_t =
     In
   | Out
   | InOut
+  | TIn
+  | TOut
+  | TInOut
   | SIn
   | SOut
   | SInOut
@@ -113,6 +116,17 @@ let uses_indice (e: exp) : bool =
 *)
 let is_strided (arg: arg_t) : bool =
    match arg with
+    | TIn
+    | TOut
+    | TInOut -> true
+    | _ -> false
+
+(** checks if an arguments type is scalar
+    @param arg the argument's type
+    @return true or false
+*)
+let isScalar (arg: arg_t) : bool =
+   match arg with
     | SIn
     | SOut
     | SInOut -> true
@@ -126,6 +140,8 @@ let is_out_arg (arg: arg_t) : bool =
    match arg with
     | Out
     | InOut
+    | TOut
+    | TInOut
     | SOut
     | SInOut -> true
     | _ -> false
@@ -527,13 +543,18 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
     @param strided flag showing whether it is a strided argument
     @return the corresponding arg_t
  *)
-let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
+let translate_arg (arg: string) (strided: bool) (scalar: bool) (loc: location): arg_t =
   match arg with
-      "in" when strided -> SIn (* legacy *)
-    | "input" when strided -> SIn
-    | "out" when strided -> SOut (* legacy *)
-    | "output" when strided -> SOut
-    | "inout" when strided -> SInOut
+      "in" when strided -> TIn (* legacy *)
+    | "input" when strided -> TIn
+    | "out" when strided -> TOut (* legacy *)
+    | "output" when strided -> TOut
+    | "inout" when strided -> TInOut
+    | "in" when scalar -> SIn (* legacy *)
+    | "input" when scalar -> SIn
+    | "out" when scalar -> SOut (* legacy *)
+    | "output" when scalar -> SOut
+    | "inout" when scalar -> SInOut
     | "in" (* legacy *)
     | "input" -> In
     | "out" (* legacy *)
@@ -545,19 +566,25 @@ let translate_arg (arg: string) (strided: bool) (loc: location): arg_t =
     @return the corrensponding number *)
 let arg_t2int = function
     | SIn (*-> 5*)
+    | TIn
     | In -> 1
     | SOut (*-> 6*)
+    | TOut
     | Out -> 2
     | SInOut (*-> 7*)
+    | TInOut
     | InOut -> 3
 
 (** Returns a string discribing the argument as IN/OUT/INOUT
     @return the corrensponding string *)
 let arg_t2string = function
     | SIn
+    | TIn
     | In -> "IN"
+    | TOut
     | SOut
     | Out -> "OUT"
+    | TInOut
     | SInOut
     | InOut -> "INOUT"
 
@@ -964,11 +991,11 @@ let sort_args (a: arg_descr) (b: arg_descr) : int =
     (* if they are equal *)
     if (arg_typa = arg_typb) then 0
     (* if a is Out *)
-    else if (arg_typa = Out || arg_typa = SOut) then 1
+    else if (arg_typa = Out || arg_typa = SOut || arg_typa = TOut) then 1
     (* if b is Out *)
-    else if (arg_typb = Out || arg_typb = SOut) then (-1)
+    else if (arg_typb = Out || arg_typb = SOut || arg_typb = TOut) then (-1)
     (* if neither are Out and a is In *)
-    else if (arg_typa = In || arg_typa = SIn) then (-1)
+    else if (arg_typa = In || arg_typa = SIn || arg_typa = TIn) then (-1)
     else 1
 
 (** Comparator for use with [List.sort],

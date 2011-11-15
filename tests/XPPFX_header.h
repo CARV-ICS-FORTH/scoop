@@ -10,7 +10,7 @@
 #define TPC_INOUT_ARG                   0x3
 #define TPC_STRIDE_ARG                  0x4
 #define TPC_SAFE_ARG                    0x8
-#define TPC_START_ARG                   0x10
+#define TPC_BYVALUE_ARG                 0x10
 #define TPC_REDUCTION_ARG               0x20
 #define TPC_HIGHPRIORITY_ARG            0x40
 
@@ -21,7 +21,7 @@
 #define TPC_IS_REDUCTIONARG(x)          ((x) & TPC_REDUCTION_ARG)
 #define TPC_IS_STRIDEARG(x)             ((x) & TPC_STRIDE_ARG)
 #define TPC_IS_SAFEARG(x)               ((x) & TPC_SAFE_ARG)
-#define TPC_IS_STARTARG(x)              ((x) & TPC_START_ARG)
+#define TPC_IS_BYVALUEARG(x)            ((x) & TPC_BYVALUE_ARG)
 
 // TPC Arguments
 #pragma pack(4)

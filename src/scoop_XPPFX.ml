@@ -80,14 +80,22 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   il := Set(addr_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
   il := Set(addr_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
 
-  (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Sdam.isSafeArg orig_tname tid arg_name) then (
+
+  (* arg_flag|TPC_SAFE_ARG; *)
+  let arg_type_tmp = arg_t2int arg_type in
+  let arg_type_tmp =
+    (* arg_flag|TPC_SAFE_ARG|TPC_BYVALUE_ARG; *)
+    if (isScalar arg_type) then (
+      arg_type_tmp lor 0x18
+    (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
     (* arg_flag|TPC_SAFE_ARG; *)
-    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x8), locUnknown)::!il;
-  ) else (
-    (* arg_flag; *)
-    il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il;
-  );
+    ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
+      arg_type_tmp lor 0x8
+    ) else (
+      arg_type_tmp
+    )
+  in
+  il := Set(flag, integer arg_type_tmp, locUnknown)::!il;
 
   if (is_strided arg_type) then (
     il := Set(size, arg_elsz, locUnknown)::!il;

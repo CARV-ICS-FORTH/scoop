@@ -43,6 +43,9 @@ type arg_t =
     In
   | Out
   | InOut
+  | TIn
+  | TOut
+  | TInOut
   | SIn
   | SOut
   | SInOut
@@ -77,6 +80,9 @@ val uses_indice : Cil.exp -> bool
 
 (* check if an arguments type is stride *)
 val is_strided : arg_t -> bool
+
+(* checks if an arguments type is scalar *)
+val isScalar : arg_t -> bool
 
 (* check if an arguments type is out *)
 val is_out_arg : arg_t -> bool
@@ -162,7 +168,7 @@ val expScalarToPointer : Cil.location -> Cil.exp -> Cil.exp
 val formalScalarsToPointers : Cil.location -> Cil.fundec -> unit
 
 (* Converts the strings describing the argument type to arg_t *)
-val translate_arg : string -> bool -> Cil.location -> arg_t
+val translate_arg : string -> bool -> bool -> Cil.location -> arg_t
 
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h)
  * integer expretion

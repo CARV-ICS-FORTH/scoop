@@ -144,6 +144,7 @@ let spu_tasks = ref []
     inout() directives *)
 let rec scoop_process_args typ args loc : arg_descr list =
   let attrParamToExp' = attrParamToExp !ppc_file loc in
+  let translate_arg = translate_arg typ in
   match args with
     (* Brand new stride syntax... *)
     (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig)::rest) ->
@@ -163,28 +164,39 @@ let rec scoop_process_args typ args loc : arg_descr list =
       let tmp_orig_c = attrParamToExp' orig_c in
       (* original array row size = orig_c * sizeof(type) *)
       let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
-      (varname, (tmp_addr, (translate_arg typ true loc),
+      (varname, (tmp_addr, (translate_arg true (isScalar_v vi) loc),
           tmp_orig_c, tmp_bs_c, tmp_bs_r))::(scoop_process_args typ rest loc)
     (* handle strided (legacy) ... *) (* Check documentation for the syntax *)
-   | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
-      let tmp_addr = Lval(var (find_scoped_var loc !currentFunction !ppc_file varname)) in
+    | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
+      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
+      let tmp_addr = Lval(var vi) in
       let tmp_size = attrParamToExp' varsize in
       let tmp_els = attrParamToExp' var_els in
       let tmp_elsz = attrParamToExp' var_elsz in
-      (varname, (tmp_addr, (translate_arg typ true loc),
+      (varname, (tmp_addr, (translate_arg true (isScalar_v vi) loc),
           tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
-   (* variable with its size *)
-   | (AIndex(ACons(varname, []), varsize)::rest) ->
-      let tmp_addr = Lval(var (find_scoped_var loc !currentFunction !ppc_file varname)) in
-      let tmp_size = attrParamToExp !ppc_file loc varsize in
-      (varname, (tmp_addr, (translate_arg typ false loc),
+    (* variable with its size *)
+    | (AIndex(ACons(varname, []), varsize)::rest) ->
+      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
+      let tmp_addr = Lval(var vi) in
+      let tmp_size = 
+        if (!arch <> "XPPFX") then
+          attrParamToExp !ppc_file loc varsize
+        else (
+          let size = SizeOf( getBType vi.vtype vi.vname ) in
+          let n = attrParamToExp !ppc_file loc varsize in
+          (* argument size = n * sizeof(type) *)
+          BinOp(Mult, n, size, intType)
+        )
+      in
+      (varname, (tmp_addr, (translate_arg false (isScalar_v vi) loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
-   | (ACons(varname, [])::rest) ->
+    | (ACons(varname, [])::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
       let tmp_addr = Lval(var vi) in
       let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
-      (varname, (tmp_addr, (translate_arg typ false loc),
+      (varname, (tmp_addr, (translate_arg false (isScalar_v vi) loc),
           tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
     | [] -> []
     | _ -> ignore(warnLoc loc "Syntax error in #pragma css task %s(...)\n" typ); []
