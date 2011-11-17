@@ -217,14 +217,30 @@ let rec scoop_process pragma loc =
     (AStr("highpriority")::rest) ->
       let (_, lst) = scoop_process rest loc in
       (true, lst)
-    | (ACons(arg_typ, args)::rest) ->
-      let (hp, lst) = scoop_process rest loc in
+    | (ACons("safe", args)::rest) ->
       (* kasas' mess here *)
       (* ignore safe tags, it's a hint for the analysis *)
-      if(not (is_dataflow_tag arg_typ)) then 
-      	(hp, lst)
-      else
-      	(hp, (scoop_process_args arg_typ args loc)@lst)
+      scoop_process rest loc
+    (* support region r in(a,b,c) etc. *)
+    | AStr("region")::(AStr(region)::(ACons(arg_typ, args)::rest)) ->
+      if (!arch <> "x86") then
+        E.s (unimp "%a\n\tRegions are not supported in %s" d_loc loc !arch)
+      else (
+        let (hp, lst) = scoop_process rest loc in
+        let r_vi = find_scoped_var loc !currentFunction !ppc_file region in
+        let tmp_addr = Lval(var r_vi) in
+        let args_l = List.map
+          (fun a -> match a with
+              ACons(name, []) -> name
+            | _ -> E.s (errorLoc loc "#pragma css task region %s %s(...) should include only variable names" region arg_typ)
+          ) args
+        in
+        let tmp_t = Region(str2arg_flow arg_typ loc, args_l) in
+        (hp, { aname=region; address=tmp_addr; atype=tmp_t;}::lst)
+      )
+    | (ACons(arg_typ, args)::rest) ->
+      let (hp, lst) = scoop_process rest loc in
+      (hp, (scoop_process_args arg_typ args loc)@lst)
     | [] -> (false, [])
     | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); (false, [])
 
@@ -345,17 +361,13 @@ class findSPUDeclVisitor cgraph = object
               dbg_print debug ("Found task \""^funname^"\"");
               if (!arch = "x86" || !arch = "XPPFX") then (
 
+                (* check whether all argument annotations correlate to an actual argument *)
                 let check arg =
-                  if ( not (L.exists (fun e ->
-                    if ((getNameOfExp e)=arg.aname) then
-                      true
-                    else (
-                      false
-                    )
-                  ) oargs)) then (
+                  if ( not (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) then (
                     let args_err = ref "(" in
                     List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
-                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s )" arg.aname !args_err);
+                    args_err := ((!args_err)^")");
+                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.aname !args_err);
                   ) in
                 L.iter check args;
 
@@ -395,7 +407,7 @@ class findSPUDeclVisitor cgraph = object
                     | StartOf ((Var(vi),_)) -> (
                       try
                         let arg_desc = L.find (fun a -> (a.aname=vi.vname)) args in
-                        let vsize = getSize arg_desc in
+                        let vsize = getSizeOfArg arg_desc in
                         call_args := vsize::!call_args;
                         if (isStrided arg_desc) then (
                           let (vels, velsz) =
@@ -628,10 +640,7 @@ let feature : featureDescr =
 
 
         (* tasks  (new_tpc * old_original * args) *)
-        let tasks : (fundec * varinfo * (int * arg_descr) list) list = List.map
-          (fun (name, (new_fd, old_fd, args)) -> (new_fd, old_fd, args))
-          (L.rev !spu_tasks)
-        in
+        let (_, tasks) = List.split (L.rev !spu_tasks) in
         if (!arch = "cellgod") then (
           (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
           (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]

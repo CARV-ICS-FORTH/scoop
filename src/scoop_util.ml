@@ -79,8 +79,8 @@ and arg_type =
                                   3. size of a single element
                               *)
   | Normal of arg_flow * exp (** Normal arguments only need their size *)
-  | Region of arg_flow * exp list (** Region arguments include all the
-                                      arguments of the region in an exp list*)
+  | Region of arg_flow * string list (** Region arguments include all the
+                                      arguments of the region *)
 
 (** The arguments' data flow *)
 and arg_flow =
@@ -152,6 +152,15 @@ let isStrided (arg: arg_descr) : bool =
 let isScalar (arg: arg_descr) : bool =
    match arg.atype with
       Scalar(_) -> true
+    | _ -> false
+
+(** Check if an argument is region
+    @param arg the argument's type
+    @return true or false
+*)
+let isRegion (arg: arg_descr) : bool =
+   match arg.atype with
+      Region(_) -> true
     | _ -> false
 
 (** Check if an arguments type is out
@@ -740,7 +749,7 @@ let getBType (t: typ) (name: string) : typ =
     @param arg the arguments' description
     @return the argument flow type
 *)
-let getFlow (arg: arg_descr) : arg_flow =
+let getFlowOfArg (arg: arg_descr) : arg_flow =
    match arg.atype with
       Scalar(flow, _)
     | Stride(flow, _, _, _)
@@ -752,7 +761,7 @@ let getFlow (arg: arg_descr) : arg_flow =
     @param arg the arguments' description
     @return the expression with the args' size
 *)
-let getSize (arg: arg_descr) : exp =
+let getSizeOfArg (arg: arg_descr) : exp =
    match arg.atype with
       Scalar(_, size)
     | Stride(_, size, _, _)
@@ -1034,7 +1043,7 @@ let comparator (a: (int * exp)) (b: (int * exp)) : int =
     input @ inout @ output *)
 let sort_args (a: arg_descr) (b: arg_descr) : int =
   (* if they are equal *)
-  if ((getFlow a) = (getFlow b)) then 0
+  if ((getFlowOfArg a) = (getFlowOfArg b)) then 0
   (* if a is Out *)
   else if (isOut a) then 1
   (* if b is Out *)

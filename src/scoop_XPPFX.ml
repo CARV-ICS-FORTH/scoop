@@ -59,7 +59,7 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   let arg_name = arg_desc.aname in
   let arg_addr = arg_desc.address in
   let arg_type = arg_desc.atype in
-  let arg_size = getSize arg_desc in
+  let arg_size = getSizeOfArg arg_desc in
   let il = ref [] in
 
   (* taskd->args[i] *)

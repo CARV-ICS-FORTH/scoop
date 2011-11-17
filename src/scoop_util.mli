@@ -71,8 +71,8 @@ and arg_type =
                                 3. size of a single element
                               *)
   | Normal of arg_flow * Cil.exp (* Normal arguments only need their size *)
-  | Region of arg_flow * Cil.exp list (* Region arguments include all the
-                                      arguments of the region in an exp list*)
+  | Region of arg_flow * string list (* Region arguments include all the
+                                      arguments of the region *)
 
 (* The arguments' data flow *)
 and arg_flow =
@@ -111,6 +111,9 @@ val isStrided : arg_descr -> bool
 
 (* Check if an arguments type is scalar *)
 val isScalar : arg_descr -> bool
+
+(* Check if an argument is region *)
+val isRegion : arg_descr -> bool
 
 (* Check if an arguments type is out *)
 val isOut : arg_descr -> bool
@@ -249,10 +252,10 @@ val getNameOfExp : Cil.exp -> string
 val getBType : Cil.typ -> string -> Cil.typ
 
 (* returns the arg_flow of {e arg} *)
-val getFlow : arg_descr -> arg_flow
+val getFlowOfArg : arg_descr -> arg_flow
 
 (* returns the expression with the size of of {e arg} *)
-val getSize : arg_descr -> Cil.exp
+val getSizeOfArg : arg_descr -> Cil.exp
 
 (******************************************************************************)
 (*                                   LOOP                                     *)
