@@ -974,6 +974,7 @@ module BlockChunk =
 
     let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
       (* ZAKKAK: rename the arguments in the attribute *)
+      (* FIXME: make it smarter *)
       let filter1 name (oname, _ ) = (name=oname) in
       let rec doAparam = function
         | AStr(s) -> 
