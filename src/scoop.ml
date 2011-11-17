@@ -144,7 +144,7 @@ let spu_tasks = ref []
     inout() directives *)
 let rec scoop_process_args typ args loc : arg_descr list =
   let attrParamToExp' = attrParamToExp !ppc_file loc in
-  let translate_arg = translate_arg typ in
+  let arg_f = str2arg_flow typ loc in
   match args with
     (* Brand new stride syntax... *)
     (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig)::rest) ->
@@ -164,8 +164,8 @@ let rec scoop_process_args typ args loc : arg_descr list =
       let tmp_orig_c = attrParamToExp' orig_c in
       (* original array row size = orig_c * sizeof(type) *)
       let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
-      (varname, (tmp_addr, (translate_arg true (isScalar_v vi) loc),
-          tmp_orig_c, tmp_bs_c, tmp_bs_r))::(scoop_process_args typ rest loc)
+      let tmp_t = Stride(arg_f, tmp_orig_c, tmp_bs_r, tmp_bs_c) in
+      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
     (* handle strided (legacy) ... *) (* Check documentation for the syntax *)
     | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
@@ -173,8 +173,8 @@ let rec scoop_process_args typ args loc : arg_descr list =
       let tmp_size = attrParamToExp' varsize in
       let tmp_els = attrParamToExp' var_els in
       let tmp_elsz = attrParamToExp' var_elsz in
-      (varname, (tmp_addr, (translate_arg true (isScalar_v vi) loc),
-          tmp_size, tmp_els, tmp_elsz))::(scoop_process_args typ rest loc)
+      let tmp_t = Stride(arg_f, tmp_size, tmp_els, tmp_elsz) in
+      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
     (* variable with its size *)
     | (AIndex(ACons(varname, []), varsize)::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
@@ -189,15 +189,25 @@ let rec scoop_process_args typ args loc : arg_descr list =
           BinOp(Mult, n, size, intType)
         )
       in
-      (varname, (tmp_addr, (translate_arg false (isScalar_v vi) loc),
-          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
+      let tmp_t =
+        if (isScalar_v vi) then
+          Scalar(arg_f, tmp_size)
+        else
+          Normal(arg_f, tmp_size)
+      in
+      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
     | (ACons(varname, [])::rest) ->
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
       let tmp_addr = Lval(var vi) in
       let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
-      (varname, (tmp_addr, (translate_arg false (isScalar_v vi) loc),
-          tmp_size, tmp_size, tmp_size))::(scoop_process_args typ rest loc)
+      let tmp_t =
+        if (isScalar_v vi) then
+          Scalar(arg_f, tmp_size)
+        else
+          Normal(arg_f, tmp_size)
+      in
+      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
     | [] -> []
     | _ -> ignore(warnLoc loc "Syntax error in #pragma css task %s(...)\n" typ); []
 
@@ -335,9 +345,9 @@ class findSPUDeclVisitor cgraph = object
               dbg_print debug ("Found task \""^funname^"\"");
               if (!arch = "x86" || !arch = "XPPFX") then (
 
-                let check (name, _) =
+                let check arg =
                   if ( not (L.exists (fun e ->
-                    if ((getNameOfExp e)=name) then
+                    if ((getNameOfExp e)=arg.aname) then
                       true
                     else (
                       false
@@ -345,7 +355,7 @@ class findSPUDeclVisitor cgraph = object
                   ) oargs)) then (
                     let args_err = ref "(" in
                     List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
-                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s )" name !args_err);
+                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s )" arg.aname !args_err);
                   ) in
                 L.iter check args;
 
@@ -384,9 +394,15 @@ class findSPUDeclVisitor cgraph = object
                     | Lval ((Var(vi),_))
                     | StartOf ((Var(vi),_)) -> (
                       try
-                        let (arg_addr, arg_type, vsize, velsz, vels) = L.assoc vi.vname args in
+                        let arg_desc = L.find (fun a -> (a.aname=vi.vname)) args in
+                        let vsize = getSize arg_desc in
                         call_args := vsize::!call_args;
-                        if (is_strided arg_type) then (
+                        if (isStrided arg_desc) then (
+                          let (vels, velsz) =
+                            match arg_desc.atype with
+                                Stride(_, _, els, elsz) -> (els, elsz)
+                              | _ -> assert false
+                          in
                           call_args := velsz::!call_args;
                           call_args := vels::!call_args;
                         );

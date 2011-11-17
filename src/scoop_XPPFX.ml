@@ -55,8 +55,11 @@ let makeGlobalVar n t f=
 
 let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
  (arg: (int * arg_descr) ) : stmt list = (
-  let (i_m, (arg_name, (arg_addr, arg_type, arg_size, arg_elsz, arg_els))) = arg in
-
+  let (i_m, arg_desc) = arg in
+  let arg_name = arg_desc.aname in
+  let arg_addr = arg_desc.address in
+  let arg_type = arg_desc.atype in
+  let arg_size = getSize arg_desc in
   let il = ref [] in
 
   (* taskd->args[i] *)
@@ -82,10 +85,10 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
 
 
   (* arg_flag|TPC_SAFE_ARG; *)
-  let arg_type_tmp = arg_t2int arg_type in
+  let arg_type_tmp = arg_type2int arg_type in
   let arg_type_tmp =
     (* arg_flag|TPC_SAFE_ARG|TPC_BYVALUE_ARG; *)
-    if (isScalar arg_type) then (
+    if (isScalar arg_desc) then (
       arg_type_tmp lor 0x18
     (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
     (* arg_flag|TPC_SAFE_ARG; *)
@@ -97,7 +100,12 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   in
   il := Set(flag, integer arg_type_tmp, locUnknown)::!il;
 
-  if (is_strided arg_type) then (
+  if (isStrided arg_desc) then (
+    let (arg_els, arg_elsz) =
+      match arg_type with
+          Stride(_, _, els, elsz) -> (els, elsz)
+        | _ -> assert false
+    in
     il := Set(size, arg_elsz, locUnknown)::!il;
     il := Set(stride, arg_size, locUnknown)::!il;
     il := Set(element_num, arg_els, locUnknown)::!il;

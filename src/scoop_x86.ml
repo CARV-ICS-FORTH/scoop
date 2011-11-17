@@ -58,7 +58,11 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
  (arg: (int * arg_descr) ) : stmt list = (
   let uint32_t = (find_type ppc_file "uint32_t") in
   let uint64_t = (find_type ppc_file "uint64_t") in
-  let (i_m, (arg_name, (arg_addr, arg_type, arg_size, arg_elsz, arg_els))) = arg in
+  let (i_m, arg_desc) = arg in
+  let arg_name = arg_desc.aname in
+  let arg_addr = arg_desc.address in
+  let arg_type = arg_desc.atype in
+  let arg_size = getSize arg_desc in
   let block_size = var (find_global_var ppc_file "__block_sz") in
 (*   print_endline ("Doing "^arg_name); *)
   let stl = ref [] in
@@ -71,9 +75,9 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
   let stride = mkFieldAccess idxlv "stride" in
 
   il :=
-    ( if (is_strided arg_type) then (
+    ( if (isStrided arg_desc) then
         Set(stride, arg_size, locUnknown)
-      ) else
+      else
         Set(stride, (integer 0), locUnknown)
     )::!il;
 
@@ -91,7 +95,7 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
   let eal_out = mkFieldAccess idxlv "eal_out" in
   il := Set(eal_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
   il := Set(size, arg_size, locUnknown)::!il;
-(*   il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il; *)
+(*   il := Set(flag, integer (arg_type2int arg_type), locUnknown)::!il; *)
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
   if (Sdam.isSafeArg orig_tname tid arg_name) then (
@@ -113,7 +117,7 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
     *)
 (*     il := Set(size, arg_size, locUnknown)::!il; *)
     (* this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag|TPC_START_ARG|TPC_SAFE_ARG; *)
-    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x18), locUnknown)::!il;
+    il := Set(flag, integer ( (arg_type2int arg_type) lor 0x18), locUnknown)::!il;
 (*    let eal_in = mkFieldAccess idxlv "eal_in" in
     il := Set(eal_in, CastE(uint64_t, Lval arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
@@ -124,12 +128,12 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
   ) else (
 
     (* this->closure.arguments[this->closure.total_arguments].flag = arg_flag; *)
-    il := Set(flag, integer (arg_t2int arg_type), locUnknown)::!il;
+    il := Set(flag, integer (arg_type2int arg_type), locUnknown)::!il;
     (* uint32_t block_index_start=this->closure.total_arguments; *)
     il := Set(bis, Lval total_arguments, locUnknown)::!il;
 
-    let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_t2string arg_type)^"Attribute_Task") in
-    if (is_strided arg_type) then (
+    let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg_type)^"Attribute_Task") in
+    if (isStrided arg_desc) then (
       (*  if(TPC_IS_STRIDEARG(arg_flag)){
           uint32_t j;
           uint32_t stride=this->closure.arguments[  this->closure.total_arguments ].stride ;
@@ -160,9 +164,14 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
       );
 
       let ilt = ref [] in
-  (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
+  (*     let closure_flag = Set(flag, arg_type2integer arg_type, locUnknown) in *)
   (*     ilt := (closure_flag::!ilt; *)
   (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
+      let (arg_els, arg_elsz) =
+        match arg_type with
+            Stride(_, _, els, elsz) -> (els, elsz)
+          | _ -> assert false
+      in
 (* TODO integer 0 is for non reductive argument FIXME *)
       let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; arg_elsz] in
       ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
@@ -219,7 +228,7 @@ let doArgument (this: lval) (closure: lval) (total_arguments: lval)
         //this -> closure.total_arguments++;
       }*)
       let ilt = ref [] in
-  (*     let closure_flag = Set(flag, arg_t2integer arg_type, locUnknown) in *)
+  (*     let closure_flag = Set(flag, arg_type2integer arg_type, locUnknown) in *)
   (*     ilt := (closure_flag::!ilt; *)
   (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
 (* TODO integer 0 is for non reductive argument FIXME *)

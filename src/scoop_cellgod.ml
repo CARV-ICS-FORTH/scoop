@@ -82,7 +82,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 
   let args = List.rev args in
   let arglist = List.map
-    (fun (place, (name, _)) ->
+    (fun (place, _) ->
       (* task_state->local[i] *)
       let idxlv = addOffsetLval (Index(integer !i, NoOffset)) lv in
       let (_, argt, _) = (List.nth argl place) in
@@ -118,7 +118,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_descr) )
   (spu_file: file) (unaligned_args: bool) (ppc_file: file)
   (orig_tname: string) (tid: int) : stmt = (
-  let (i_m, (arg_name, (_, arg_type, _, _, _))) = arg in
+  let (i_m, arg_desc) = arg in
   let closure = mkFieldAccess this "closure" in
   let uint32_t = (find_type spu_file "uint32_t") in
   let arg_size = var (find_formal_var fd ("arg_size"^(string_of_int i))) in
@@ -144,7 +144,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
   let pplus = (BinOp(PlusA, Lval total_arguments, integer 1, intType)) in
 
   (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-  if (Sdam.isSafeArg (*fd*) orig_tname tid arg_name) then (
+  if (Sdam.isSafeArg (*fd*) orig_tname tid arg_desc.aname) then (
     (* if(TPC_IS_SAFEARG(arg_flag)){
 
         this->closure.arguments[  this->closure.total_arguments ].size    = arg_size;
@@ -160,7 +160,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
     *)
     il := Set(size, Lval arg_size, locUnknown)::!il;
     (* this->closure.arguments[  this->closure.total_arguments ].flag    = arg_flag|TPC_START_ARG|TPC_SAFE_ARG; *)
-    il := Set(flag, integer ( (arg_t2int arg_type) lor 0x18), locUnknown)::!il;
+    il := Set(flag, integer ( (arg_type2int arg_desc.atype) lor 0x18), locUnknown)::!il;
     let eal_in = mkFieldAccess idxlv "eal_in" in
     il := Set(eal_in, CastE(uint32_t, arg_addr), locUnknown)::!il;
     let eal_out = mkFieldAccess idxlv "eal_out" in
@@ -188,7 +188,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
       il := Set(bis, Lval total_arguments, locUnknown)::!il;
       (* DivideArgumentToBlocks( Task, Address, Size, Flag); *)
       let divideArgumentToBlocks = find_function_sign ppc_file "DivideArgumentToBlocks" in
-      let args = [Lval this; CastE(voidPtrType, arg_addr); Lval arg_size; arg_t2integer arg_type ] in
+      let args = [Lval this; CastE(voidPtrType, arg_addr); Lval arg_size; arg_type2integer arg_desc.atype ] in
       il := Call(None, Lval (var divideArgumentToBlocks), args, locUnknown)::!il;
       (* CLOSURE.arguments[ firstBlock ].flag|=TPC_START_ARG;
       tpc_common.h:20:#define TPC_START_ARG   0x10 *)
@@ -198,7 +198,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
       il := Set(flag, bor, locUnknown)::!il;
     ) else (
       (* CURRENT_ARGUMENT.flag = Flag|TPC_START_ARG; *)
-      il := Set(flag, integer ( (arg_t2int arg_type) lor 0x10), locUnknown)::!il;
+      il := Set(flag, integer ( (arg_type2int arg_desc.atype) lor 0x10), locUnknown)::!il;
       (* CURRENT_ARGUMENT.size = Size; *)
       il := Set(size, Lval arg_size, locUnknown)::!il;
       (* CURRENT_ARGUMENT.stride = 0;*)
@@ -206,7 +206,7 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
       (* AddAttribute_Task( Task, (void* )(Address), Flag, Size, &(CURRENT_ARGUMENT)); *)
       let addAttribute_Task = find_function_sign ppc_file "AddAttribute_Task" in
       let addrOf_args = AddrOf(idxlv) in
-      let args = [Lval this; CastE(voidPtrType, arg_addr); arg_t2integer arg_type; Lval arg_size; addrOf_args ] in
+      let args = [Lval this; CastE(voidPtrType, arg_addr); arg_type2integer arg_desc.atype; Lval arg_size; addrOf_args ] in
       il := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!il;
       (* CLOSURE.total_arguments++; *)
       il := Set(total_arguments, pplus, locUnknown)::!il;
@@ -248,11 +248,9 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   for i = 0 to args_num do
     let ex_arg = (List.nth oargs i) in
     let name = getNameOfExp ex_arg in
-    let (_, (_, arg_type, _, _, _)) = List.find 
-      ( fun (vname, _) -> if( vname = name) then true else false)
-    args in
+    let arg_desc = List.find ( fun a -> (a.aname = name) ) args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-    if (is_strided arg_type) then (
+    if (isStrided arg_desc) then (
       ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
       ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
     );

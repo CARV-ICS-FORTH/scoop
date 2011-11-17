@@ -46,7 +46,7 @@ module CG = Callgraph
 (******************************************************************************)
 (*                          Types                                             *)
 (******************************************************************************)
-
+(*
 (** the argument type supported by the annotations *)
 type arg_t =
     In
@@ -60,7 +60,33 @@ type arg_t =
   | SInOut
 
 (** the argument description, extracted by the annotations *)
-and arg_descr = (string * (exp * arg_t * exp * exp * exp))
+and arg_descr = (string * (exp * arg_t * exp * exp * exp))*)
+
+(** The argument description, extracted by the annotations *)
+type arg_descr =
+  {
+    mutable aname: string;    (** The arguments' name *)
+    mutable address: exp;     (** The arguments' address *)
+    mutable atype: arg_type;  (** The argument's type *)
+  }
+
+(** The arguments' type *)
+and arg_type =
+  | Scalar of arg_flow * exp (** Scalar arguments only need their size (maybe not) *)
+  | Stride of arg_flow * exp * exp * exp (** Stride args have three sizes
+                                  1. stride size
+                                  2. number of elements
+                                  3. size of a single element
+                              *)
+  | Normal of arg_flow * exp (** Normal arguments only need their size *)
+  | Region of arg_flow * exp list (** Region arguments include all the
+                                      arguments of the region in an exp list*)
+
+(** The arguments' data flow *)
+and arg_flow =
+  | IN
+  | OUT
+  | INOUT
 
 (******************************************************************************)
 (*                          Globals                                           *)
@@ -99,7 +125,7 @@ let blocking = ref true
 (*                                BOOLEAN                                     *)
 (******************************************************************************)
 
-(** checks if an exp uses an indice
+(** Check if an exp uses an indice
     @param e the expression to check
     @return true or false
  *)
@@ -110,43 +136,49 @@ let uses_indice (e: exp) : bool =
     | (Lval(_, Index(_, _))) -> true
     | _ -> false
 
-(** checks if an arguments type is stride 
+(** Check if an argument is stride
+    @param arg the arguments' descriptor
+    @return true or false
+*)
+let isStrided (arg: arg_descr) : bool =
+   match arg.atype with
+    | Stride(_) -> true
+    | _ -> false
+
+(** Check if an argument is scalar
     @param arg the argument's type
     @return true or false
 *)
-let is_strided (arg: arg_t) : bool =
-   match arg with
-    | TIn
-    | TOut
-    | TInOut -> true
+let isScalar (arg: arg_descr) : bool =
+   match arg.atype with
+      Scalar(_) -> true
     | _ -> false
 
-(** checks if an arguments type is scalar
+(** Check if an arguments type is out
     @param arg the argument's type
     @return true or false
 *)
-let isScalar (arg: arg_t) : bool =
-   match arg with
-    | SIn
-    | SOut
-    | SInOut -> true
+let isOut (arg: arg_descr) : bool =
+   match arg.atype with
+      Scalar(OUT, _)
+    | Stride(OUT, _, _, _)
+    | Normal(OUT, _)
+    | Region(OUT, _) -> true
     | _ -> false
 
-(** checks if an arguments type is out
+(** Check if an arguments type is in
     @param arg the argument's type
     @return true or false
 *)
-let is_out_arg (arg: arg_t) : bool =
-   match arg with
-    | Out
-    | InOut
-    | TOut
-    | TInOut
-    | SOut
-    | SInOut -> true
+let isIn (arg: arg_descr) : bool =
+   match arg.atype with
+      Scalar(IN, _)
+    | Stride(IN, _, _, _)
+    | Normal(IN, _)
+    | Region(IN, _) -> true
     | _ -> false
 
-(** checks if there is any indiced argument in the task (if any task) in the given
+(** Check if there is any indiced argument in the task (if any task) in the given
     statement
     @param st the statement to check
     @return true or false
@@ -163,7 +195,7 @@ let tpc_call_with_arrray (st: stmt) : bool =
   end else
     false
 
-(** Checks if a [Cil.global] is {b not} the function declaration of "main" 
+(** Check if a [Cil.global] is {b not} the function declaration of "main"
     @param g the global to check
     @return true or false
 *)
@@ -171,7 +203,7 @@ let isNotMain (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
   | _ -> true
 
-(** Checks if a [Cil.global] is {b not} the function declaration of "tpc_call_tpcAD65"
+(** Check if a [Cil.global] is {b not} the function declaration of "tpc_call_tpcAD65"
     @param g the global to check
     @return true or false
 *)
@@ -179,7 +211,7 @@ let isNotSkeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
-(** Checks if a global is a typedef, enum, struct or union
+(** Check if a global is a typedef, enum, struct or union
     @param g the global to check
     @return true or false
 *)
@@ -192,14 +224,14 @@ let is_typedef (g: global) : bool = match g with
   | GVarDecl(vi, _) when vi.vstorage=Extern -> true
   | _ -> false
 
-(** checks whether a type is TComp
+(** Check whether a type is TComp
     @return true or false
 *)
 let isCompType = function
   | TComp _ -> true
   | _ -> false
   
-(** checks whether a type is scalar
+(** Check whether a type is scalar
     @param t the type [Cil.typ]
     @return true or false
 *)
@@ -210,7 +242,7 @@ let isScalar_t =  function
   | TFun _ -> false
   | _ -> true
 
-(** checks whether a variable is scalar
+(** Check whether a variable is scalar
     @param vi the variable's [Cil.varinfo]
     @return true or false
 *)
@@ -538,55 +570,47 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
     | TFun (_) -> ();
     | _ -> assert false
 
-(** Converts the {e arg} describing the argument type to arg_t
+(** Converts the {e arg} describing the argument type to arg_flow
     @param arg the string (in/out/inout/input/output) describing the type of the argument
-    @param strided flag showing whether it is a strided argument
-    @return the corresponding arg_t
+    @return the corresponding arg_flow
  *)
-let translate_arg (arg: string) (strided: bool) (scalar: bool) (loc: location): arg_t =
+let str2arg_flow (arg: string) (loc: location): arg_flow =
   match arg with
-      "in" when strided -> TIn (* legacy *)
-    | "input" when strided -> TIn
-    | "out" when strided -> TOut (* legacy *)
-    | "output" when strided -> TOut
-    | "inout" when strided -> TInOut
-    | "in" when scalar -> SIn (* legacy *)
-    | "input" when scalar -> SIn
-    | "out" when scalar -> SOut (* legacy *)
-    | "output" when scalar -> SOut
-    | "inout" when scalar -> SInOut
     | "in" (* legacy *)
-    | "input" -> In
+    | "input" -> IN
     | "out" (* legacy *)
-    | "output" -> Out
-    | "inout" -> InOut
+    | "output" -> OUT
+    | "inout" -> INOUT
     | _ -> E.s (errorLoc loc "Only in/out/input/output/inout are allowed")
 
-(** Maps the arg_t to a number as defined by the TPC headers
+(** Maps the argument type to a number as defined by the TPC headers
     @return the corrensponding number *)
-let arg_t2int = function
-    | SIn (*-> 5*)
-    | TIn
-    | In -> 1
-    | SOut (*-> 6*)
-    | TOut
-    | Out -> 2
-    | SInOut (*-> 7*)
-    | TInOut
-    | InOut -> 3
+let arg_type2int (arg_t: arg_type) : int =
+  let flow2int = function
+      IN -> 1
+    | OUT -> 2
+    | INOUT -> 3
+  in
+  match arg_t with
+      Scalar( flow, _)
+    | Stride ( flow, _, _, _)
+    | Normal ( flow, _)
+    | Region ( flow, _) -> (flow2int flow)
+
 
 (** Returns a string discribing the argument as IN/OUT/INOUT
     @return the corrensponding string *)
-let arg_t2string = function
-    | SIn
-    | TIn
-    | In -> "IN"
-    | TOut
-    | SOut
-    | Out -> "OUT"
-    | TInOut
-    | SInOut
-    | InOut -> "INOUT"
+let arg_type2string (arg_t: arg_type) : string =
+  let flow2str = function
+      IN -> "IN"
+    | OUT -> "OUT"
+    | INOUT -> "INOUT"
+  in
+  match arg_t with
+      Scalar( flow, _)
+    | Stride ( flow, _, _, _)
+    | Normal ( flow, _)
+    | Region ( flow, _) -> (flow2str flow)
 
 (** Checks if tag is data annotation.
 		@param typ the dataflow annotation
@@ -599,8 +623,7 @@ let is_dataflow_tag (typ: string): bool =
 
 (** Maps the arg_t to ints as defined by the TPC headers
     @return the corrensponding int *)
-let arg_t2integer = function
-    | t -> integer (arg_t2int t)
+let arg_type2integer t = integer (arg_type2int t)
 
 
 (******************************************************************************)
@@ -711,6 +734,30 @@ let getBType (t: typ) (name: string) : typ =
   | TArray _ -> ignore(error "I can't guess the size of array \"%s\"\n" name); t
   | TFun _ -> ignore(error "Found function as task argument \n"); t
   | TBuiltin_va_list _ -> ignore(error "Found variable args as task argument \n"); t
+
+
+(** returns the arg_flow of {e arg}
+    @param arg the arguments' description
+    @return the argument flow type
+*)
+let getFlow (arg: arg_descr) : arg_flow =
+   match arg.atype with
+      Scalar(flow, _)
+    | Stride(flow, _, _, _)
+    | Normal(flow, _)
+    | Region(flow, _) -> flow
+
+
+(** returns the expression with the size of {e arg}
+    @param arg the arguments' description
+    @return the expression with the args' size
+*)
+let getSize (arg: arg_descr) : exp =
+   match arg.atype with
+      Scalar(_, size)
+    | Stride(_, size, _, _)
+    | Normal(_, size) -> size
+    | Region(_, _) -> zero
 
 (******************************************************************************)
 (*                                   LOOP                                     *)
@@ -985,18 +1032,16 @@ let comparator (a: (int * exp)) (b: (int * exp)) : int =
 (** Comparator for use with [List.sort], 
     takes an arg_descr list and sorts it according to the type of the arguments
     input @ inout @ output *)
-let sort_args (a: arg_descr) (b: arg_descr) : int = 
-  let (_, (_, arg_typa, _, _, _)) = a in
-  let (_, (_, arg_typb, _, _, _)) = b in
-    (* if they are equal *)
-    if (arg_typa = arg_typb) then 0
-    (* if a is Out *)
-    else if (arg_typa = Out || arg_typa = SOut || arg_typa = TOut) then 1
-    (* if b is Out *)
-    else if (arg_typb = Out || arg_typb = SOut || arg_typb = TOut) then (-1)
-    (* if neither are Out and a is In *)
-    else if (arg_typa = In || arg_typa = SIn || arg_typa = TIn) then (-1)
-    else 1
+let sort_args (a: arg_descr) (b: arg_descr) : int =
+  (* if they are equal *)
+  if ((getFlow a) = (getFlow b)) then 0
+  (* if a is Out *)
+  else if (isOut a) then 1
+  (* if b is Out *)
+  else if (isOut b) then (-1)
+  (* if neither are Out and a is In *)
+  else if (isIn a) then (-1)
+  else 1
 
 (** Comparator for use with [List.sort],
     takes an (int*arg_descr) list and sorts it according to the int of the elements
@@ -1020,11 +1065,10 @@ let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
  *)
 let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list =
   L.map (fun arg ->
-      let (name, _) = arg in
       let i = ref 0 in
       ignore(L.exists (fun e ->
         let ename=getNameOfExp e in
-        if (ename=name) then
+        if (ename=arg.aname) then
           true
         else (
           incr i;

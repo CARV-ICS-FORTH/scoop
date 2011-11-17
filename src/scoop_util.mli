@@ -38,7 +38,7 @@
 (******************************************************************************)
 (*                          Types                                             *)
 (******************************************************************************)
-
+(*
 type arg_t =
     In
   | Out
@@ -50,7 +50,35 @@ type arg_t =
   | SOut
   | SInOut
 
-and arg_descr = (string * (Cil.exp * arg_t * Cil.exp * Cil.exp * Cil.exp))
+and arg_descr = (string * (Cil.exp * arg_t * Cil.exp * Cil.exp * Cil.exp))*)
+
+
+(* The argument description, extracted by the annotations *)
+type arg_descr =
+  {
+    mutable aname: string;    (* The arguments' name *)
+    mutable address: Cil.exp;     (* The arguments' address *)
+    mutable atype: arg_type;  (* The argument's type *)
+  }
+
+(* The arguments' type *)
+and arg_type =
+  | Scalar of arg_flow * Cil.exp (* Scalar arguments only need their size (maybe not) *)
+  | Stride of arg_flow * Cil.exp * Cil.exp * Cil.exp
+                              (* Stride args have three sizes
+                                1. stride size
+                                2. number of elements
+                                3. size of a single element
+                              *)
+  | Normal of arg_flow * Cil.exp (* Normal arguments only need their size *)
+  | Region of arg_flow * Cil.exp list (* Region arguments include all the
+                                      arguments of the region in an exp list*)
+
+(* The arguments' data flow *)
+and arg_flow =
+  | IN
+  | OUT
+  | INOUT
 
 (******************************************************************************)
 (*                          Globals                                           *)
@@ -75,34 +103,37 @@ val blocking : bool ref
 (*                                BOOLEAN                                     *)
 (******************************************************************************)
 
-(* function that checks if an exp uses an indice *)
+(* Function that checks if an exp uses an indice *)
 val uses_indice : Cil.exp -> bool
 
-(* check if an arguments type is stride *)
-val is_strided : arg_t -> bool
+(* Check if an arguments type is stride *)
+val isStrided : arg_descr -> bool
 
-(* checks if an arguments type is scalar *)
-val isScalar : arg_t -> bool
+(* Check if an arguments type is scalar *)
+val isScalar : arg_descr -> bool
 
-(* check if an arguments type is out *)
-val is_out_arg : arg_t -> bool
+(* Check if an arguments type is out *)
+val isOut : arg_descr -> bool
 
-(* function that checks if a stmt is tagged with a #pragma tpc... *)
+(* Check if an arguments type is in *)
+val isIn : arg_descr -> bool
+
+(* Function that checks if a stmt is tagged with a #pragma tpc... *)
 val tpc_call_with_arrray : Cil.stmt -> bool
 
-(* Checks if <g> is *not* the function declaration of "main"  *)
+(* Check if <g> is *not* the function declaration of "main"  *)
 val isNotMain : Cil.global -> bool
 
-(* Checks if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
+(* Check if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
 val isNotSkeleton : Cil.global -> bool
 
-(* Checks if <g> is a typedef, enum, struct or union *)
+(* Check if <g> is a typedef, enum, struct or union *)
 val is_typedef : Cil.global -> bool
 
-(* Checks if <t> is a scalar *)
+(* Check if <t> is a scalar *)
 val isScalar_t : Cil.typ -> bool
 
-(* Checks if <vi> is a scalar *)
+(* Check if <vi> is a scalar *)
 val isScalar_v : Cil.varinfo -> bool
 
 
@@ -167,22 +198,22 @@ val expScalarToPointer : Cil.location -> Cil.exp -> Cil.exp
  *)
 val formalScalarsToPointers : Cil.location -> Cil.fundec -> unit
 
-(* Converts the strings describing the argument type to arg_t *)
-val translate_arg : string -> bool -> bool -> Cil.location -> arg_t
+(* Converts the strings describing the argument type to arg_flow *)
+val str2arg_flow : string -> Cil.location -> arg_flow
 
-(* Converts the arg_t to the corresponding (as defined in tpc_common.h)
- * integer expretion
- *)
-val arg_t2integer : arg_t -> Cil.exp
+(* Converts the arg_t to the corresponding (as defined in tpc_common.h) int *)
+val arg_type2int : arg_type -> int
+
+(* Converts the arg_t to the corresponding string IN/OUT/INOUT *)
+val arg_type2string : arg_type -> string
 
 (* Checks if tag is data annotation *)
 val is_dataflow_tag : string -> bool
 
-(* Converts the arg_t to the corresponding (as defined in tpc_common.h) int *)
-val arg_t2int : arg_t -> int
-
-(* Converts the arg_t to the corresponding string IN/OUT/INOUT *)
-val arg_t2string : arg_t -> string
+(* Converts the arg_t to the corresponding (as defined in tpc_common.h)
+ * integer expretion
+ *)
+val arg_type2integer : arg_type -> Cil.exp
 
 (******************************************************************************)
 (*                         Copy Function                                      *)
@@ -216,6 +247,12 @@ val getNameOfExp : Cil.exp -> string
 
 (* gets the basetype of a type *)
 val getBType : Cil.typ -> string -> Cil.typ
+
+(* returns the arg_flow of {e arg} *)
+val getFlow : arg_descr -> arg_flow
+
+(* returns the expression with the size of of {e arg} *)
+val getSize : arg_descr -> Cil.exp
 
 (******************************************************************************)
 (*                                   LOOP                                     *)

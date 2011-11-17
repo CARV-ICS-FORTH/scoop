@@ -90,7 +90,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
   let carry = ref dummyInstr in
   let args = L.rev args in
   let arglist = List.map
-    (fun (place, (name, (_, arg_type, _, _, _))) ->
+    (fun (place, arg_desc) ->
       let argvar = makeTempVar execfun voidPtrType in
 (*      let rec castexp atyp = match atyp with
         TInt(_, _)
@@ -103,7 +103,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
       in*)
       let castinstr = Set(var argvar, Lval(var argaddr), locUnknown) in
       let (_, argt, _) = (List.nth argl place) in
-      let advptrinstr = nextaddr !i (is_strided arg_type) in
+      let advptrinstr = nextaddr !i (isStrided arg_desc) in
       incr i;
       if !carry <> dummyInstr then res := !carry::!res;
       carry := advptrinstr;
@@ -153,7 +153,7 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 *)
 let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd: fundec)
  (arg: (int * arg_descr)) (stats: bool) (spu_file: file): instr list = (
-  let (i_m, (_, (_, arg_type, _, _, _))) = arg in
+  let (i_m, arg_desc) = arg in
   let arg_size = Lval( var (find_formal_var fd ("arg_size"^(string_of_int i_m)))) in
   let actual_arg = L.nth fd.sformals i_m in
   let arg_addr = (
@@ -175,7 +175,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     let total_bytes = var (find_local_var fd "total_bytes") in
 (*     let arg_bytes = var (find_local_var fd "arg_bytes") in *)
     let arg_bytes =
-      if (is_strided arg_type) then (
+      if (isStrided arg_desc) then (
         (*FIXME not sure about i here *)
         let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
         let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
@@ -188,7 +188,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     in
     (* total_bytes += ( arg_bytes<< TPC_IS_INOUTARG(arg_flag)); *)
     let total_size = 
-      if (is_out_arg arg_type) then (
+      if (isStrided arg_desc) then (
         BinOp(PlusA, Lval(total_bytes), BinOp(Mult, integer 2, arg_bytes, intType), intType)
       ) else (
         BinOp(PlusA, Lval(total_bytes), arg_bytes, intType)
@@ -206,7 +206,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
   let eal = mkFieldAccess local_arg "eal" in
   il := Set(eal, mkCast arg_addr (find_type spu_file "uint32_t"), locUnknown)::!il;
   let size = mkFieldAccess local_arg "size" in
-  if (is_strided arg_type) then (
+  if (isStrided arg_desc) then (
     (*FIXME not sure about i here *)
     let arg_elsz = Lval( var (find_formal_var fd ("arg_elsz"^(string_of_int i)))) in
     let arg_els = Lval( var (find_formal_var fd ("arg_els"^(string_of_int i)))) in
@@ -222,7 +222,7 @@ let doArgument (i: int) (local_arg: lval) (avail_task: lval) (tmpvec: lval) (fd:
     il := Set(size, arg_size, locUnknown)::!il;
   (* local_arg.flag = arg_flag; *)
   let flag = mkFieldAccess local_arg "flag" in
-  il:= Set(flag, arg_t2integer arg_type, locUnknown)::!il;
+  il:= Set(flag, arg_type2integer arg_desc.atype, locUnknown)::!il;
   (* *tmpvec = *((volatile vector unsigned char * )&local_arg); *)
   let casted_la = mkCast (mkAddrOf local_arg) vector_uchar_p in
   il := Set(mkMem (Lval(tmpvec)) NoOffset, Lval(mkMem casted_la NoOffset), locUnknown)::!il;
@@ -259,11 +259,9 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   for i = 0 to args_num do
     let ex_arg = (L.nth oargs i) in
     let name = getNameOfExp ex_arg in
-    let (_, (_, arg_type, _, _, _)) = L.find 
-      ( fun (vname, _) -> if( vname = name) then true else false)
-    args in
+    let arg_desc = L.find ( fun a -> ( a.aname = name) ) args in
     ignore(makeFormalVar f_new ("arg_size"^(string_of_int i)) intType);
-    if (is_strided arg_type) then (
+    if (isStrided arg_desc) then (
       ignore(makeFormalVar f_new ("arg_els"^(string_of_int i)) intType);
       ignore(makeFormalVar f_new ("arg_elsz"^(string_of_int i)) intType)
     );
