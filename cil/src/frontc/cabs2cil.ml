@@ -59,7 +59,7 @@ let mydebugfunction () =
 
 let debugGlobal = false
 
-let continueOnError = true
+let continueOnError = false
 
 (** Turn on tranformation that forces correct parameter evaluation order *)
 let forceRLArgEval = ref false
@@ -110,6 +110,10 @@ let typeForCombinedArg: ((string, string) H.t -> typ -> typ) ref =
 let attrsForCombinedArg: ((string, string) H.t ->
                           attributes -> attributes) ref =
   ref (fun _ t -> t)
+
+(* ZAKKAK: handle renamings *)
+(* keep a list with all the renamings *)
+let renamings: (string * (string * location)) list ref = ref []
 
 (* ---------- source error message handling ------------- *)
 let lu = locUnknown
@@ -562,6 +566,8 @@ let alphaConvertVarAndAddToEnv (addtoenv: bool) (vi: varinfo) : varinfo =
 *)
 (*  ignore (E.log "After adding %s alpha table is: %a\n"
             newvi.vname docAlphaTable alphaTable); *)
+  (* ZAKKAK: push the new rename *)
+  renamings := (vi.vname, (newvi.vname, oldloc) )::!renamings;
   newvi
 
 
@@ -967,6 +973,44 @@ module BlockChunk =
       if c.stmts == stmts' then c else {c with stmts = stmts'}
 
     let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
+      (* ZAKKAK: rename the arguments in the attribute *)
+      let filter1 name (oname, _ ) = (name=oname) in
+      let rec doAparam = function
+        | AStr(s) -> 
+          let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
+          if (rl = []) then
+            AStr(s)
+          else (
+            let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
+            AStr(nn)
+          )
+        | ACons(s, apl) -> ACons(
+          ( if (s<>"in" && s<>"inout" && s<>"out" && s<>"input" && s<>"output") then (
+              let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
+              if (rl = []) then
+                s
+              else (
+                let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
+                nn
+              )
+            ) else s),
+          List.map doAparam apl
+        )
+        | ASizeOfE(ap) -> ASizeOfE(doAparam ap)
+        | AAlignOfE(ap) -> AAlignOfE(doAparam ap)
+        | AUnOp(u, ap) -> AUnOp(u, doAparam ap)
+        | ABinOp(b, ap1, ap2) -> ABinOp(b, doAparam ap1, doAparam ap2)
+        | ADot(ap, s) -> ADot(doAparam ap, s)
+        | AStar(ap) -> AStar(doAparam ap)
+        | AAddrOf(ap) -> AAddrOf(doAparam ap)
+        | AIndex(ap1, ap2) -> AIndex(doAparam ap1, doAparam ap2)
+        | AQuestion(ap1, ap2, ap3) -> AQuestion(doAparam ap1, doAparam ap2, doAparam ap3)
+        | a -> a
+      in
+      let a = match a with
+          Attr(st, aparams) -> Attr(st, List.map doAparam aparams)
+      in
+
       let c = { c with stmts = pushPostIns c; postins = []; } in
       let st, stmts' = getFirstInChunk c in
       (* Add the pragma attr *)
@@ -5792,6 +5836,8 @@ and doDecl (isglobal: bool) : A.definition -> chunk = function
               transparentUnionArgs := [];
             in
 
+            (* ZAKKAK: reset the renamings *)
+            renamings := [];
             (********** Now do the BODY *************)
             let _ = 
               let stmts = doBody body in
@@ -6186,7 +6232,6 @@ and doBody (blk: A.block) : chunk =
   end
       
 and doStatement (s : A.statement) : chunk =
-(* ZAKKAK there are some renamings here that we don;t handle with pragmas *)
   try
     match s with
       A.NOP _ -> skipChunk

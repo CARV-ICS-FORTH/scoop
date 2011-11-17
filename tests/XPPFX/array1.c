@@ -37,8 +37,6 @@ int main (int argc, char * argv){
   int n=1024;
   int k=4;
   int m = n/k;
-  int j;
-  int *arg1;
 
   #pragma css start
 
@@ -55,8 +53,8 @@ int main (int argc, char * argv){
 */
   // initialization
   for (i=0 ; i<k ; i++){
-    j = i*m;
-    arg1 = &arr[i*m];
+    int j = i*m;
+    int *arg1 = &arr[i*m];
     printf("arr %p\n",arr);
     printf("m %p\n",&m);
     printf("j %p\n",&j);
@@ -66,8 +64,8 @@ int main (int argc, char * argv){
   }
 
   for(i=0 ; i<k ; i++){
-    j=i+1;
-    arg1 = &arr[i*m];
+    int j=i+1;
+    int *arg1 = &arr[i*m];
     printf("arr %p\n",arr);
     printf("m %p\n",&m);
     printf("j %p\n",&j);
