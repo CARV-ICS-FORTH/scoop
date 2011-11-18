@@ -974,7 +974,6 @@ module BlockChunk =
 
     let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
       (* ZAKKAK: rename the arguments in the attribute *)
-      (* FIXME: make it smarter *)
       let filter1 name (oname, _ ) = (name=oname) in
       let rec doAparam = function
         | AStr(s) -> 
@@ -1008,8 +1007,34 @@ module BlockChunk =
         | AQuestion(ap1, ap2, ap3) -> AQuestion(doAparam ap1, doAparam ap2, doAparam ap3)
         | a -> a
       in
+      let rec doTask = function
+        (* support safe(...) *)
+        | ACons("safe", args)::rest -> 
+          ACons("safe", List.map doAparam args)::(doTask rest)
+        (* support region r in(a,b,c) etc. *)
+        | AStr("region")::(region::(ACons(arg_typ, args)::rest)) ->
+          AStr("region")::(doAparam region)::(ACons(arg_typ, List.map doAparam args)::(doTask rest))
+        | ACons(arg_typ, args)::rest ->
+          ACons(arg_typ, List.map doAparam args)::(doTask rest)
+        | a -> a
+      in
       let a = match a with
-          Attr(st, aparams) -> Attr(st, List.map doAparam aparams)
+        (* Support #pragma css ... *)
+        Attr("css", rest) ->
+          Attr("css", 
+            (match rest with
+            (* Support #pragma css wait on(...) *)
+              [AStr("wait"); ACons("on", exps)] ->
+                [AStr("wait"); ACons("on", List.map doAparam exps)]
+            (* Support #pragma css start(...) *)
+            | [ACons("start", exps)] ->
+                [ACons("start", List.map doAparam exps)]
+            (* Support #pragma css task... *)
+            | AStr("task")::rest ->
+                AStr("task")::(doTask rest)
+            | _ -> rest
+          ))
+        | _ -> a
       in
 
       let c = { c with stmts = pushPostIns c; postins = []; } in

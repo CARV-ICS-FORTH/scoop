@@ -266,7 +266,7 @@ class findSPUDeclVisitor cgraph = object
         (Attr("css", rest), loc) -> (
           match rest with
           (* Support #pragma css wait on(...) *)
-            AStr("wait")::(ACons("on", exps)::_) -> (
+            [AStr("wait"); ACons("on", exps)] -> (
               if (!arch = "XPPFX") then (
                 let two = find_function_sign (!ppc_file) "tpc_wait_on" in
                 let args = []
@@ -287,24 +287,24 @@ class findSPUDeclVisitor cgraph = object
                 DoChildren
           )
           (* Support #pragma css wait all *)
-          | AStr("wait")::(AStr("all")::_)
+          | [AStr("wait"); AStr("all")]
           (* Support #pragma css barrier*)
-          | AStr("barrier")::_ -> (
+          | [AStr("barrier")] -> (
             let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
             let instr = Call (None, Lval (var twa), [], locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
           (* Support #pragma css start *)
-          | AStr("start")::_
+          | [AStr("start")]
           (* Support #pragma css start(...) *)
-          | ACons("start", [])::_ -> (
+          | [ACons("start", [])] -> (
             let ts = find_function_sign (!ppc_file) "tpc_init" in
             let instr = Call (None, Lval (var ts), [], locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
-          | ACons("start", exp::rest)::_ -> (
+          | [ACons("start", exp::rest)] -> (
             let ts = find_function_sign (!ppc_file) "tpc_init" in
             let args =
               if (!arch="cell") then
@@ -322,14 +322,14 @@ class findSPUDeclVisitor cgraph = object
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
           (* Support #pragma css finish *)
-          | AStr("finish")::_ -> (
+          | [AStr("finish")] -> (
             let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
             let instr = Call (None, Lval (var ts), [], locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
           (* Support #pragma css malloc *)
-          | AStr("malloc")::_ -> (
+          | [AStr("malloc")] -> (
             let tm = find_function_sign (!ppc_file) "tpc_malloc" in
             match s.skind with
                 Instr(Call(Some res, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
@@ -341,7 +341,7 @@ class findSPUDeclVisitor cgraph = object
               | _ -> DoChildren
           )
           (* Support #pragma css free *)
-          | AStr("free")::_ -> (
+          | [AStr("free")] -> (
             let tf = find_function_sign (!ppc_file) "tpc_free" in
             match s.skind with
                 Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
