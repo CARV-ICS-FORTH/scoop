@@ -64,7 +64,6 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
 
   (* taskd->args[i] *)
   let tpc_task_argument_pt = TPtr(find_type f  "tpc_task_argument", []) in
-  il := Set(taskd_args, BinOp( PlusPI, Lval taskd_args, one, tpc_task_argument_pt) , locUnknown)::!il;
 (*   let idxlv = addOffsetLval (Index(integer i, NoOffset)) arguments in *)
   let idxlv = taskd_args in
   (*  void * addr_in;
@@ -114,6 +113,7 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
     il := Set(stride, zero, locUnknown)::!il;
     il := Set(element_num, zero, locUnknown)::!il;
   );
+  il := Set(taskd_args, BinOp( PlusPI, Lval taskd_args, one, tpc_task_argument_pt) , locUnknown)::!il;
 
   [mkStmt (Instr (L.rev !il))]
 )
@@ -189,7 +189,8 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* task_desc->args = task_desc; *)
   let taskd_args = mkFieldAccess taskd "args" in
 (*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs; *)
-  instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs;
+  instrs := Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown)::!instrs;
+(*   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs; *)
   (* task_desc->args_no = args_num; *)
   let taskd_args_no = mkFieldAccess taskd "args_num" in
   instrs := Set(taskd_args_no, args_num_i, locUnknown)::!instrs;
@@ -216,7 +217,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   in
 
   (* task_desc->args = task_desc+32; *)
-  instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt) , locUnknown)::!instrs;
+  instrs := Set(taskd_args, CastE(tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown)::!instrs;
   (* tpc_call(taskd); *)
   let tpc_call_f = find_function_sign f "tpc_call" in
   instrs := Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown)::!instrs;

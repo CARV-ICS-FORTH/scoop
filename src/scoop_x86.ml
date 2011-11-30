@@ -62,6 +62,16 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
   let stl = ref [] in
   let il = ref [] in
   let found = L.exists (fun a -> (arg_name=a.aname)) args in
+
+  let arguments = mkFieldAccess closure "arguments" in
+  let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
+  let stride = mkFieldAccess idxlv "stride" in
+  let size = mkFieldAccess idxlv "size" in
+  let flag = mkFieldAccess idxlv "flag" in
+  let eal_in = mkFieldAccess idxlv "eal_in" in
+  let eal_out = mkFieldAccess idxlv "eal_out" in
+  let pplus = (BinOp(PlusA, Lval total_arguments, one, intType)) in
+
   (* if it is not annotated *)
   if found then (
     let arg_desc = L.find (fun a -> (arg_name=a.aname)) args in
@@ -70,13 +80,9 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
     let arg_size = getSizeOfArg arg_desc in
     let block_size = var (find_global_var ppc_file "__block_sz") in
   (*   print_endline ("Doing "^arg_name); *)
-    let arguments = mkFieldAccess closure "arguments" in
     let t = typeOfLval arguments in
     assert(isArrayType t);
     (* this->closure.arguments[  this->closure.total_arguments ].stride=TPC_IS_STRIDEARG(arg_flag)? va_arg(arg_list, int):0; *)
-    let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
-    let stride = mkFieldAccess idxlv "stride" in
-
     il :=
       ( if (isStrided arg_desc) then
           Set(stride, arg_size, locUnknown)
@@ -84,18 +90,11 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
           Set(stride, (integer 0), locUnknown)
       )::!il;
 
-
-    let size = mkFieldAccess idxlv "size" in
-    let flag = mkFieldAccess idxlv "flag" in
-    let pplus = (BinOp(PlusA, Lval total_arguments, one, intType)) in
-
   (*  this->closure.arguments[this->closure.total_arguments].eal_in = arg_addr64;
     this->closure.arguments[this->closure.total_arguments].eal_out = arg_addr64;
     this->closure.arguments[this->closure.total_arguments].size = arg_size;
     this->closure.arguments[this->closure.total_arguments].flag = arg_flag;*)
-    let eal_in = mkFieldAccess idxlv "eal_in" in
     il := Set(eal_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-    let eal_out = mkFieldAccess idxlv "eal_out" in
     il := Set(eal_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
     il := Set(size, arg_size, locUnknown)::!il;
   (*   il := Set(flag, integer (arg_type2int arg_type), locUnknown)::!il; *)
@@ -275,23 +274,42 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
       (* skipping assert( (((unsigned)arg_addr64&0xF) == 0) && ((arg_size&0xF) == 0)); *)
     );
   ) else (
+    let doSafeArg typ =
+      (* this->closure.arguments[  this->closure.total_arguments ].stride=0; *)
+      il := Set(stride, (integer 0), locUnknown)::!il;
+      (*  this->closure.arguments[this->closure.total_arguments].eal_in = arg_addr64;
+          this->closure.arguments[this->closure.total_arguments].eal_out = arg_addr64;
+          this->closure.arguments[this->closure.total_arguments].size = arg_size;
+          this->closure.arguments[this->closure.total_arguments].flag = arg_flag;*)
+      il := Set(eal_in, CastE(voidPtrType, arg), locUnknown)::!il;
+      il := Set(eal_out, CastE(voidPtrType, arg), locUnknown)::!il;
+(*       il := Set(size, SizeOf( getBType vi.vtype vi.vname ), locUnknown)::!il; *)
+      il := Set(size, zero, locUnknown)::!il;
+      (* this->closure.arguments[  this->closure.total_arguments ].flag = IN|TPC_START_ARG|TPC_SAFE_ARG; *)
+      il := Set(flag, integer typ, locUnknown)::!il;
+      (* this -> closure.total_arguments++; *)
+      il := Set(total_arguments, pplus, locUnknown)::!il;
+      stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];
+    in
     try (* find if this argument belongs in some region *)
-      let arguments = mkFieldAccess closure "arguments" in
-      let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
-      let flag = mkFieldAccess idxlv "flag" in
-      let pplus = (BinOp(PlusA, Lval total_arguments, one, intType)) in
       let region = L.find
         (fun a -> match a.atype with
             Region(_, vars) -> L.exists (fun s -> s=arg_name) vars
           | _ -> false
         ) args
       in
-      (* this->closure.arguments[  this->closure.total_arguments ].flag = arg_flag|TPC_START_ARG|TPC_SAFE_ARG; *)
-      il := Set(flag, integer ( (arg_type2int region.atype) lor 0x18), locUnknown)::!il;
-      (* this -> closure.total_arguments++; *)
-      il := Set(total_arguments, pplus, locUnknown)::!il;
-      stl := (*mkStmt(Continue locUnknown)::*)[mkStmt(Instr (L.rev !il))];
-    with Not_found -> E.s (errorLoc loc "%s has no annotation in the #pragma css task ..." arg_name)
+      doSafeArg ( (arg_type2int region.atype) lor 0x18)
+    with Not_found -> (
+      (* if the argument has no annotation check whether it's a scalar *)
+      match arg with
+          Lval(Var vi, NoOffset) -> (
+            if (isScalar_v vi) then 
+              doSafeArg 0x19
+            else
+              E.s (errorLoc loc "%s has no annotation in the #pragma css task ... and is not a scalar" arg_name)
+          )
+        | _ -> E.s (errorLoc loc "%s has no annotation in the #pragma css task ...  and is not a variable" arg_name)
+    )
   );
   L.rev !stl
 )

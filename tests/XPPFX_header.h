@@ -67,7 +67,7 @@ void tpc_wait_on(tpc_task_descriptor *);
 void* tpc_malloc(size_t);
 void tpc_free(void *);
 
-void wrapper_SCOOP__(tpc_task_argument *){
+void wrapper_SCOOP__(tpc_task_argument *a ){
 	
 }
 
