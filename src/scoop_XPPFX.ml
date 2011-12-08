@@ -97,6 +97,14 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
       arg_type_tmp
     )
   in
+  let arg_type_tmp =
+    (* arg_flag|TPC_STRIDE_ARG; *)
+    if (isStrided arg_desc) then (
+      arg_type_tmp lor 0x4
+    ) else (
+      arg_type_tmp
+    )
+  in
   il := Set(flag, integer arg_type_tmp, locUnknown)::!il;
 
   if (isStrided arg_desc) then (
