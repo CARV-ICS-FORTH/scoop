@@ -314,20 +314,22 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
   L.rev !stl
 )
 
-let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) : stmt = (
+let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) : stmt list = (
   let ilt = ref [] in
-  let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
-  let block_size = var (find_global_var ppc_file "__block_sz") in
-  L.iter (fun arg ->
-    if isRegion arg then (
-      let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in
-      (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
-      let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in
-      let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in
-      ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
-    )
-  ) args;
-  mkStmt (Instr (L.rev !ilt))
+  try
+    let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
+    let block_size = var (find_global_var ppc_file "__block_sz") in
+    L.iter (fun arg ->
+      if isRegion arg then (
+        let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in
+        (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
+        let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in
+        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in
+        ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+      )
+    ) args;
+    [mkStmt (Instr (L.rev !ilt))]
+  with Not_found -> []
 )
 
 (* Preprocess the header file <header> and merges it with f.  The
@@ -363,13 +365,26 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let gps_stps = mkFieldAccess gps "stat_tpc_per_spe" in
   let idxlv = addOffsetLval (Index(zero, NoOffset)) gps_stps in
   instrs := Set (idxlv, (BinOp(PlusA, Lval idxlv, one, intType)), locUnknown)::!instrs;
+  (* this = AddTask(); *)
+  let addTask = find_function_sign f "AddTask" in
+  instrs := Call (Some this, Lval (var addTask), [], locUnknown)::!instrs;
+  (* while (this == NULL)
+     {
+      tpr_barrier();
+      this = AddTask();
+     } *)
+  let tpr_barrier = find_function_sign f "tpr_barrier" in
+  let ins = [Call (Some this, Lval (var addTask), [], locUnknown)] in
+  let ins = Call (None, Lval (var tpr_barrier), [], locUnknown)::ins in
+  let wbody = [mkStmt (Instr ins)] in
+  stmts := mkWhile (BinOp(Eq, Lval this, CastE(voidPtrType, zero), boolType)) wbody;
+  stmts := mkStmt (Instr (List.rev !instrs))::!stmts;
+  (* this->notAvailable = 1; *)
+  instrs := [Set (mkFieldAccess this "notAvailable", one, locUnknown) ];
   (* TIMER_START(1); *)
   let tmptime1 = var (find_global_var f "_tmptime1_SCOOP__") in
   let rdtsc = find_function_sign f "rdtsc" in
   instrs := Call (Some tmptime1, Lval (var rdtsc), [], locUnknown)::!instrs;
-  (* this = AddTask(); *)
-  let addTask = find_function_sign f "AddTask" in
-  instrs := Call (Some this, Lval (var addTask), [], locUnknown)::!instrs;
   (* this->closure.funcid = (uint8_t)funcid; *)
   instrs := Set (mkFieldAccess this_closure "funcid",
     CastE(find_type f "uint8_t", integer !func_id), locUnknown)::!instrs;
@@ -388,7 +403,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     incr querie_no;
     let doArgument = doArgument loc this this_closure total_arguments e_addr bis f func_vi.vname !querie_no args in
     let mapped = L.flatten (List.map doArgument oargs) in
-    stmts := (mkStmt (Instr (List.rev !instrs))::mapped)@[doRegions loc this f args];
+    stmts := (!stmts)@(mkStmt (Instr (List.rev !instrs))::mapped)@(doRegions loc this f args);
     instrs := [];
   );
 
@@ -407,9 +422,23 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* assert(this->closure.total_arguments<=MAX_ARGS); *)
   let assert_a = find_function_sign f "assert_args_SCOOP__" in
   instrs := Call (None, Lval (var assert_a), [Lval total_arguments], locUnknown)::!instrs;
-  (* Clear_Handler(this ); *)
-  let clear_Handler = find_function_sign f "Clear_Handler" in
-  instrs := Call (None, Lval (var clear_Handler), [Lval this], locUnknown)::!instrs;
+  (* tpr_acquire_spinlock(&(this->spinlock)); *)
+  let spinlock = mkAddrOf (mkFieldAccess this "spinlock") in
+  let tpr_acquire_spinlock = find_function_sign f "tpr_acquire_spinlock" in
+  instrs := Call (None, Lval (var tpr_acquire_spinlock), [spinlock], locUnknown)::!instrs;
+  (* this->input_dependencies_counter -= this->backup_input_dependencies_counter; *)
+  let backup_input_dependencies_counter = mkFieldAccess this "backup_input_dependencies_counter" in
+  let input_dependencies_counter = mkFieldAccess this "input_dependencies_counter" in
+  let sub = BinOp(MinusA, Lval input_dependencies_counter ,
+                          Lval backup_input_dependencies_counter, intType) in
+  instrs := Set (input_dependencies_counter, sub, locUnknown)::!instrs;
+  (* this->backup_input_dependencies_counter = 0; *)
+  instrs := Set (backup_input_dependencies_counter, zero, locUnknown)::!instrs;
+  (* this->notAvailable = 0; *)
+  instrs := Set (mkFieldAccess this "notAvailable", zero, locUnknown)::!instrs;
+  (* tpr_release_spinlock(&(this->spinlock)); *)
+  let tpr_release_spinlock = find_function_sign f "tpr_release_spinlock" in
+  instrs := Call (None, Lval (var tpr_release_spinlock), [spinlock], locUnknown)::!instrs;
   (* G_ppe_stats.issue_ticks += TIMER_END(1); *)
   let gps_it = mkFieldAccess gps "issue_ticks" in
   let tmptime2 = var (find_global_var f "_tmptime2_SCOOP__") in
@@ -417,8 +446,11 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let uint64_t = (find_type f "uint64_t") in
   let sub = BinOp(MinusA, Lval tmptime2 , Lval tmptime1, uint64_t) in
   instrs := Set (gps_it, sub, locUnknown)::!instrs;
+  (* Clear_Handler(this ); *)
+  let clear_Handler = find_function_sign f "Clear_Handler" in
+  instrs := Call (None, Lval (var clear_Handler), [Lval this], locUnknown)::!instrs;
 
-  stmts := !stmts@[mkStmt (Instr !instrs)];
+  stmts := !stmts@[mkStmt (Instr (L.rev !instrs))];
 
   incr func_id;
   (!stmts, [])
