@@ -2392,6 +2392,11 @@ let css_task_process (loc, args_l, loop_d) arg =
 			let (_, _, args_l', _) = List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args in
 			(loc, args_l', loop_d)
 		)
+  (* support region r in(a,b,c) etc. *)
+  | AStr("region")
+  | AStr(_)
+  | ACons(_, _) -> (* TODO handle regions *)
+    (loc, args_l, loop_d)
 	| _ -> (
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
 			raise Ignore_pragma

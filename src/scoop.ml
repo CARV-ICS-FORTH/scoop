@@ -363,7 +363,7 @@ class findSPUDeclVisitor cgraph = object
 
                 (* check whether all argument annotations correlate to an actual argument *)
                 let check arg =
-                  if ( not (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) then (
+                  if ( not ((isRegion arg) || (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) )then (
                     let args_err = ref "(" in
                     List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
                     args_err := ((!args_err)^")");
@@ -487,7 +487,7 @@ class findSPUDeclVisitor cgraph = object
 end
 
 let feature : featureDescr = 
-  { fd_name = "findspucode";
+  { fd_name = "scoop";
     fd_enabled = ref true;
     fd_description = "find all pragmas declaring spu tasks";
     fd_extraopt = options
