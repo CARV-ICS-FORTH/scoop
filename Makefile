@@ -29,7 +29,8 @@ LOCKSMITH_MODULES = \
 	ptdepa \
 	scoop_cell \
 	scoop_cellgod \
-	scoop_x86 \
+	scoop_adam \
+	scoop_bddt \
 	scoop_XPPFX \
 	scoop_make_exec
 

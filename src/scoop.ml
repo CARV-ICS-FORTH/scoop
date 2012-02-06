@@ -41,7 +41,6 @@ open Cil
 open Lockutil
 open Scoop_util
 open Scoop_make_exec
-open Scoop_x86
 module E = Errormsg
 module H = Hashtbl
 module S = Str
@@ -89,7 +88,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime/architecture (x86/cell/cellgod/cellBlade/cellgodBlade/XPPFX).";
+      " SCOOP: Define the target runtime/architecture (adam/bddt/cell/cellgod/cellBlade/cellgodBlade/XPPFX).";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -223,7 +222,7 @@ let rec scoop_process pragma loc =
       scoop_process rest loc
     (* support region r in(a,b,c) etc. *)
     | AStr("region")::(AStr(region)::(ACons(arg_typ, args)::rest)) ->
-      if (!arch <> "x86") then
+      if ( not (!arch = "adam" || !arch = "bddt") ) then
         E.s (unimp "%a\n\tRegions are not supported in %s" d_loc loc !arch)
       else (
         let (hp, lst) = scoop_process rest loc in
@@ -359,7 +358,7 @@ class findSPUDeclVisitor cgraph = object
               let funname = vi.vname in
               let (is_hp, args) = scoop_process rest loc in
               dbg_print debug ("Found task \""^funname^"\"");
-              if (!arch = "x86" || !arch = "XPPFX") then (
+              if (!arch = "adam" || !arch = "bddt" || !arch = "XPPFX") then (
 
                 (* check whether all argument annotations correlate to an actual argument *)
                 let check arg =
@@ -374,7 +373,8 @@ class findSPUDeclVisitor cgraph = object
                 let rest_f2 var_i =
                   (* select the function to create the issuer *)
                   let make_tpc_issuef = match !arch with
-                      "x86" -> Scoop_x86.make_tpc_issue is_hp
+                      "adam" -> Scoop_adam.make_tpc_issue is_hp
+                    | "bddt" -> Scoop_bddt.make_tpc_issue is_hp
                     | _ (*"XPPFX"*) -> Scoop_XPPFX.make_tpc_issue is_hp
                   in
                   let (stmts, args) = make_tpc_issuef loc var_i oargs args !ppc_file !currentFunction in
@@ -521,7 +521,7 @@ let feature : featureDescr =
         );
 
         (* if we are not on x86-SMP create two copies of the initial file *)
-        if (!arch <> "x86" && !arch <> "XPPFX") then
+        if ( not (!arch = "adam" || !arch = "bddt") || !arch = "XPPF") then
           spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
         ppc_file := { f with fileName = (!out_name^".c");};
 
@@ -539,10 +539,10 @@ let feature : featureDescr =
         let def = " "^(!cflags)^
           ( if (!stats) then " -DSTATISTICS=1" else " ")^
           ( if (!blade) then " -DBLADE=1" else " ") in
-        if (!arch = "x86") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
+        if (!arch = "adam") then (
+          Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (def);
         ) else if (!arch = "XPPFX") then (
-          preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/XPPFX_header.h") (def);
+          Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/XPPFX_header.h") (def);
         ) else ( (* else cell/cellgod *)
           (* copy all code from file f to file_ppc *)
           let def = def^(
@@ -574,7 +574,23 @@ let feature : featureDescr =
              uint32_t block_index_start
              uint64_t e_addr;
              uint64_t _tmptime; *)
-          "x86" -> (
+          "adam" -> (
+            let makeGlobalVar = makeGlobalVar None in
+            let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
+            makeGlobalVar "this_SCOOP__" task_element_pt;
+            let uint32_t = (find_type !ppc_file "uint32_t") in
+            let uint64_t = (find_type !ppc_file "uint64_t") in
+            makeGlobalVar "block_index_start_SCOOP__" uint32_t;
+            makeGlobalVar "e_addr_SCOOP__" uint64_t;
+            makeGlobalVar "_tmptime1_SCOOP__" uint64_t;
+            makeGlobalVar "_tmptime2_SCOOP__" uint64_t;
+          )
+(* TODO: FIXME *)
+          (* Task_element *this;
+             uint32_t block_index_start
+             uint64_t e_addr;
+             uint64_t _tmptime; *)
+          | "bddt" -> (
             let makeGlobalVar = makeGlobalVar None in
             let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
             makeGlobalVar "this_SCOOP__" task_element_pt;
@@ -644,12 +660,12 @@ let feature : featureDescr =
         if (!arch = "cellgod") then (
           (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
           (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]
-        ) else if (!arch = "x86") then (
+        ) else if ( !arch = "adam" || !arch = "bddt" ) then (
           (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table tasks)]
         );
 
         (* execute_task is redundant in x86*)
-        if (!arch <> "x86" && !arch <> "XPPFX") then
+        if ( not (!arch = "adam" || !arch = "bddt" || !arch = "XPPFX") ) then
           (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
 
         (* eliminate dead code *)
@@ -660,7 +676,7 @@ let feature : featureDescr =
 
 (*         Scoop_rmtmps.removeUnused !ppc_file; *)
         writeFile !ppc_file;
-        if (!arch <> "x86" && !arch <> "XPPFX") then
+        if ( not (!arch = "adam" || !arch = "bddt" || !arch = "XPPFX") ) then
           writeFile !spu_file;
       )
     );
