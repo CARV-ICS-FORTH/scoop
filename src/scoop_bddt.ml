@@ -135,6 +135,7 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
       il := Set(flag, integer (arg_type2int arg_type), locUnknown)::!il;
       (* uint32_t block_index_start=this->closure.total_arguments; *)
       il := Set(bis, Lval total_arguments, locUnknown)::!il;
+      il :=  Set(e_addr, CastE(uint64_t, arg_addr), locUnknown)::!il;
 
 (*       let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg_type)^"Attribute_Task") in *)
       let addAttribute_Task = find_function_sign ppc_file ("AddAttribute_Task") in
@@ -151,7 +152,6 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
         //this->closure.total_arguments++;
             }
           }*)
-        il :=  Set(e_addr, CastE(uint64_t, arg_addr), locUnknown)::!il;
         
         let (arg_els, arg_elsz) =
           match arg_type with
@@ -260,14 +260,16 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
   let ilt = ref [] in
   try
     let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
+    let block_size = var (find_global_var ppc_file "__block_sz") in
 (*     let block_size = var (find_global_var ppc_file "__block_sz") in *)
     L.iter (fun arg ->
       if isRegion arg then (
-        let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in
+(*         let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in *)
+        let addAttribute_Task = find_function_sign ppc_file ("AddAttribute_Task") in
         (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
 (*         let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in *)
 (*         let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in *)
-        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t] in
+        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; BinOp(Div, sizeOf_region_t, Lval block_size, intType)] in
         ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
       )
     ) args;
