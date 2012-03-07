@@ -90,23 +90,26 @@ let getArrayDescr (vi: varinfo) (loc: location) currSid : array_descr option =
 		if ((RD.IOS.cardinal ios) <= 1) then (
 			let elmt = RD.IOS.choose ios in (* there should be only one element *)
 		 	(match elmt with
-		      Some i ->  let r = getSome (RD.getSimpRhs i) in
-		      (match r with
-		        RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
-		        (match e with 
-		          AddrOf(Var(va), Index(index, NoOffset)) -> Some (make_array_descr va index)
-		        |	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
-		        |	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
-		        | _ -> (
-		        	if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname);
-		        	None	
-		        	) 
-		        ) 
-		      | RD.RDCall i -> (
-		      	if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); 
-		      	None
-		      	)
-		      )
+		      Some i ->  if not(isSome (RD.getSimpRhs i)) then None else
+					(
+						let r = getSome (RD.getSimpRhs i) in
+						(match r with
+							RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
+							(match e with 
+								AddrOf(Var(va), Index(index, NoOffset)) -> Some (make_array_descr va index)
+							|	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
+							|	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
+							| _ -> (
+								if !debug then ignore(E.log "Argument %s does not reach an array, no analysis possible\n" vi.vname);
+								None	
+								) 
+							) 
+						| RD.RDCall i -> (
+							if !debug then ignore(E.log "Argument %s reaches a function call, no analysis possible\n" vi.vname); 
+							None
+							)
+						)
+					)
 		    | None -> (
 		    	if !debug then ignore(E.log "No reaching definitions\n"); 
 		    	None
