@@ -175,7 +175,7 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
             | _ -> assert false
         in
   (* TODO integer 0 is for non reductive argument FIXME *)
-        let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; arg_elsz] in
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type(*integer 0*); arg_elsz] in
         ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
         let start = [mkStmtOneInstr (Set(i_var, zero, locUnknown))] in
@@ -234,7 +234,7 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
     (*     ilt := (closure_flag::!ilt; *)
     (*     ilt := Set(size, Lval block_size, locUnknown)::!ilt; *)
   (* TODO integer 0 is for non reductive argument FIXME *)
-        let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; Lval block_size ] in
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type(*integer 0*); Lval block_size ] in
         ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
         let start = [mkStmtOneInstr (Set(e_addr, CastE(uint64_t, arg_addr), locUnknown))] in
@@ -314,13 +314,13 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
   L.rev !stl
 )
 
-let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) : stmt list = (
+let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) (orig_tname: string) (tid: int): stmt list = (
   let ilt = ref [] in
   try
     let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
 (*     let block_size = var (find_global_var ppc_file "__block_sz") in *)
     L.iter (fun arg ->
-      if isRegion arg then (
+      if (isRegion arg && Sdam.isSafeArg orig_tname tid arg.aname) then (
         let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in
         (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
 (*         let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in *)
@@ -404,7 +404,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     incr querie_no;
     let doArgument = doArgument loc this this_closure total_arguments e_addr bis f func_vi.vname !querie_no args in
     let mapped = L.flatten (List.map doArgument oargs) in
-    stmts := (!stmts)@(mkStmt (Instr (List.rev !instrs))::mapped)@(doRegions loc this f args);
+    stmts := (!stmts)@(mkStmt (Instr (List.rev !instrs))::mapped)@(doRegions loc this f args func_vi.vname !querie_no);
     instrs := [];
   );
 
@@ -446,7 +446,8 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   instrs := Call (Some tmptime2, Lval (var rdtsc), [], locUnknown)::!instrs;
   let uint64_t = (find_type f "uint64_t") in
   let sub = BinOp(MinusA, Lval tmptime2 , Lval tmptime1, uint64_t) in
-  instrs := Set (gps_it, sub, locUnknown)::!instrs;
+  let acc = BinOp(PlusA, Lval gps_it , sub, uint64_t) in
+  instrs := Set (gps_it, acc, locUnknown)::!instrs;
   (* Clear_Handler(this ); *)
   let clear_Handler = find_function_sign f "Clear_Handler" in
   instrs := Call (None, Lval (var clear_Handler), [Lval this], locUnknown)::!instrs;

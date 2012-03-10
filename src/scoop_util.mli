@@ -103,8 +103,8 @@ val blocking : bool ref
 (*                                BOOLEAN                                     *)
 (******************************************************************************)
 
-(* Function that checks if an exp uses an indice *)
-val uses_indice : Cil.exp -> bool
+(* Function that checks if an exp uses an index *)
+val uses_index : Cil.exp -> bool
 
 (* Check if an arguments type is stride *)
 val isStrided : arg_descr -> bool

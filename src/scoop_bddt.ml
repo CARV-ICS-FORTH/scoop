@@ -189,7 +189,10 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
           AddAttribute_Task( this, (void * )(e_addr), arg_flag,BLOCK_SZ);
         *)
         il := Set(stride, Lval block_size, locUnknown)::!il;
-        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type; Lval block_size; BinOp(Div, arg_size, Lval block_size, intType) ] in
+        (*let args = [Lval this; CastE(voidPtrType, Lval e_addr);
+         * arg_type2integer arg_type; Lval block_size; BinOp(Div, arg_size, Lval
+         * block_size, intType) ] in*)
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type; arg_size; one ] in
         let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
         stl := L.rev (mkStmt(Instr (L.rev !il))::[st]);
 
@@ -198,7 +201,7 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
         }*)
         let sub = (BinOp(MinusA, Lval limit, Lval aligned_limit, boolType)) in
         let ilt = ref [] in
-        let args = [Lval this; CastE(voidPtrType, Lval limit); arg_type2integer arg_type; Lval block_size; one] in
+        let args = [Lval this; CastE(voidPtrType, Lval aligned_limit); arg_type2integer arg_type; Lval block_size; one] in
         ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
     (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
         let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
@@ -256,10 +259,69 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
   L.rev !stl
 )
 
-let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) : stmt list = (
+(*FIXME: Inefficient*)
+let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list )  (orig_tname: string) (tid: int): stmt list = (
+  let stl = ref [] in
   let ilt = ref [] in
+  let closure = mkFieldAccess this "closure" in
+  let arguments = mkFieldAccess closure "arguments" in
+  let total_arguments = mkFieldAccess closure "total_arguments" in
+  let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
+  let stride = mkFieldAccess idxlv "stride" in
+  let addAttribute_Task = find_function_sign ppc_file ("AddAttribute_Task") in
   try
     let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
+    let block_size = var (find_global_var ppc_file "__block_sz") in
+    let uint64_t = (find_type ppc_file "uint64_t") in
+    let limit =
+      try var (__find_global_var ppc_file "limit_SCOOP__")
+      with Not_found -> var (makeGlobalVar "limit_SCOOP__" uint64_t ppc_file)
+    in
+    let aligned_limit =
+      try var (__find_global_var ppc_file "aligned_limit_SCOOP__")
+      with Not_found -> var (makeGlobalVar "aligned_limit_SCOOP__" uint64_t ppc_file)
+    in
+    L.iter (fun arg ->
+      if (isRegion arg && Sdam.isSafeArg orig_tname tid arg.aname) then (
+        (*const uint64_t limit=((uint64_t)arg_addr64)+arg_size;
+          const uint64_t aligned_limit=((uint64_t)arg_addr64)+((arg_size/BLOCK_SZ)*BLOCK_SZ);
+          this->closure.arguments[this->closure.total_arguments].stride=BLOCK_SZ;
+          AddAttribute_Task(this, arg_addr64, arg_flag, BLOCK_SZ, arg_size/BLOCK_SZ);
+          if(limit-aligned_limit != 0) {
+                  AddAttribute_Task( this, (void* )(limit), arg_flag, BLOCK_SZ, 1);
+          }*)
+        let plus = (BinOp(PlusA, CastE(uint64_t, arg.address), sizeOf_region_t, uint64_t)) in
+        ilt := Set(limit, plus, locUnknown)::!ilt;
+        let div = BinOp(Div, sizeOf_region_t, Lval block_size, uint64_t) in
+        let mul = BinOp(Mult, div, Lval block_size, uint64_t) in
+        let plus = BinOp(PlusA, CastE(uint64_t, arg.address), mul, uint64_t) in
+        ilt := Set(aligned_limit, plus, locUnknown)::!ilt;
+
+        (*this->closure.arguments[this->closure.total_arguments].stride=BLOCK_SZ;
+          AddAttribute_Task( this, (void * )(e_addr), arg_flag,BLOCK_SZ);
+        *)
+        ilt := Set(stride, Lval block_size, locUnknown)::!ilt;
+        (*let args = [Lval this; CastE(voidPtrType, Lval e_addr);
+         * arg_type2integer arg_type; Lval block_size; BinOp(Div, arg_size, Lval
+         * block_size, intType) ] in*)
+        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; one ] in
+        let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
+        stl := L.rev (mkStmt(Instr (L.rev !ilt))::[st]);
+
+        (*if(limit-aligned_limit){
+          AddAttribute_Task( this, (void * )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
+        }*)
+        let sub = (BinOp(MinusA, Lval limit, Lval aligned_limit, boolType)) in
+        let ilt = ref [] in
+        let args = [Lval this; CastE(voidPtrType, Lval aligned_limit); arg_type2integer arg.atype; Lval block_size; one] in
+        ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+    (*     ilt := Set(total_arguments, pplus, locUnknown)::!ilt; *)
+        let bl = mkBlock [mkStmt(Instr (L.rev !ilt))] in
+        stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::!stl;
+      )
+    ) args;
+    (L.rev !stl)
+(*    let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
     let block_size = var (find_global_var ppc_file "__block_sz") in
 (*     let block_size = var (find_global_var ppc_file "__block_sz") in *)
     L.iter (fun arg ->
@@ -269,12 +331,13 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
         (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
 (*         let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in *)
 (*         let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in *)
-        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; BinOp(Div, sizeOf_region_t, Lval block_size, intType)] in
+        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; one] in
         ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
       )
     ) args;
     [mkStmt (Instr (L.rev !ilt))]
-  with Not_found -> []
+*) 
+   with Not_found -> []
 )
 
 (*(* Preprocess the header file <header> and merges it with f.  The
@@ -348,7 +411,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     incr querie_no;
     let doArgument = doArgument loc this this_closure total_arguments e_addr bis f func_vi.vname !querie_no args in
     let mapped = L.flatten (List.map doArgument oargs) in
-    stmts := (!stmts)@(mkStmt (Instr (List.rev !instrs))::mapped)@(doRegions loc this f args);
+    stmts := (!stmts)@(mkStmt (Instr (List.rev !instrs))::mapped)@(doRegions loc this f args func_vi.vname !querie_no);
     instrs := [];
   );
 
@@ -390,7 +453,8 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   instrs := Call (Some tmptime2, Lval (var rdtsc), [], locUnknown)::!instrs;
   let uint64_t = (find_type f "uint64_t") in
   let sub = BinOp(MinusA, Lval tmptime2 , Lval tmptime1, uint64_t) in
-  instrs := Set (gps_it, sub, locUnknown)::!instrs;
+  let acc = BinOp(PlusA, Lval gps_it , sub, uint64_t) in
+  instrs := Set (gps_it, acc, locUnknown)::!instrs;
   (* Clear_Handler(this ); *)
   let clear_Handler = find_function_sign f "Clear_Handler" in
   instrs := Call (None, Lval (var clear_Handler), [Lval this], locUnknown)::!instrs;

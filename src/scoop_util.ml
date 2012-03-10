@@ -125,11 +125,11 @@ let blocking = ref true
 (*                                BOOLEAN                                     *)
 (******************************************************************************)
 
-(** Check if an exp uses an indice
+(** Check if an exp uses an index
     @param e the expression to check
     @return true or false
  *)
-let uses_indice (e: exp) : bool =
+let uses_index (e: exp) : bool =
   match (e) with 
     (BinOp(PlusPI, _, _, _))
     | (BinOp(IndexPI, _, _, _))
@@ -197,7 +197,7 @@ let tpc_call_with_arrray (st: stmt) : bool =
     match (L.hd st.pragmas) with
       (Attr("css", _), _) -> begin
         match (st.skind)  with
-          Instr(Call(_, _, args, _)::_) -> L.exists uses_indice args
+          Instr(Call(_, _, args, _)::_) -> L.exists uses_index args
           | _ -> false
       end
       | _ -> false
