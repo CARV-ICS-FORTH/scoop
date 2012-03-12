@@ -2385,6 +2385,7 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
 (*	parses recursively the arguments of the pragma task, and returns 
 		a list with the corresponding argument descriptors 
 *)
+(*
 let css_task_process (loc, args_l, loop_d) arg =
 	match arg with 
 		AStr("highpriority") -> (loc, args_l, loop_d) (* TODO: learn what this is... *)
@@ -2396,11 +2397,53 @@ let css_task_process (loc, args_l, loop_d) arg =
   | AStr("region")
   | AStr(_)
   | ACons(_, _) -> (* TODO handle regions *)
+  	ignore(E.log "***handling regions");
     (loc, args_l, loop_d)
 	| _ -> (
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
 			raise Ignore_pragma
 		)
+*)
+
+(*	parses recursively the arguments of the pragma task, and returns 
+		a list with the corresponding argument descriptors 
+*)
+let css_task_process (loc, loop_d) args =
+	let rec proc_attrs args_l args = 
+		match args with 
+			[] -> args_l
+		|	(AStr("highpriority"))::rest -> proc_attrs args_l rest
+		| AStr("region")::region_attr -> (
+			match region_attr with 
+				AStr(region_name)::region_type -> (
+				match region_type with
+					ACons(iotyp, args')::rest -> (
+        	let var_i = find_scoped_var loc !currentFunction !program_file region_name in
+        	let tmp_size = SizeOfE (Lval (var var_i)) in
+       	 	let array_d = LP.getArrayDescr var_i loc !currSid in
+        	let arg_d = Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d in
+					proc_attrs (arg_d::args_l) rest
+				)
+				| _ -> (
+					ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
+					raise Ignore_pragma
+				)
+			)
+			|	_ -> (
+				ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
+				raise Ignore_pragma
+			)
+		)
+		
+		| ACons(iotyp, args')::rest -> (
+				let (_, _, args_l', _) = List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args' in
+				proc_attrs args_l' rest
+		)
+		| _::rest -> (
+			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
+			raise Ignore_pragma
+		)
+	in proc_attrs [] args 
 
 (** parses instruction task to collect task and arguments
 		@param il the instruction coupled with current task pragma
@@ -2413,7 +2456,8 @@ let css_task_process (loc, args_l, loop_d) arg =
 let handle_css_task il env args loc loop_d : task_descr =  begin
 	match il with 
   	Call(_, Lval((Var(vi), _)), acts, loc) -> (
-			let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in
+(*		let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in *)
+			let args_l = css_task_process (loc, loop_d) args in
 (* 		LP.process_call_actuals acts loc !currSid task_d loop_d; *)
 			try (
 		    let (tau, _) = env_lookup vi.vname env in
