@@ -269,20 +269,20 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
   let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
   let stride = mkFieldAccess idxlv "stride" in
   let addAttribute_Task = find_function_sign ppc_file ("AddAttribute_Task") in
+  let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
+  let block_size = var (find_global_var ppc_file "__block_sz") in
+  let uint64_t = (find_type ppc_file "uint64_t") in
+  let limit =
+    try var (__find_global_var ppc_file "limit_SCOOP__")
+    with Not_found -> var (makeGlobalVar "limit_SCOOP__" uint64_t ppc_file)
+  in
+  let aligned_limit =
+    try var (__find_global_var ppc_file "aligned_limit_SCOOP__")
+    with Not_found -> var (makeGlobalVar "aligned_limit_SCOOP__" uint64_t ppc_file)
+  in
   try
-    let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
-    let block_size = var (find_global_var ppc_file "__block_sz") in
-    let uint64_t = (find_type ppc_file "uint64_t") in
-    let limit =
-      try var (__find_global_var ppc_file "limit_SCOOP__")
-      with Not_found -> var (makeGlobalVar "limit_SCOOP__" uint64_t ppc_file)
-    in
-    let aligned_limit =
-      try var (__find_global_var ppc_file "aligned_limit_SCOOP__")
-      with Not_found -> var (makeGlobalVar "aligned_limit_SCOOP__" uint64_t ppc_file)
-    in
     L.iter (fun arg ->
-      if (isRegion arg && Sdam.isSafeArg orig_tname tid arg.aname) then (
+      if (isRegion arg && not (Sdam.isSafeArg orig_tname tid arg.aname)) then (
         (*const uint64_t limit=((uint64_t)arg_addr64)+arg_size;
           const uint64_t aligned_limit=((uint64_t)arg_addr64)+((arg_size/BLOCK_SZ)*BLOCK_SZ);
           this->closure.arguments[this->closure.total_arguments].stride=BLOCK_SZ;
@@ -291,7 +291,7 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
                   AddAttribute_Task( this, (void* )(limit), arg_flag, BLOCK_SZ, 1);
           }*)
         let plus = (BinOp(PlusA, CastE(uint64_t, arg.address), sizeOf_region_t, uint64_t)) in
-        ilt := Set(limit, plus, locUnknown)::!ilt;
+        ilt := [Set(limit, plus, locUnknown)];
         let div = BinOp(Div, sizeOf_region_t, Lval block_size, uint64_t) in
         let mul = BinOp(Mult, div, Lval block_size, uint64_t) in
         let plus = BinOp(PlusA, CastE(uint64_t, arg.address), mul, uint64_t) in

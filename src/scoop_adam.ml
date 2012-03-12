@@ -314,23 +314,83 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
   L.rev !stl
 )
 
-let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list ) (orig_tname: string) (tid: int): stmt list = (
-  let ilt = ref [] in
+(*FIXME: Inefficient*)
+let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr list )  (orig_tname: string) (tid: int): stmt list = (
+  let stl = ref [] in
+  let il = ref [] in
+  let closure = mkFieldAccess this "closure" in
+  let arguments = mkFieldAccess closure "arguments" in
+  let total_arguments = mkFieldAccess closure "total_arguments" in
+  let idxlv = addOffsetLval (Index(Lval total_arguments, NoOffset)) arguments in
+  let stride = mkFieldAccess idxlv "stride" in
+  let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
+  let block_size = var (find_global_var ppc_file "__block_sz") in
+  let uint64_t = (find_type ppc_file "uint64_t") in
+  let limit =
+    try var (__find_global_var ppc_file "limit_SCOOP__")
+    with Not_found -> var (makeGlobalVar "limit_SCOOP__" uint64_t ppc_file)
+  in
+  let e_addr = var (find_global_var ppc_file "e_addr_SCOOP__") in
   try
-    let sizeOf_region_t = SizeOf(find_type ppc_file "region_t") in
-(*     let block_size = var (find_global_var ppc_file "__block_sz") in *)
     L.iter (fun arg ->
-      if (isRegion arg && Sdam.isSafeArg orig_tname tid arg.aname) then (
+      if (isRegion arg && not (Sdam.isSafeArg orig_tname tid arg.aname)) then (
         let addAttribute_Task = find_function_sign ppc_file ("Add"^(arg_type2string arg.atype)^"Attribute_Task") in
-        (*AddAttribute_Task(this, r, TPC_IN_ARG, sizeof(region_t), sizeof(region_t)/BLOCK_SZ);*)
-(*         let div = BinOp(Div, sizeOf_region_t, Lval block_size, intType) in *)
-(*         let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in *)
-        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t] in
-        ilt := Call (None, Lval (var addAttribute_Task), args, locUnknown)::!ilt;
+        (* const uint64_t limit=(((uint64_t)arg_addr64)+arg_size); *)
+        let plus = (BinOp(PlusA, CastE(uint64_t, arg.address), sizeOf_region_t, uint64_t)) in
+        il := [Set(limit, plus, locUnknown)];
+
+        (*#ifdef UNALIGNED_ARGUMENTS_ALLOWED
+            printf("ADAM Warning: Unaligned argument\n");
+            uint64_t tmp_addr=(uint64_t)arg_addr64;
+            arg_addr64=((uint64_t)(tmp_addr/BLOCK_SZ))*BLOCK_SZ;
+            this->closure.arguments[arg_index].stride = tmp_addr-(uint64_t)arg_addr64;
+          #endif*)
+        if (!unaligned_args) then (
+          let printf = find_function_sign ppc_file "printf" in
+          let args = [Const(CStr("ADAM Warning: Unaligned argument\n"))] in
+          il := Call (None, Lval (var printf), args, locUnknown)::!il;
+          let tmp_addr =
+            try var (__find_global_var ppc_file "tmp_addr_SCOOP__")
+            with Not_found -> var (makeGlobalVar "tmp_addr_SCOOP__" uint64_t ppc_file)
+          in
+          il := Set(tmp_addr, arg.address, locUnknown)::!il;
+          let div = BinOp(Div, Lval tmp_addr, Lval block_size, uint64_t) in
+          let mul = BinOp(Mult, CastE(uint64_t, div), Lval block_size, voidPtrType) in
+          let arg_addr_v =
+            match arg.address with
+              Lval(a) -> a
+              | _ -> assert false;
+          in
+          il := Set(arg_addr_v, CastE(voidPtrType, mul), locUnknown)::!il;
+          let new_stride = BinOp(MinusA, Lval tmp_addr, CastE(uint64_t, arg.address), intType) in
+          il := Set(stride, new_stride, locUnknown)::!il;
+        );
+
+        (*for(e_addr=(uint64_t)arg_addr64;e_addr + BLOCK_SZ <= limit ;e_addr+=BLOCK_SZ){
+          AddAttribute_Task( this, (void * )(e_addr), arg_flag,BLOCK_SZ);
+        }*)
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg.atype(*integer 0*); Lval block_size ] in
+        let ilt = [Call (None, Lval (var addAttribute_Task), args, locUnknown)] in
+        let start = [mkStmtOneInstr (Set(e_addr, CastE(uint64_t, arg.address), locUnknown))] in
+        let e_addr_plus = BinOp(PlusA, Lval e_addr, Lval block_size, intType) in
+        let guard = BinOp(Le, e_addr_plus, Lval limit, boolType) in
+        let next = [mkStmtOneInstr (Set(e_addr, e_addr_plus, locUnknown))] in
+        let body = [mkStmt (Instr ilt)] in
+        stl := L.rev (mkStmt(Instr (L.rev !il))::(mkFor start guard next body));
+
+        (*if(limit-e_addr){
+          AddAttribute_Task( this, (void * )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
+        }*)
+        let sub = (BinOp(MinusA, Lval limit, Lval e_addr, boolType)) in
+  (* TODO integer 0 is for non reductive argument FIXME *)
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); integer 0; sizeOf_region_t] in
+        let ilt = [Call (None, Lval (var addAttribute_Task), args, locUnknown)] in
+        let bl = mkBlock [mkStmt(Instr ilt)] in
+        stl := (mkStmt (If(sub, bl, mkBlock [], locUnknown)))::!stl;
       )
     ) args;
-    [mkStmt (Instr (L.rev !ilt))]
-  with Not_found -> []
+    (L.rev !stl)
+   with Not_found -> []
 )
 
 (* Preprocess the header file <header> and merges it with f.  The
