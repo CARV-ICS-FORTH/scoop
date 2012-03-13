@@ -89,7 +89,7 @@ let do_typing_stats = ref false
 let do_starting_forks = ref false
 
 let do_void_conflate = ref false
-let do_void_single = ref false
+let do_void_single = ref true
 let do_uniq = ref true
 let do_existentials = ref true
 let do_ignore_casts = ref true
