@@ -164,11 +164,12 @@ let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 					try (
 						if(taskname == task.taskname && tid == task.taskid) then (
 							List.find (fun arg -> 
-								if(argname == arg.argname) then (
+								if((compare argname arg.argname) == 0) then (
 									true 
 								)
-								else 
+								else (						
 									false
+								)
 							) task.arguments
 						)
 						else
@@ -177,8 +178,22 @@ let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 					with Not_found -> check_task rest
 				)
 	) in 
-	try (let arg = check_task !tasks_l in arg.safe) 
-	with Not_found -> false
+	try (
+	let arg = check_task !tasks_l in 
+	if(arg.safe) then (
+		ignore(E.log "marking arguments %s as safe\n" arg.argname);
+		true
+	)
+	else (
+		ignore(E.log "%s is not safe\n" arg.argname);
+		false	
+	)
+	(*arg.safe*)	
+	)	 
+	with Not_found -> (
+		ignore(E.log "%s was not found\n" argname);		
+		false
+	)
 
 
 (** Utility Functions **)
