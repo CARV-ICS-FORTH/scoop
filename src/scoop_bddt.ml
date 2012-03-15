@@ -192,7 +192,7 @@ let doArgument (loc: location) (this: lval) (closure: lval) (total_arguments: lv
         (*let args = [Lval this; CastE(voidPtrType, Lval e_addr);
          * arg_type2integer arg_type; Lval block_size; BinOp(Div, arg_size, Lval
          * block_size, intType) ] in*)
-        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type; arg_size; one ] in
+        let args = [Lval this; CastE(voidPtrType, Lval e_addr); arg_type2integer arg_type; Lval block_size; div ] in
         let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
         stl := L.rev (mkStmt(Instr (L.rev !il))::[st]);
 
@@ -304,7 +304,7 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
         (*let args = [Lval this; CastE(voidPtrType, Lval e_addr);
          * arg_type2integer arg_type; Lval block_size; BinOp(Div, arg_size, Lval
          * block_size, intType) ] in*)
-        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; sizeOf_region_t; div ] in
+        let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; Lval block_size; div ] in
         let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
         stl := L.rev (mkStmt(Instr (L.rev !ilt))::[st]);
 
