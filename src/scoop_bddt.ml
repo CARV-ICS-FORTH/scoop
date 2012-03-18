@@ -306,7 +306,7 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
          * block_size, intType) ] in*)
         let args = [Lval this; CastE(voidPtrType, arg.address); arg_type2integer arg.atype; Lval block_size; div ] in
         let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
-        stl := L.rev (mkStmt(Instr (L.rev !ilt))::[st]);
+        stl := L.rev (mkStmt(Instr (L.rev !ilt))::[st])@(!stl);
 
         (*if(limit-aligned_limit){
           AddAttribute_Task( this, (void * )(e_addr), arg_flag,this->closure.arguments[  this->closure.total_arguments ].size);
