@@ -90,13 +90,18 @@ let getArrayDescr (vi: varinfo) (loc: location) currSid : array_descr option =
 		if ((RD.IOS.cardinal ios) <= 1) then (
 			let elmt = RD.IOS.choose ios in (* there should be only one element *)
 		 	(match elmt with
-		      Some i ->  if not(isSome (RD.getSimpRhs i)) then None else
+		      Some i ->  if not(isSome (RD.getSimpRhs i)) then (
+						if !debug then ignore(E.log "No reaching definitions(fruitcake)\n"); 						
+						None 
+					)					
+					else
 					(
 						let r = getSome (RD.getSimpRhs i) in
 						(match r with
 							RD.RDExp e -> if !debug then (ignore(E.log "Argument %s reaches expr:%a\n" vi.vname d_exp e););
 							(match e with 
 								AddrOf(Var(va), Index(index, NoOffset)) -> Some (make_array_descr va index)
+							| Lval(Var(va), Index(index, NoOffset)) -> Some (make_array_descr va index)						
 							|	BinOp(IndexPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
 							|	BinOp(PlusPI, Lval(Var(va), NoOffset), index, _) -> Some (make_array_descr va index)
 							| _ -> (
@@ -182,6 +187,30 @@ let getVar (lv: lhost) : varinfo =
 	match lv with 
 		Var(vi) -> vi
 	| _ -> raise (Failure "")
+
+let types_equal (type1: typ) (type2: typ) : bool =
+	if(type1 == type2) then (
+		true
+	)
+	else (
+		let rec get_base_type t = 
+			match t with 
+				TPtr(t', _) -> get_base_type t'
+			| TArray(t', _, _) -> get_base_type t'
+			| _ -> t
+		in 
+		let base_type1 = get_base_type type1 in
+		let base_type2 = get_base_type type2 in
+		(base_type1 == base_type2)
+	)
+
+let rec sizeofExp (e: exp) : exp =
+	match e with				
+		SizeOfE(e') -> (
+		if !debug then ignore(E.log "sizeofExp(%a)\n" d_exp e');
+		sizeofExp e'	
+	)
+	| _ -> e
 		
 (** comares the sizes of the the task argument consumed by the task with the
 		loop step.
@@ -191,6 +220,7 @@ let getVar (lv: lhost) : varinfo =
 		@return true is sizes are equal, false otherwize
 *)
 let size_equal vi arg_e_size l_step = 
+	(*FIXME: Could have problem with SizeOfE(), need to check all cases*)
 	let e_size = arg_e_size in
 	if !debug then ignore(E.log "Comparing e_size:%a and l_step:%a\n" d_exp e_size d_exp l_step);
 	if e_size == l_step then true
@@ -199,7 +229,7 @@ let size_equal vi arg_e_size l_step =
 		match l_step with
 				SizeOf(t) -> (
 					match e_size with 
-						SizeOf(t') when t == t' -> true
+						SizeOf(t') when (types_equal t t') -> true
 					|	_ -> false
 				)
 			| Const(CInt64(1L, _, _)) -> (
@@ -208,21 +238,36 @@ let size_equal vi arg_e_size l_step =
 					SizeOf(t) -> (
 						if !debug then ignore(E.log "SizeOf(t)->... vtype=%a-type=%a\n" d_type vi.vtype d_type t);
 						match vi.vtype with 
-							TPtr(t', _) when t == t' -> true
-						| TArray(t', _, _) when t == t' -> true
-						| _ when t == vi.vtype -> true  
+							TPtr(t', _) when (types_equal t t') -> true
+						| TArray(t', _, _) when (types_equal t t') -> true
+						| _ when (types_equal t vi.vtype) -> true  
 						| _ -> false
 					)
+				|	SizeOfE(e') -> (
+						match e' with 
+							Lval(Var(vinfo), _) -> (
+								if !debug then ignore(E.log "SizeOfE(t)->... vtype=%a-type=%a\n" d_type vi.vtype d_type vinfo.vtype);	
+								match vi.vtype with 
+									TPtr(t', _) when (types_equal vinfo.vtype t') -> true
+								| TArray(t', _, _) when (types_equal vinfo.vtype t') -> true
+								| _ when (types_equal vinfo.vtype vi.vtype) -> true  
+								| _ -> false
+							)
+						| _ -> false				
+					)
 				| Const(c) -> false
-				|	_ -> false 
+				|	_ -> (
+						if !debug then ignore(E.log "Bounds did not match!(empty)\n");					
+						false
+					) 
 				)
 			| Const(CInt64(v, _, _)) -> (
 					match e_size with
 					BinOp(Mult, Const(CInt64(v', _, _)), SizeOf(t), res_t) -> (
 						if !debug then ignore(E.log "const*sizeof(x) | e:%a - e':%a\n" d_exp l_step d_exp e_size);
 						match vi.vtype with 
-							TPtr(t', _) when ((compare v v') == 0 && t == t') -> true
-						| _ when ((compare v v') == 0 && t == vi.vtype) -> true  
+							TPtr(t', _) when ((compare v v') == 0 && (types_equal t t')) -> true
+						| _ when ((compare v v') == 0 && (types_equal t vi.vtype)) -> true  
 						| _ -> false
 					) 
 				|	_ -> false
@@ -238,8 +283,8 @@ let size_equal vi arg_e_size l_step =
 							else (
 								if !debug then ignore(E.log "lval*sizeof(x) | e:%a - e':%a\n" d_exp l_step d_exp e_size);
 								match vi.vtype with 
-									TPtr(t', _) when (li  == li'  && t == t') -> true
-								| _ when (li  == li' && t == vi.vtype) -> true  
+									TPtr(t', _) when (li  == li'  && (types_equal t t')) -> true
+								| _ when (li  == li' && (types_equal t vi.vtype)) -> true  
 								| _ -> false
 							)
 						)
@@ -260,7 +305,7 @@ let array_bounds_safe (arg: arg_descr) : bool =
 	else (
 		try (
 			if (not (isSome arg.loop_d)) then raise (Failure "Loop cannot be analyzed\n");		
-			if (not (isSome arg.array_d)) then raise (Failure "Argument does is not or does not refer to an array\n");
+			if (not (isSome arg.array_d)) then raise (Failure "Argument is not or does not refer to an array\n");
 			let loop_d = getSome arg.loop_d in
 			let array_d = getSome arg.array_d in
 			(* 1. check if array index is more complicated than *[i] *)
