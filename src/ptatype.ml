@@ -89,7 +89,7 @@ let do_typing_stats = ref false
 let do_starting_forks = ref false
 
 let do_void_conflate = ref false
-let do_void_single = ref true
+let do_void_single = ref false
 let do_uniq = ref true
 let do_existentials = ref true
 let do_ignore_casts = ref true
@@ -2422,6 +2422,7 @@ let css_task_process (loc, loop_d) args =
         	let tmp_size = SizeOfE (Lval (var var_i)) in
        	 	let array_d = LP.getArrayDescr var_i loc !currSid in
         	let arg_d = Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d in
+					ignore(E.log "adding argument %s\n" arg_d.argname);
 					proc_attrs (arg_d::args_l) rest
 				)
 				| _ -> (
