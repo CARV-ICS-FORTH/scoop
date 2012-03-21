@@ -18,15 +18,15 @@ let debug = ref false
 let options = [
   "--save-graph",
   Arg.Set(do_graph_out),
-  "SDAM-Pointer analysis: Write constraints in \"graph.dot\".";
+  " SDAM-Pointer analysis: Write constraints in \"graph.dot\".";
 
   "--save-dependencies-graph",
   Arg.Set(do_task_graph_out),
-  "SDAM-Pointer analysis: Write task dependecies in \"task-dep.dot\".";
+  " SDAM-Pointer analysis: Write task dependecies in \"task-dep.dot\".";
 
   "--debug-ptdepa",
   Arg.Set(debug),
-  "SDAM-Pointer analysis: debugging output.";
+  " SDAM-Pointer analysis: debugging output.";
 ]
 
 let taskScope1 = ref dummyFunDec
@@ -88,6 +88,16 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
 			ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
 			ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
 		);
+			(*
+			if((compare arg1.argname "e") == 0) then (
+				ignore(E.log "arg:%s - arg:%s\n" arg1.argname arg2.argname);
+				LF.RhoSet.iter (fun fromRho -> 
+					LF.RhoSet.iter (fun toRho ->
+						ignore(E.log "%a\n" LF.d_rhopath (fromRho, toRho));
+					) set2
+				) set1;
+			);
+			*)
     not (LF.RhoSet.is_empty final_set)
 	)
             

@@ -500,6 +500,7 @@ let feature : featureDescr =
     @ Bansheemlifc.options
     @ Labelflow.options
     @ Lprof.options
+    @ Ptatype.options
     ;
     fd_doit = 
     (function (f: file) ->
