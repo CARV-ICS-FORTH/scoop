@@ -1,4 +1,4 @@
-\documentclass[letterpaper]{article} 
+\documentclass[a4paper]{article}
 
 \setlength{\pdfpagewidth}{\paperwidth}
 \setlength{\pdfpageheight}{\paperheight}
@@ -12,13 +12,13 @@
 
 \begin{document}
 \title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
-\date{last update: 08/11/11}
+\date{last update: 28/03/12}
 \maketitle
 
 \section{License}
 
 \begin{tabbing}
-Copyright (c) 2010,\\
+Copyright (c) 2010-2012,\\
 \ \ \=Dimitris Hassapis\ \ \ \ \=hassapis@ics.forth.gr\\
 \>Foivos Zakkak        \>zakkak@ics.forth.gr\\
 \>Polyvios Pratikakis  \>polyvios@ics.forth.gr\\
@@ -54,11 +54,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
 
 \section{Annotation Syntax}
 
+    \verb!  #pragma css start(list of variables)!\\
+    \verb!  #pragma css finish!\\
+    \verb!  #pragma css malloc!\\
+    \verb!  #pragma css free!\\
     \verb!  #pragma css wait all!\\
     \verb!  #pragma css wait on(list of variables)! //Not implemented yet\\
-    \verb!  #pragma css task [input(<input parameters>)]!\\
+    \verb!  #pragma css task [in(<input parameters>)]!\\
     \verb!                   [inout(<input parameters>)]!\\
-    \verb!                   [output(<input parameters>)]!\\
+    \verb!                   [out(<input parameters>)]!\\
     \verb!                   [highpriority] (highpriority is simply ignored)!\\[1em]
     Parameter notation:\\
 
@@ -77,7 +81,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
       conditional operator (? :)\\
       
     Example:
-      \verb!#pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])!
+      \verb!#pragma css task in(a, b[4*sizeof(b_type)]) out(c[16])!
 
 
 \section{Dependencies}
@@ -111,40 +115,41 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
 
 \section{Run}
 
-  \verb!  scoop --runtime=<adam/bddt/XPPFX/cell/cellgod/cellBlade/cellgodBlade> [options] <file> [file2 ...]!
+  \verb!  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/scc_nik/XPPFX> [options] <file> [file2 ...]!
 
 \subsection{Options (Needs update)}
 
   \begin{tabbing}
   \ \ \=\verb!--runtime!\hspace{9em} \=
   Defines the target runtime/architecture\\
-                                    \>\>(adam/bddt/cell/cellgod/cellBlade/cellgodBlade)\\[1ex]
+                                    \>\>adam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | scc_nik | XPPFX\\[1ex]
   \>\verb!--cflags!                   \>Defines the flags you want to pass to gcc\\[1ex]
   \>\verb!--tpcIncludePath!           \>Defines the include path for the tpc runtime\\[1ex]
   \>\verb!--debugSCOOP!               \>Print debugging information\\[1ex]
   \>\verb!--trace!                    \>Trace SCOOP\\[1ex]
-  \>\verb!--out-name!                 \>Specify the output files' prefix. e.g. (default: final) will produce final.c\\
-                                    \>\>(and final\_func.c for cell)\\[1ex]
+  \>\verb!--pragma!                   \>Specify the string constant following the pragma e.g. (default: css) will recognise \#pragma css ... (myrmics' default is myrmics)\\[1ex]
+  \>\verb!--out-name!                 \>Specify the output files' prefix. e.g. (default: scoop\_trans) will produce scoop\_trans.c\\
+                                    \>\>(and scoop\_trans\_func.c for cell)\\[1ex]
   \>\verb!--queue-size!               \>Specify the queue size for Cell. Defined in the Makefile as\\
                                     \>\>MAX\_QUEUE\_ENTRIES\\[1ex]
-  \>\verb!--with-stats!               \>Enable code for statistics, for use with -DSTATISTICS\\[1ex]
-  \>\verb!--with-unaligned-arguments! \>Allow unaligned arguments in x86, for use with\\
-                                    \>\>-DUNALIGNED\_ARGUMENTS\_ALLOWED\\[1ex]
-  \>\verb!--with-blocking!            \>Enable blocking arguments in x86. for use with -DBLOCKING\\[1ex]
+  \>\verb!--with-stats!               \>Enable code generation for statistics, for use with -DSTATISTICS\\[1ex]
+%   \>\verb!--with-unaligned-arguments! \>Allow unaligned arguments in x86, for use with\\
+%                                     \>\>-DUNALIGNED\_ARGUMENTS\_ALLOWED\\[1ex]
+%   \>\verb!--with-blocking!            \>Enable blocking arguments in x86. for use with -DBLOCKING\\[1ex]
   \>\verb!--threaded!                 \>Generate thread safe code for Cell, for use with\\
                                     \>\>-DTPC\_MULTITHREADED\\[1ex]
   \>\verb!--disable-sdam!             \>Disable the static dependence analysis module
   \end{tabbing}
 
-\section{Common Errors}
+\section{Common Errors/Known Bugs}
 
 \begin{itemize}
-  \item Adding a semicolon at the end of \verb!#pragma css start...!
+  \item Adding a semicolon at the end of \verb!#pragma!s
   \item Putting \verb!#pragma css barrier! at the end of a block (fix, add a semicolon right below of it)
   \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}} you
       probably have wrong argument at a call tagged with \verb!#pragma css task!
   \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
-  \item Putting \verb!#pragma css start...! directly above a declaration of a variable (pragmas are only supported above statements)
+  \item Putting \verb!#pragma!s directly above a declaration of a variable (pragmas are only supported above statements)
   \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task} 
   usually means that the tool is renaming a variable due to previous declaration
   try renaming it manually (e.g. segment2) (This should be fixed by now)
