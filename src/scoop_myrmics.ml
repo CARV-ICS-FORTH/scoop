@@ -163,7 +163,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
 (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
       incr querie_no;
       let doArgument = doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
-      let mapped = L.flatten (List.rev_map doArgument args_n) in
+      let mapped = L.flatten (List.map doArgument args_n) in
       (args_n, mapped)
     ) else ([], [])
   in
