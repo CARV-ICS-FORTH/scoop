@@ -68,6 +68,9 @@ void parallel_jacobi(unsigned int jacobi_iterations, unsigned int N, unsigned in
 {
     unsigned int row_length = N*sizeof(double);
     double *arg1, *arg2, *arg3, *arg4, *arg5, *arg6;
+        #pragma myrmics task region out(arg1)
+        init_block(arg1);
+//         tpc_call(1, 1,
     for(int iters=0; iters<jacobi_iterations; iters++) {
       for (int x = BN; x < N-BN; x+=BN) {
         for (int y = BN; y < N-BN; y+=BN) {

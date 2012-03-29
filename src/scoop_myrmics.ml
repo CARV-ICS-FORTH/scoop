@@ -193,10 +193,10 @@ let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam l
         scoop2179_args.vtype <- TArray(voidPtrType, Some(integer num_args), []);
     | _ -> assert false;
   );
-  let args = L.map (attrParamToExp f loc) exps in
-  let i = ref (-1) in
+  let args = L.rev_map (attrParamToExp f loc) exps in
+  let i = ref num_args in
   let mkSet = mkSet (var scoop2179_args) in
-  let init_args = L.map (fun a -> incr i; mkSet !i a) args in
+  let init_args = L.rev_map (fun a -> decr i; mkSet !i a) args in
   let instr = Call (None, Lval (var two), [Lval (var scoop2179_args); integer num_args], locUnknown) in
   let s' = {s with pragmas = List.tl s.pragmas} in
   ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
