@@ -274,9 +274,9 @@ class findTaskDeclVisitor cgraph = object
           (* Support #pragma css wait on(...) *)
             [AStr("wait"); ACons("on", exps)] -> (
               if (!arch = "XPPFX") then (
-                Scoop_XPPFX.make_wait_on !ppc_file loc exps s
+                Scoop_XPPFX.make_wait_on !currentFunction !ppc_file loc exps s
               ) else if (!arch = "myrmics") then (
-                Scoop_myrmics.make_wait_on !ppc_file loc exps s
+                Scoop_myrmics.make_wait_on !currentFunction !ppc_file loc exps s
               ) else
                 DoChildren
           )
@@ -479,7 +479,7 @@ class findTaskDeclVisitor cgraph = object
                       "adam" -> Scoop_adam.make_tpc_issue is_hp
                     | "bddt" -> Scoop_bddt.make_tpc_issue is_hp
                     | "XPPFX" -> Scoop_XPPFX.make_tpc_issue is_hp
-                    | "myrmics" -> Scoop_XPPFX.make_tpc_issue is_hp
+                    | "myrmics" -> Scoop_myrmics.make_tpc_issue is_hp
                     | _ -> E.s (unimp "Runtime \"%s\" doesn't have a make_tpc_issue yet" !arch);
                   in
                   let (stmts, args) = make_tpc_issuef loc var_i oargs args !ppc_file !currentFunction in
@@ -657,9 +657,11 @@ let feature : featureDescr =
       let (_, tasks) = List.split (L.rev !spu_tasks) in
       if (!arch = "cellgod") then (
         (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
-        (!spu_file).globals <- (!spu_file).globals@[(make_task_table tasks)]
-      ) else if ( !arch = "adam" || !arch = "bddt" || !arch = "myrmics" ) then (
-        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table tasks)]
+        (!spu_file).globals <- (!spu_file).globals@[(make_task_table "Task_table" tasks)]
+      ) else if ( !arch = "adam" || !arch = "bddt" ) then (
+        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
+      ) else if ( !arch = "myrmics" ) then (
+        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "_sys_task_table" tasks)]
       );
 
       (* execute_task is redundant in x86*)

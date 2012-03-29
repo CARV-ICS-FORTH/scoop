@@ -850,10 +850,10 @@ let mkFieldAccess lv fieldname =
     @param tasks the tasks to put in the task table
     @return the Task_table array as a Cil.global
  *)
-let make_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
+let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
-  let vi = makeGlobalVar "Task_table" type' in
+  let vi = makeGlobalVar name type' in
   let n = L.length tasks in
   let init' = 
       let rec loopElems acc i =

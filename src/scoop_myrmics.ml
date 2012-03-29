@@ -33,6 +33,10 @@
  *
  *)
 
+(** Responsible for generating code for the myrmics runtime on the
+    formic architecture
+    @author Foivos Zakkak, zakkak\@ics.forth.gr *)
+
 open Cil
 open Scoop_util
 module L = List
@@ -53,42 +57,36 @@ let makeGlobalVar n t f=
   add_at_top f [glob];
   v
 
-let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
- (arg: (int * arg_descr) ) : stmt list = (
+(** generates a Set that does table[i]=arg
+ * @param table the array we want to change
+ * @param i the array's index
+ * @param arg the argument we want to place in table[i]
+ * @return the Set instr generated
+ *)
+let mkSet table i arg =
+  let curr = addOffsetLval (Index(integer i, NoOffset)) table in
+  Set( curr, arg, locUnknown)
+
+(** passes the arguments to the arrays in the correct order
+ * @param targs the arguments' table
+ * @param ttyps the types' table
+ * @param orig_tname the original function's name
+ * @param tid an id marking the query (needed by SDAM)
+ * @param arg the argument we want to place
+ * @return the generated Set instrs
+ *)
+let doArgument targs ttyps (orig_tname: string) (tid: int) 
+ (arg: (int * arg_descr) ) : instr list = (
   let (i_m, arg_desc) = arg in
-  let arg_name = arg_desc.aname in
   let arg_addr = arg_desc.address in
   let arg_type = arg_desc.atype in
-  let arg_size = getSizeOfArg arg_desc in
-  let il = ref [] in
+  let arg_name = arg_desc.aname in
 
-  (* taskd->args[i] *)
-  let tpc_task_argument_pt = TPtr(find_type f  "tpc_task_argument", []) in
-(*   let idxlv = addOffsetLval (Index(integer i, NoOffset)) arguments in *)
-  let idxlv = taskd_args in
-  (*  void * addr_in;
-      void * addr_out;
-      uint32_t type;
-      uint32_t size;
-      uint32_t stride;
-      uint32_t element_num; *)
-  let addr_in = mkFieldAccess idxlv "addr_in" in
-  let addr_out = mkFieldAccess idxlv "addr_out" in
-  let flag = mkFieldAccess idxlv "type" in
-  let size = mkFieldAccess idxlv "size" in
-  let stride = mkFieldAccess idxlv "stride" in
-  let element_num = mkFieldAccess idxlv "element_num" in
-
-  il := Set(addr_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-  il := Set(addr_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-
-
-  (* arg_flag|TPC_SAFE_ARG; *)
   let arg_type_tmp = arg_type2int arg_type in
   let arg_type_tmp =
-    (* arg_flag|TPC_SAFE_ARG|TPC_BYVALUE_ARG; *)
+    (* TPC_BYVALUE_ARG; *)
     if (isScalar arg_desc) then (
-      arg_type_tmp lor 0x18
+      0x9
     (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
     (* arg_flag|TPC_SAFE_ARG; *)
     ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
@@ -98,115 +96,63 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
     )
   in
   let arg_type_tmp =
-    (* arg_flag|TPC_STRIDE_ARG; *)
-    if (isStrided arg_desc) then (
-      arg_type_tmp lor 0x4
-    ) else (
+    (* arg_flag|TPC_REGION_ARG; *)
+    if (isRegion arg_desc) then
+      arg_type_tmp lor 0x16
+    else
       arg_type_tmp
-    )
   in
-  il := Set(flag, integer arg_type_tmp, locUnknown)::!il;
 
-  if (isStrided arg_desc) then (
-    let (arg_els, arg_elsz) =
-      match arg_type with
-          Stride(_, _, els, elsz) -> (els, elsz)
-        | _ -> assert false
-    in
-    il := Set(size, arg_elsz, locUnknown)::!il;
-    il := Set(stride, arg_size, locUnknown)::!il;
-    il := Set(element_num, arg_els, locUnknown)::!il;
-  ) else (
-    il := Set(size, arg_size, locUnknown)::!il;
-    il := Set(stride, zero, locUnknown)::!il;
-    il := Set(element_num, zero, locUnknown)::!il;
-  );
-  il := Set(taskd_args, BinOp( PlusPI, Lval taskd_args, one, tpc_task_argument_pt) , locUnknown)::!il;
-
-  [mkStmt (Instr (L.rev !il))]
+  [mkSet targs i_m arg_addr; mkSet ttyps i_m (integer arg_type_tmp)]
 )
 
-(* generates the code to issue a task *)
+(** Creates two arrays, one containing the arguments' addresses and another
+ * containing the arguments' types the invokes _sys_spawn with those as args
+ * @param is_hp whether this call is high priority
+ * @param loc the current file location
+ * @param func_vi the varinfo of the original function
+ * @param oargs the original arguments
+ * @param args the arguments from the pragma directive
+ * @param f the file we are modifying
+ * @param cur_fd the current function's fundec
+ * @return the stmts that will replace the call paired with a list of numbered
+ * argument descriptors
+ *)
 let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
   incr un_id;
 
-  let instrs = ref [] in
   let args_num = List.length oargs in
   let args_num_i = integer args_num in
-  let tpc_task_descriptor_pt = TPtr(find_type f "tpc_task_descriptor", []) in
-  let tpc_task_argument_pt = TPtr(find_type f "tpc_task_argument", []) in
-  let taskd = var (makeTempVar cur_fd tpc_task_descriptor_pt) in
 
-  (* const int tpc_task_arguments_list[] = {2, 3, 5, 9}; *)
-  let tpc_tal = find_global_Gvar f "tpc_task_arguments_list" in
-  (match tpc_tal with
-     GVar(_, initi, _) -> (
-      let init = initi.init in
-      match init with
-        Some (SingleInit _) -> initi.init <- Some (CompoundInit( intType, [(Index(integer !func_id,NoOffset), SingleInit(args_num_i))] ));
-      | Some (CompoundInit(t, clist)) ->
-          if (not (L.exists (fun (offset, init) -> 
-              match init with
-                 SingleInit(a) when a=args_num_i -> true
-                | _ -> false
-            ) clist)
-          ) then
-          initi.init <- Some (CompoundInit(intType, clist@[(Index(integer !func_id,NoOffset), SingleInit(args_num_i))]));
-      | None -> assert false;
-    )
+  let scoop2179_args =
+    try __find_local_var cur_fd "scoop2179_s_args"
+    with Not_found ->
+      makeLocalVar cur_fd "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), []))
+  in
+  (* Check if the array is large enough for this spawn *)
+  ( match scoop2179_args.vtype with
+    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+      if args_num > (i64_to_int size) then
+        scoop2179_args.vtype <- TArray(voidPtrType, Some(args_num_i), []);
     | _ -> assert false;
   );
-
-  (* task_desc = tpc_task_descriptor_alloc(args_num); *)
-  let tpc_task_descriptor_alloc = find_function_sign f "tpc_task_descriptor_alloc" in
-  instrs := Call (Some taskd, Lval (var tpc_task_descriptor_alloc), [args_num_i], locUnknown)::!instrs;
-  
-    (* task_desc->task = wrapper_func; *)
-  let taskd_task = mkFieldAccess taskd "task" in
-    (* make the wrapper id it doesn't already exist *)
-  let wrapper =
-    try
-      find_function_fundec_g f.globals ("wrapper_SCOOP__" ^ func_vi.vname)
-    with Not_found -> (
-      let wrapper_t = find_function_fundec f "wrapper_SCOOP__" in
-      let new_fd = copyFunction wrapper_t ("wrapper_SCOOP__" ^ func_vi.vname) in
-      Lockutil.add_after_s f func_vi.vname new_fd;
-      new_fd
-    )
+  let scoop2179_typs =
+    try __find_local_var cur_fd "scoop2179_t_args"
+    with Not_found ->
+      makeLocalVar cur_fd "scoop2179_t_args" (TArray(voidPtrType, Some(args_num_i), []))
   in
-    (* make the wrappers body *)
-  let _, arglopt, hasvararg, _ = splitFunctionType func_vi.vtype in
-  assert(not hasvararg);
-  let argl = match arglopt with None -> [] | Some l -> l in
-  let wr_arg = var (List.hd wrapper.sformals) in
-  let il = ref [] in
-  let doArg = function
-    | (name, t, attr) -> (
-      let ar = var (makeTempVar wrapper t) in
-      il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
-      il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
-      Lval ar
-    )
-  in
-  let arglist = List.map doArg argl in
-  il := Call (None, Lval (var func_vi), arglist, locUnknown)::!il;
-  wrapper.sbody <- mkBlock [mkStmt (Instr (List.rev !il))];
+  (* Check if the array is large enough for this spawn *)
+  ( match scoop2179_typs.vtype with
+    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+      if args_num > (i64_to_int size) then
+        scoop2179_typs.vtype <- TArray(voidPtrType, Some(args_num_i), []);
+    | _ -> assert false;
+  );
+  let scoop2179_args = var scoop2179_args in
+  let scoop2179_typs = var scoop2179_typs in
 
-  instrs := Set(taskd_task, Lval (var wrapper.svar), locUnknown)::!instrs;
-  (* task_desc->args = task_desc; *)
-  let taskd_args = mkFieldAccess taskd "args" in
-(*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs; *)
-  instrs := Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown)::!instrs;
-(*   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs; *)
-  (* task_desc->args_no = args_num; *)
-  let taskd_args_no = mkFieldAccess taskd "args_num" in
-  instrs := Set(taskd_args_no, args_num_i, locUnknown)::!instrs;
-  (* Leave uninitialized
-     task_desc->rfu and task_desc->extras *)
-  let stmts = ref [] in
-
-  let args_n =
+  let args_n, instrs =
     (* if we have arguments *)
     if (oargs <> []) then (
       let args_n = number_args args oargs in
@@ -216,29 +162,41 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
       let args_n = List.sort sort_args_n args_n in
 (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
       incr querie_no;
-      let doArgument = doArgument taskd_args f func_vi.vname !querie_no in
+      let doArgument = doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
       let mapped = L.flatten (List.rev_map doArgument args_n) in
-      stmts := mkStmt (Instr (L.rev !instrs))::mapped;
-      instrs := [];
-      args_n
-    ) else []
+      (args_n, mapped)
+    ) else ([], [])
   in
 
-  (* task_desc->args = task_desc+32; *)
-  instrs := Set(taskd_args, CastE(tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown)::!instrs;
   (* tpc_call(taskd); *)
-  let tpc_call_f = find_function_sign f "tpc_call" in
-  instrs := Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown)::!instrs;
+  let tpc_call_f = find_function_sign f "_sys_spawn" in
 
-  stmts := !stmts@[mkStmt (Instr(L.rev !instrs))];
+  let call_args = [integer !func_id; Lval scoop2179_args; Lval scoop2179_typs; args_num_i] in
+  let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
 
   incr func_id;
-  (!stmts, args_n)
+  ([mkStmt (Instr(L.rev instrs))], args_n)
 )
 
-let make_wait_on (f : file) (loc : location) (exps: attrparam list) (s: stmt): stmt visitAction =
-  let two = find_function_sign f "tpc_wait_on" in
+let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam list) (s: stmt): stmt visitAction =
+  let two = find_function_sign f "_sys_wait_on" in
+  let num_args = L.length exps in
+  let scoop2179_args =
+    try __find_local_var cur_fd "scoop2179_wo_args"
+    with Not_found ->
+      makeLocalVar cur_fd "scoop2179_wo_args" (TArray(voidPtrType, Some(integer num_args), []))
+  in
+  (* Check if the array is large enough for this wait on *)
+  ( match scoop2179_args.vtype with
+    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+      if (L.length exps) > (i64_to_int size) then
+        scoop2179_args.vtype <- TArray(voidPtrType, Some(integer num_args), []);
+    | _ -> assert false;
+  );
   let args = L.map (attrParamToExp f loc) exps in
-  let instr = Call (None, Lval (var two), args, locUnknown) in
+  let i = ref (-1) in
+  let mkSet = mkSet (var scoop2179_args) in
+  let init_args = L.map (fun a -> incr i; mkSet !i a) args in
+  let instr = Call (None, Lval (var two), [Lval (var scoop2179_args); integer num_args], locUnknown) in
   let s' = {s with pragmas = List.tl s.pragmas} in
-  ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+  ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)

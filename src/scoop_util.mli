@@ -293,7 +293,7 @@ val writeFile : Cil.file -> unit
 val mkFieldAccess : Cil.lval -> string -> Cil.lval
 
 (* Defines the Task_table for the spu file *)
-val make_task_table :
+val make_task_table : string ->
     (Cil.fundec * Cil.varinfo * (int * arg_descr) list) list -> Cil.global
 
 (* Defines the Task_table for the ppu file *)

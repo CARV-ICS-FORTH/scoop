@@ -236,7 +236,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (!stmts, args_n)
 )
 
-let make_wait_on (f : file) (loc : location) (exps: attrparam list) (s: stmt): stmt visitAction =
+let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam list) (s: stmt): stmt visitAction =
   let two = find_function_sign f "tpc_wait_on" in
   let args = L.map (attrParamToExp f loc) exps in
   let instr = Call (None, Lval (var two), args, locUnknown) in

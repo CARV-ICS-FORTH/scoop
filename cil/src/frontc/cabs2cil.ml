@@ -1019,9 +1019,9 @@ module BlockChunk =
         | a -> a
       in
       let a = match a with
-        (* Support #pragma css ... *)
-        Attr("css", rest) ->
-          Attr("css", 
+        (* Support #pragma ... *)
+        Attr(str, rest) ->
+          Attr(str, 
             (match rest with
             (* Support #pragma css wait on(...) *)
               [AStr("wait"); ACons("on", exps)] ->
@@ -1034,7 +1034,6 @@ module BlockChunk =
                 AStr("task")::(doTask rest)
             | _ -> rest
           ))
-        | _ -> a
       in
 
       let c = { c with stmts = pushPostIns c; postins = []; } in

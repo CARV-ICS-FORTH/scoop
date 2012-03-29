@@ -37,5 +37,5 @@ val make_tpc_issue : bool -> Cil.location -> Cil.varinfo -> Cil.exp list ->
     Scoop_util.arg_descr list -> Cil.file -> Cil.fundec ->
     (Cil.stmt list * (int * Scoop_util.arg_descr) list)
 
-val make_wait_on : Cil.file -> Cil.location -> Cil.attrparam list ->
-    Cil.stmt -> Cil.stmt Cil.visitAction
+val make_wait_on : Cil.fundec -> Cil.file -> Cil.location ->
+    Cil.attrparam list -> Cil.stmt -> Cil.stmt Cil.visitAction
