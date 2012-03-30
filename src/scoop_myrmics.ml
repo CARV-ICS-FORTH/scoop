@@ -64,8 +64,13 @@ let makeGlobalVar n t f=
  * @return the Set instr generated
  *)
 let mkSet table i arg =
+  let t = (
+    match typeOfLval table with
+      TArray(t', _, _) -> t'
+      | t' -> t'
+  ) in
   let curr = addOffsetLval (Index(integer i, NoOffset)) table in
-  Set( curr, arg, locUnknown)
+  Set( curr, CastE(t, arg), locUnknown)
 
 (** passes the arguments to the arrays in the correct order
  * @param targs the arguments' table
@@ -132,21 +137,21 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   in
   (* Check if the array is large enough for this spawn *)
   ( match scoop2179_args.vtype with
-    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+    TArray(t, Some(Const(CInt64(size, _, _))), _) ->
       if args_num > (i64_to_int size) then
-        scoop2179_args.vtype <- TArray(voidPtrType, Some(args_num_i), []);
+        scoop2179_args.vtype <- TArray(t, Some(args_num_i), []);
     | _ -> assert false;
   );
   let scoop2179_typs =
     try __find_local_var cur_fd "scoop2179_t_args"
     with Not_found ->
-      makeLocalVar cur_fd "scoop2179_t_args" (TArray(voidPtrType, Some(args_num_i), []))
+      makeLocalVar cur_fd "scoop2179_t_args" (TArray(uintType, Some(args_num_i), []))
   in
   (* Check if the array is large enough for this spawn *)
   ( match scoop2179_typs.vtype with
-    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+    TArray(t, Some(Const(CInt64(size, _, _))), _) ->
       if args_num > (i64_to_int size) then
-        scoop2179_typs.vtype <- TArray(voidPtrType, Some(args_num_i), []);
+        scoop2179_typs.vtype <- TArray(t, Some(args_num_i), []);
     | _ -> assert false;
   );
   let scoop2179_args = var scoop2179_args in
@@ -171,7 +176,8 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* tpc_call(taskd); *)
   let tpc_call_f = find_function_sign f "_sys_spawn" in
 
-  let call_args = [integer !func_id; Lval scoop2179_args; Lval scoop2179_typs; args_num_i] in
+  let filename = Const(CStr(loc.file)) in
+  let call_args = [filename; integer loc.line; integer !func_id; Lval scoop2179_args; Lval scoop2179_typs; args_num_i] in
   let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
 
   incr func_id;
@@ -197,6 +203,7 @@ let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam l
   let i = ref num_args in
   let mkSet = mkSet (var scoop2179_args) in
   let init_args = L.rev_map (fun a -> decr i; mkSet !i a) args in
-  let instr = Call (None, Lval (var two), [Lval (var scoop2179_args); integer num_args], locUnknown) in
+  let filename = Const(CStr(loc.file)) in
+  let instr = Call (None, Lval (var two), [filename; integer loc.line; Lval (var scoop2179_args); integer num_args], locUnknown) in
   let s' = {s with pragmas = List.tl s.pragmas} in
   ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)

@@ -1,9 +1,6 @@
 #ifndef __SCOOP_API_H__
 #define __SCOOP_API_H__
 
-#include <stdint.h>
-#include <stdio.h>
-
 // Bit-masks for supported argument flags and helping macros
 #define SCOOP_IN_ARG                      0x1
 #define SCOOP_OUT_ARG                     0x2
@@ -28,9 +25,9 @@
 // NOTE: no write on globals
 
 // NOTE: Allocate args and types in the stack
-void _sys_spawn(unsigned int id, void** args, unsigned int* types, unsigned int num_args);
+void _sys_spawn(char *filename, int line_nr, unsigned int id, void** args, unsigned int* types, unsigned int num_args);
 // NOTE: Allocate ptrs in the stack
-void _sys_wait_on(void** ptrs, unsigned int num_ptrs);
+void _sys_wait_on(char *filename, int line_nr, void** ptrs, unsigned int num_ptrs);
 
 // NOTE: create
 // void (*_sys_task_table[]) () = { dpotrf_tile, dgemm_tile, dtrsm_tile, dsyrk_tile};

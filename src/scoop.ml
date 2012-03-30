@@ -584,7 +584,7 @@ let feature : featureDescr =
         (!spu_file).globals <- new_types_l;
         preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(def))
                                     !tpcIncludePath;
-      ) else (
+      ) else if ( !arch<>"myrmics" ) then (
         Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/"^(!arch)^"_header.h") (def);
       );
 
