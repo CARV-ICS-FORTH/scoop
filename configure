@@ -5,9 +5,12 @@ cd cil
 ./configure EXTRASRCDIRS="$ROOT/src" \
   EXTRAFEATURES="scoop"
 cd ..
-files="locksmith lockpick scoop"
-for i in $files
+for i in *.in
 do
-	cat $i.in | sed -e "s.ROOT.$ROOT." > $i
+	sed 's.ROOT.'$ROOT'.g' $i > ${i%.in}
+	chmod a+x ${i%.in}
 done
-chmod a+x $files
+if ! grep $ROOT $HOME/.bashrc > /dev/null
+then
+	echo 'export PATH=$PATH:'$ROOT >> $HOME/.bashrc
+fi

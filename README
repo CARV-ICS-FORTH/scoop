@@ -35,24 +35,6 @@
  *
  *)
 
-#pragma support
-
-  CellSS syntax
-
-    #pragma css wait all
-    #pragma css wait on(list of expressions) //Not implemented yet
-    #pragma css task [input(<input parameters>)] [inout(<input parameters>)] [output(<input parameters>)] [highpriority]
-
-    Parameter notation:
-      <parameter>[\[parameter size*\]]
-      * The parameter size must be an expression, thus we don't allow
-        function calls. Also there is no support for the conditional
-        operator (? :)
-
-    Example:
-      #pragma css task input(a, b[4*sizeof(b_type)]) output(c[16])
-
-
 DEPENDENCIES
 
   ocaml
@@ -74,46 +56,3 @@ DEPENDENCIES
 INSTALL
 
   ./configure && make
-
-RUN (Needs update)
-
-  scoop --arch=<x86/cell> [options] <file> [file2 ...]
-
-OPTIONS (Needs update)
-
-  --arch  Defines the target architecture (x86/cell)
-          MUST BE THE FIRST ARGUMENT
-
-  --debug
-          Enable debugging information printing.
-
-  --out-name
-          Specify the output files' prefix.
-          e.g. (default: final) will produce 
-          final.c and final_func.c for the cell architecture
-#FIXME#          and final.c? for the x86 architecture
-
-#FIXME# to god x86 exei queue?
-  --queue-size
-          Specify the queue size for Cell. The value must match the one defined
-          in the Makefile as MAX_QUEUE_ENTRIES
-
-  --block-size
-          Specify the block size for x86.  The value must match the one defined
-          in the Makefile as BLOCK_SZ
-
-  --with-stats
-          Enable code for statistics (for use with -DSTATISTICS)
-
-  --with-unaligned-arguments
-          Allow unalligned arguments in x86
-          (for use with -DUNALIGNED_ARGUMENTS_ALLOWED)
-
-  --threaded
-          Generate thread safe code (for use with -DTPC_MULTITHREADED)
-
-NOTES:
-
-  scoop_alter.ml contains an alternative method without skeleton files (deprecated)
-
-                                                           last update: 27/05/11
