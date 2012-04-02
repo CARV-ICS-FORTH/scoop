@@ -176,7 +176,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* tpc_call(taskd); *)
   let tpc_call_f = find_function_sign f "_sys_spawn" in
 
-  let filename = Const(CStr(loc.file)) in
+  let filename = mkString loc.file in
   let call_args = [filename; integer loc.line; integer !func_id; Lval scoop2179_args; Lval scoop2179_typs; args_num_i] in
   let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
 

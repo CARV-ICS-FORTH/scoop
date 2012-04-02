@@ -32,6 +32,7 @@ LOCKSMITH_MODULES = \
 	scoop_adam \
 	scoop_bddt \
 	scoop_XPPFX \
+	scoop_PAPAC \
 	scoop_myrmics \
 	scoop_make_exec
 

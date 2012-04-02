@@ -59,7 +59,7 @@ let thread = ref false
 (** the prefix of the files to be produced by SCOOP. Defaults to "scoop_trans" *)
 let out_name = ref "scoop_trans"
 (** the runtime/architecture to target. Currently supporting
-    adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/scc_nik/XPPFX
+    adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/PAPAC/XPPFX
     Defaults to unknown *)
 let arch = ref "unknown"
 (** the str following the pragma, default is css (#pragma css ...) *)
@@ -87,7 +87,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime\nadam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | scc_nik | XPPFX";
+      " SCOOP: Define the target runtime\nadam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | PAPAC | XPPFX";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -178,7 +178,7 @@ let rec scoop_process_args typ args loc : arg_descr list =
       let vi = find_scoped_var loc !currentFunction !ppc_file varname in
       let tmp_addr = Lval(var vi) in
       let tmp_size = 
-        if (!arch <> "XPPFX") then
+        if (!arch <> "XPPFX" && !arch<>"PAPAC") then
           attrParamToExp !ppc_file loc varsize
         else (
           let size = SizeOf( getBType vi.vtype vi.vname ) in
@@ -479,6 +479,7 @@ class findTaskDeclVisitor cgraph = object
                       "adam" -> Scoop_adam.make_tpc_issue is_hp
                     | "bddt" -> Scoop_bddt.make_tpc_issue is_hp
                     | "XPPFX" -> Scoop_XPPFX.make_tpc_issue is_hp
+                    | "PAPAC" -> Scoop_PAPAC.make_tpc_issue is_hp
                     | "myrmics" -> Scoop_myrmics.make_tpc_issue is_hp
                     | _ -> E.s (unimp "Runtime \"%s\" doesn't have a make_tpc_issue yet" !arch);
                   in
@@ -637,7 +638,7 @@ let feature : featureDescr =
            !arch = "adam" ||
            !arch = "cellgod" ||
            !arch = "scc" ||
-           !arch = "scc_nik" ||
+           !arch = "PAPAC" ||
            !arch = "XPPFX" ) then
         (Ptdepa.find_dependencies f !dis_sdam);
 
