@@ -113,16 +113,16 @@ let options =
       Arg.String(fun s -> queue_size := s),
       " SCOOP: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
 
-    "--with-stats",
-      Arg.Set(stats),
-      " SCOOP: Enable code generation for statistics, for use with -DSTATISTICS";
+    "--without-stats",
+      Arg.Clear(stats),
+      " SCOOP: Disable code generation for statistics, for use without -DSTATISTICS";
 
 (*    "--with-unaligned-arguments",
       Arg.Set(unaligned_args),
       " SCOOP: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";*)
 
 (*    "--without-blocking",
-      Arg.UnSet(blocking),
+      Arg.Clear(blocking),
       " SCOOP: Enable blocking arguments in x86. for use with -DBLOCKING";*)
 
     "--threaded",

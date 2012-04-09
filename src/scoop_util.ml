@@ -114,7 +114,7 @@ let boolType = TInt(IBool, [])
 let currentFunction = ref dummyFunDec
 
 (** keeps whether stats are enabled or not *)
-let stats = ref false
+let stats = ref true
 (** keeps whether we want unaligned arguments or not *)
 let unaligned_args = ref false
 (** keeps whether we want blocking of arguments or not *)
