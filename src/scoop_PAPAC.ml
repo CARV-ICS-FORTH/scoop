@@ -54,13 +54,19 @@ let makeGlobalVar n t f=
   v
 
 let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
- (arg: (int * arg_descr) ) : stmt list = (
+ (loc: location) (arg: (int * arg_descr) ) : stmt list = (
   let (i_m, arg_desc) = arg in
   let arg_name = arg_desc.aname in
   let arg_addr = arg_desc.address in
   let arg_type = arg_desc.atype in
   let arg_size = getSizeOfArg arg_desc in
   let il = ref [] in
+
+  let c_start =
+    try Lval (var (find_global_var f "shm_start"))
+    with Not_found ->
+      E.s (errorLoc loc "shm_start Not found");
+  in
 
   (* taskd->args[i] *)
   let tpc_task_argument_pt = TPtr(find_type f  "tpc_task_argument", []) in
@@ -72,6 +78,7 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
       uint32_t size;
       uint32_t stride;
       uint32_t element_num; *)
+  let uint32_t = (find_type f "uint32_t") in
   let addr_in = mkFieldAccess idxlv "addr_in" in
   let addr_out = mkFieldAccess idxlv "addr_out" in
   let flag = mkFieldAccess idxlv "type" in
@@ -79,8 +86,9 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   let stride = mkFieldAccess idxlv "stride" in
   let element_num = mkFieldAccess idxlv "element_num" in
 
-  il := Set(addr_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-  il := Set(addr_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
+  let arg_addr_minus = mkCast (BinOp(MinusA , mkCast arg_addr uint32_t, mkCast c_start uint32_t, uint32_t)) voidPtrType in
+  il := Set(addr_in, arg_addr_minus, locUnknown)::!il;
+  il := Set(addr_out, arg_addr_minus, locUnknown)::!il;
 
 
   (* arg_flag|TPC_SAFE_ARG; *)
@@ -132,6 +140,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   incr un_id;
 
 (*   let instrs = ref [] in *)
+  let uint32_t = (find_type f "uint32_t") in
   let args_num = List.length oargs in
   let args_num_i = integer args_num in
   let tpc_task_descriptor_pt = TPtr(find_type f "tpc_task_descriptor", []) in
@@ -194,6 +203,11 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let wr_arg = var (List.hd wrapper.sformals) in
   let il = ref [] in
   let i = ref 0 in 
+  let c_start =
+    try Lval (var (find_global_var f "shm_start"))
+    with Not_found ->
+      E.s (errorLoc loc "shm_start Not found");
+  in
   let doArg = function
     | ((_, t, _), (_, arg_descr)) -> (
       let ar = var (makeTempVar wrapper t) in
@@ -201,12 +215,9 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
         il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
       ) else (
         (* addresses are actually offsets *)
-        let c_start =
-          try Lval (var (find_global_var f "shm_start"))
-          with Not_found ->
-            E.s (errorLoc loc "shm_start Not found");
-        in
-        let addr = BinOp( PlusPI, Lval (mkFieldAccess wr_arg "addr_in"), c_start, tpc_task_argument_pt) in
+        let addr = BinOp( PlusA,
+                          mkCast (Lval (mkFieldAccess wr_arg "addr_in")) uint32_t,
+                          mkCast c_start uint32_t, uint32_t) in
         il := Set(ar, mkCast addr t, locUnknown)::!il;
       );
       il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
@@ -221,8 +232,9 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let instrs = Set(taskd_task, Lval (var wrapper.svar), locUnknown)::instrs in
   (* task_desc->args = task_desc; *)
   let taskd_args = mkFieldAccess taskd "args" in
-(*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs; *)
-  let instrs = Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown)::instrs in
+(*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs;*)
+  let set_argsPtr = Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown) in
+  let instrs = set_argsPtr::instrs in
 (*   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs; *)
   (* task_desc->args_no = args_num; *)
   let taskd_args_no = mkFieldAccess taskd "args_num" in
@@ -234,7 +246,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     (* if we have arguments *)
     if (oargs <> []) then (
       incr querie_no;
-      let doArgument = doArgument taskd_args f func_vi.vname !querie_no in
+      let doArgument = doArgument taskd_args f func_vi.vname !querie_no loc in
       let mapped = L.flatten (List.rev_map doArgument args_n) in
       (mkStmt (Instr (L.rev instrs))::mapped, args_n)
     ) else (
@@ -242,8 +254,10 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     )
   in
 
+  let reset_argsPtr = mkStmtOneInstr (set_argsPtr) in
+
   (* task_desc->args = task_desc+32; *)
-  let stmts = mkStmtOneInstr (Set(taskd_args, CastE(tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown))::stmts in
+  let stmts = stmts@[reset_argsPtr] in
 
   let if_stmt = mkStmt (If(cond, mkBlock stmts, mkBlock [], locUnknown)) in
 
