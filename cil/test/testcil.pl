@@ -191,6 +191,8 @@ addBadComment("testrun/warnings-unused-label",
 	      "Minor. We don't do a good enough job at eliminating unused labels");
 addTest("test/warnings-cast WARNINGS_ARE_ERRORS=1");
 addTest("testrun/castincr WARNINGS_ARE_ERRORS=1");
+addTest("test/castunion");
+addTest("test/castcall");
 
 addTest("test/apachebits");
 addTest("testrun/apachebuf");
@@ -200,7 +202,6 @@ addTest("testrun/asm1 _GNUCC=1");
 addTest("test/asm2 _GNUCC=1");
 addTest("test/asm3 _GNUCC=1");
 addTest("test/asm4 _GNUCC=1");
-addBadComment("test/asm4", "Limitation. See testrun/const1.");
 addTest("testobj/asm5 _GNUCC=1");
 
 addTest("testrun/offsetof");
@@ -215,6 +216,9 @@ addBadComment("test/argcast",
 addTest("test/array1");
 addTest("test/array2");
 addTest("testrun/array_varsize");
+addTest("testrun/array_multi_varsize");
+addBadComment("testrun/array_multi_varsize",
+           "Limitation. CIL does not handle variable-length multidimensional arrays.");
 addTest("testrun/array_formal");
 addTest("testrun/formalscope");
 addTest("test/matrix");
@@ -250,7 +254,6 @@ addTest("test/cast4 _GNUCC=1");
 addTest("testrun/cast8 ");
 addTest("test/constprop");
 addTest("testrun/const1 _GNUCC=1");
-addBadComment("testrun/const1", "Limitation. CIL can't handle large 64-bit unsigned constants.");
 addTest("testrun/const2 ");
 addTest("testrun/const3 ");
 addTest("testrun/const4 _GNUCC=1");
@@ -266,6 +269,7 @@ addTest("test/const13 WARNINGS_ARE_ERRORS=1");
 addBadComment("test/const13", "Minor. Const warnings from generated code - need more casts.");
 addTest("test/const14");
 addBadComment("test/const14", "Bug. Missing cast to result type when short-cutting expressions to 0.");
+addTest("testrun/const15 ");
 addTest("test/deref _GNUCC=1");
 addTest("test_i/empty");
 addTest("test/enum");
@@ -313,6 +317,8 @@ addTest("testrun/init21 _GNUCC=1");
 addTest("testrun/init22 ");
 addTest("test/array-size-trick ");
 addTest("testrun/logical ");
+addTest("testrun/logical1 USE_LOGICAL_OPERATORS=1");
+addTest("testrun/logical2 USE_LOGICAL_OPERATORS=1");
 addTest("testrun/cond1 _GNUCC=1");
 addTest("testrun/cond2 _GNUCC=1");
 addTest("testrun/initial _GNUCC=1");
@@ -356,7 +362,7 @@ addTest("test/vararg7 _GNUCC=1");
 addTest("testrun/va-arg-1 _GNUCC=1");
 addTest("testrun/va-arg-2 _GNUCC=1");
 addTest("testrun/va-arg-7 _GNUCC=1");
-addTest("test-bad/arrsize ");
+addTest("test/arrsize ");
 addTest("testrun/comma1 _GNUCC=1");
 addTest("test/retval");
 addTest("testrun/static ");
@@ -397,6 +403,9 @@ addTest("testrun/label6");
 addTest("test/label7");
 addTest("test/label8");
 addTest("test/label9 EXTRAARGS=--domakeCFG");
+addTest("testrun/case_then_default_in_switch EXTRAARGS=--domakeCFG");
+addTestFail("test/switch_default_parse_bug ", "Empty default in switch ");
+addTestFail("test/break1 ", "No enclosing loop for break");
 addTest("testrun/wchar1");
 addTest("testrun/wchar2");
 addTest("testrun/wchar3");
@@ -412,6 +421,7 @@ addTest("testrun/lval1 _GNUCC=1");
 #addToGroup("test/bind2", "slow");
 addTest("testrun/decl1 _GNUCC=1");
 addTest("testrun/addr-array");
+addTest("testrun/addr-string");
 addTest("combine1 ");
 addTest("combine2 ");
 addTest("combine3 ");
@@ -541,6 +551,9 @@ addTest("testrun/simplify_structs2 USECILLY=1 EXTRAARGS=--dosimplify");
 
 addTest("test/tempname EXTRAARGS=--dosimplify");
 
+addTest("test/simplify_volatile EXTRAARGS=--dosimplify");
+addBadComment("test/simplify_volatile", "Bug. Simplification of volatile structures with array members fails.");
+
 addTest("testrun/typeof1 ");
 addTest("testrun/semicolon _GNUCC=1");
 
@@ -556,6 +569,7 @@ addTest("testrun/builtin ");
 addTest("test/builtin2 ");
 addTest("testrun/builtin3 ");
 addTest("testrun/builtin_choose_expr");
+addTest("testrungcc/builtin_object_size _GNUCC=1");
 addTest("testrun/builtin4 ");
 addTest("test/builtin5 ");
 addTest("test/sync-1 _GNUCC=1");
@@ -624,6 +638,9 @@ addTest("combine_syserr MERGEINLINES=1");
 addTest("combine_copyptrs WARNINGS_ARE_ERRORS=1");
 addTest("combine_copyptrs WARNINGS_ARE_ERRORS=1 MERGEINLINES=1");
 
+addTest("testrun/constfold EXTRAARGS=\"--domakeCFG --dopartial\"");
+addBadComment("testrun/constfold", "Bug. Wrong constant folding.  #2276515 on sourceforge.");
+
 # tests of things implemented for EDG compatibility
 addTest("mergestruct");
 
@@ -682,6 +699,7 @@ addTest("testrun/blockattr2");
 addTest("testrun/extinline2");
 addTest("test/extinline3");
 addTest("testrun/bool");
+addTest("testrun/booleanOp USE_LOGICAL_OPERATORS=1");
 addTest("test/va_arg_pack");
 addTest("testrun/compound1");
 addBadComment("testrun/compound1", "Notbug. Undefined behavior (probably).");

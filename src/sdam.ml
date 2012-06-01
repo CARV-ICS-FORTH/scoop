@@ -181,17 +181,17 @@ let isSafeArg (taskname: string) (tid: int) (argname: string) : bool =
 	try (
 	let arg = check_task !tasks_l in 
 	if(arg.safe) then (
-		ignore(E.log "marking arguments %s as safe\n" arg.argname);
+		(* ignore(E.log "marking arguments %s as safe\n" arg.argname); *)
 		true
 	)
 	else (
-		ignore(E.log "%s is not safe\n" arg.argname);
+		(* ignore(E.log "%s is not safe\n" arg.argname); *)
 		false	
 	)
 	(*arg.safe*)	
 	)	 
 	with Not_found -> (
-		ignore(E.log "%s was not found\n" argname);		
+		(* ignore(E.log "%s was not found\n" argname); *)		
 		false
 	)
 

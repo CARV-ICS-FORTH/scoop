@@ -247,11 +247,12 @@ end
 *)
 let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
-	ignore(E.log "SDAM:Initializing Cil...\n");
-  Rmtmps.removeUnusedTemps f;
-  Rmalias.removeAliasAttr f;
+
+(*  Rmtmps.removeUnusedTemps f;*)
+(* 	Rmalias.removeAliasAttr f; *)
 	Cfg.computeFileCFG f;
   ignore(E.log "SDAM:Finding data dependencies...\n");
+
   PT.generate_constraints f;
   LF.done_adding ();
   if(disable_sdam) then (

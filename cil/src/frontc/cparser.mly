@@ -312,7 +312,7 @@ let transformOffsetOf (speclist, dtype) member =
 %nonassoc 	ELSE
 
 
-%left COMMA
+%left	COMMA
 %right	EQ PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ PERCENT_EQ
                 AND_EQ PIPE_EQ CIRC_EQ INF_INF_EQ SUP_SUP_EQ
 %right	QUEST COLON
@@ -887,8 +887,8 @@ statement:
 	                         {CASE (fst $2, $4, (*handleLoc*) $1)}
 |   CASE expression ELLIPSIS expression COLON statement
 	                         {CASERANGE (fst $2, fst $4, $6, (*handleLoc*) $1)}
-|   DEFAULT COLON
-	                         {DEFAULT (NOP $1, (*handleLoc*) $1)}
+|   DEFAULT COLON statement
+	                         {DEFAULT ($3, (*handleLoc*) $1)}
 |   RETURN SEMICOLON		 {RETURN (NOTHING, (*handleLoc*) $1)}
 |   RETURN comma_expression SEMICOLON
 	                         {RETURN (smooth_expression (fst $2), (*handleLoc*) $1)}

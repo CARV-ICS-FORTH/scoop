@@ -1800,7 +1800,7 @@ and get_cinfo_field (fi: fieldinfo) (ci: cinfo)
                     (name: LN.label_name)
                     : (rho * tau) =
   let compdata = U.deref ci in
-  assert (compdata.compinfo == fi.fcomp);
+	assert (compdata.compinfo == fi.fcomp);
   try StrHT.find compdata.cinfo_fields fi.fname
   with Not_found -> begin
     let storeloc = !Cil.currentLoc in
@@ -2888,7 +2888,6 @@ let get_special (k: Conf.handler) : special_function_t =
   | Conf.Pack -> handle_pack
   | Conf.Start_unpack -> handle_start_unpack
   | Conf.End_unpack -> handle_end_unpack
-    
 
 (*****************************************************************************)
 let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
@@ -3109,7 +3108,6 @@ and type_pragma_list g pragmas =
   in 
   List.fold_left f g pragmas
 
-(* FIXME: Might be cases where we do not type pragmas *)
 and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gamma =
   currSid := stmt.sid;
   if !debug then ignore(E.log "SDAM: typing statement %a\n" d_stmt stmt);

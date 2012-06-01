@@ -58,7 +58,6 @@ and alphaWorker      ~(alphaTable: (string, 'a alphaTableData ref) H.t)
                      ~(lookupname: string) ~(data:'a)
                      (make_new: bool) : string * 'a = 
   let prefix, suffix, (numsuffix: int) = splitNameForAlpha ~lookupname in
-(*   if (prefix = "j") then raise Not_found; *)
   if debugAlpha prefix then
     ignore (E.log "Alpha worker: prefix=%s suffix=%s (%d) create=%b. " 
               prefix suffix numsuffix make_new);
