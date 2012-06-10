@@ -86,7 +86,13 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   let stride = mkFieldAccess idxlv "stride" in
   let element_num = mkFieldAccess idxlv "element_num" in
 
-  let arg_addr_minus = mkCast (BinOp(MinusA , mkCast arg_addr uint32_t, mkCast c_start uint32_t, uint32_t)) voidPtrType in
+  let arg_addr_minus = 
+    if (isScalar arg_desc) then (
+      mkCast arg_addr voidPtrType
+    ) else (
+      mkCast (BinOp(MinusA , mkCast arg_addr uint32_t, mkCast c_start uint32_t, uint32_t)) voidPtrType
+    )
+  in
   il := Set(addr_in, arg_addr_minus, locUnknown)::!il;
   il := Set(addr_out, arg_addr_minus, locUnknown)::!il;
 
