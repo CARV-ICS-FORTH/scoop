@@ -314,7 +314,7 @@ class findTaskDeclVisitor cgraph = object
               let args =
                 if (!arch="cell") then
                   [attrParamToExp !ppc_file loc exp]
-                else if (!arch="cellgod") then
+                else if (!arch="cellgod" || !arch="PAPAC") then
                   attrParamToExp !ppc_file loc exp::[attrParamToExp !ppc_file loc (L.hd rest)]
                 else (
                   match rest with
