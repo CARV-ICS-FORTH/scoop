@@ -36,7 +36,7 @@ let getLoopIndex (body_stmts: stmt list) : loop_descr option =
 		match il with 
 			Instr(Set((Var(vi), NoOffset), e, _)::[]) -> ( 
 				if !debug then ignore(E.log "Found index %s\n" vi.vname);
-				if(vi.vreferenced || vi.vaddrof) then None
+				if(vi.vaddrof) then (ignore(E.log "variable %s is beign referenced\n" vi.vname); None)
 				else (
 					let rec isModified = (function
 							[] -> false
@@ -301,9 +301,15 @@ let size_equal vi arg_e_size l_step =
 *)
 let array_bounds_safe (arg: arg_descr) : bool =
 	(* cannot handle strided args *)
+	if !debug then ignore(E.log "trying to remove %s self deps\n" arg.argname);
 	if arg.strided then false
 	else (
 		try (
+		(*
+			if (not (isSome arg.loop_d)) then ignore(E.log "Loop cannot be analyzed\n");		
+			if (not (isSome arg.array_d)) then ignore(E.log "Argument is not or does not refer to an array\n");
+		*)
+			(* FIXME: actually use the exception message *)
 			if (not (isSome arg.loop_d)) then raise (Failure "Loop cannot be analyzed\n");		
 			if (not (isSome arg.array_d)) then raise (Failure "Argument is not or does not refer to an array\n");
 			let loop_d = getSome arg.loop_d in
