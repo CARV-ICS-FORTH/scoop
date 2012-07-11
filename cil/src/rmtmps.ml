@@ -753,7 +753,6 @@ type rootsFilter = global -> bool
 let isDefaultRoot = isExportedRoot
 
 let rec removeUnusedTemps ?(isRoot : rootsFilter = isDefaultRoot) file =
-  ignore (E.log "REMOVING\n" );
   if !keepUnused || Trace.traceActive "disableTmpRemoval" then
     Trace.trace "disableTmpRemoval" (dprintf "temp removal disabled\n")
   else
