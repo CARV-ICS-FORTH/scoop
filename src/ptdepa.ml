@@ -248,7 +248,6 @@ end
 let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
 
-(*  Rmtmps.removeUnusedTemps f;*)
 (* 	Rmalias.removeAliasAttr f; *)
 	Cfg.computeFileCFG f;
   ignore(E.log "SDAM:Finding data dependencies...\n");

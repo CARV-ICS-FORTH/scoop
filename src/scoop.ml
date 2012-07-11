@@ -40,7 +40,6 @@ open Pretty
 open Cil
 open Lockutil
 open Scoop_util
-open Scoop_make_exec
 module E = Errormsg
 module H = Hashtbl
 module S = Str
@@ -64,6 +63,8 @@ let out_name = ref "scoop_trans"
 let arch = ref "unknown"
 (** the str following the pragma, default is css (#pragma css ...) *)
 let pragma_str = ref "css"
+(** the task table name of myrmics runtime, default is Task_table *)
+let myrmics_table = ref "Task_table"
 (** the path where the runtime headers are located *)
 let tpcIncludePath = ref ""
 (** flags to pass to the gcc when merging files *)
@@ -116,6 +117,11 @@ let options =
     "--without-stats",
       Arg.Clear(stats),
       " SCOOP: Disable code generation for statistics, for use without -DSTATISTICS";
+
+    "--myrmics-table-name",
+      Arg.String(fun s -> myrmics_table := s),
+      " SCOOP: Specify the name of the task table for the myrmics runtime (default: Task_table)";
+
 
 (*    "--with-unaligned-arguments",
       Arg.Set(unaligned_args),
@@ -662,12 +668,12 @@ let feature : featureDescr =
       ) else if ( !arch = "adam" || !arch = "bddt" ) then (
         (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
       ) else if ( !arch = "myrmics" ) then (
-        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "_sys_task_table" tasks)]
+        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table !myrmics_table tasks)]
       );
 
       (* execute_task is redundant in x86*)
       if !isCell then
-        (!spu_file).globals <- (!spu_file).globals@[make_exec_func !arch !spu_file tasks];
+        (!spu_file).globals <- (!spu_file).globals@[Scoop_make_exec.make_exec_func !arch !spu_file tasks];
 
       (* eliminate dead code *)
 (*        Cfg.computeFileCFG !ppc_file;

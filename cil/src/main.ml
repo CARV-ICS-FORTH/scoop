@@ -59,12 +59,12 @@ let parseOneFile (fname: string) : C.file =
   if !Cilutil.printStages then ignore (E.log "Parsing %s\n" fname);
   let cil = F.parse fname () in
   
-  if (not !Epicenter.doEpicenter) then (
+(*  if (not !Epicenter.doEpicenter) then (
     (* sm: remove unused temps to cut down on gcc warnings  *)
     (* (Stats.time "usedVar" Rmtmps.removeUnusedTemps cil);  *)
     (* (trace "sm" (dprintf "removing unused temporaries\n")); *)
     (Rmtmps.removeUnusedTemps cil)
-  );
+  );*)
   cil
 
 (** These are the statically-configured features. To these we append the 
