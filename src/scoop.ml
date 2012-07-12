@@ -63,8 +63,8 @@ let out_name = ref "scoop_trans"
 let arch = ref "unknown"
 (** the str following the pragma, default is css (#pragma css ...) *)
 let pragma_str = ref "css"
-(** the task table name of myrmics runtime, default is Task_table *)
-let myrmics_table = ref "Task_table"
+(** the main function in the file, default is main *)
+let myrmics_main = ref "main"
 (** the path where the runtime headers are located *)
 let tpcIncludePath = ref ""
 (** flags to pass to the gcc when merging files *)
@@ -118,9 +118,9 @@ let options =
       Arg.Clear(stats),
       " SCOOP: Disable code generation for statistics, for use without -DSTATISTICS";
 
-    "--myrmics-table-name",
-      Arg.String(fun s -> myrmics_table := s),
-      " SCOOP: Specify the name of the task table for the myrmics runtime (default: Task_table)";
+    "--myrmics-main-function",
+      Arg.String(fun s -> myrmics_main := s),
+      " SCOOP: Specify the name of the main function for the myrmics runtime (default: main)";
 
 
 (*    "--with-unaligned-arguments",
@@ -668,7 +668,9 @@ let feature : featureDescr =
       ) else if ( !arch = "adam" || !arch = "bddt" ) then (
         (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
       ) else if ( !arch = "myrmics" ) then (
-        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table !myrmics_table tasks)]
+        let main = find_function_sign !ppc_file !myrmics_main in
+        let tasks = (dummyFunDec, main, [])::tasks in
+        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table (!myrmics_main^"_task_table") tasks)]
       );
 
       (* execute_task is redundant in x86*)

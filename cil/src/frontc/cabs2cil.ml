@@ -983,7 +983,7 @@ module BlockChunk =
       (* ZAKKAK: rename the arguments in the attribute *)
       (* filter1 keeps only renamings for name in the current file *)
       let filter1 name (oname, (_, loca) ) = (name=oname) && ((compare loca.file loc.file) = 0) in
-      let print_them orig (newname, oldloc)= ignore( E.log "CONS2: %s to %s from %a\n" orig newname d_loc oldloc) in
+(*       let print_them orig (newname, oldloc)= ignore( E.log "CONS2: %s to %s from %a\n" orig newname d_loc oldloc) in *)
       let rec doAparam = function
         | AStr(s) -> 
           let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
@@ -991,9 +991,9 @@ module BlockChunk =
 (*             ignore( E.log "CONS: No renamings available for %s\n" s); *)
             AStr(s)
           ) else (
-            List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl);
+(*             List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl); *)
             let (nn, _) = List.hd (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl) in
-            ignore( E.log "CONS: Chose %s at %a\n" nn d_loc loc);
+(*             ignore( E.log "CONS: Chose %s at %a\n" nn d_loc loc); *)
             AStr(nn)
           )
         | ACons(s, apl) -> ACons(
@@ -1003,9 +1003,9 @@ module BlockChunk =
 (*                 ignore( E.log "CONS: No renamings available for %s\n" s); *)
                 s
               ) else (
-                List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl);
+(*                 List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl); *)
                 let (nn, _) = List.hd (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl) in
-                ignore( E.log "CONS: Chose %s at %a\n" nn d_loc loc);
+(*                 ignore( E.log "CONS: Chose %s at %a\n" nn d_loc loc); *)
                 nn
               )
             ) else s),
