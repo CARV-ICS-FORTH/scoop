@@ -75,7 +75,7 @@ doc: pdfdoc htmldoc
 pdfdoc: $(DOCDIR)/in/scoopman.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	-rm -rf $(DOCDIR)/scoop
 	-mkdir -p $(DOCDIR)/scoop
-	cd doc/in; echo "\def\scoopversion{1.0.0}" >scoop.version.tex
+	cd doc/in; echo "\def\scoopversion{1.5.0}" > scoop.version.tex
 	cd $(DOCDIR)/in; pdflatex scoopman.tex; pdflatex scoopman.tex
 	cd $(DOCDIR)/in; mv scoopman.pdf ../scoop/SCOOP.pdf
 	ocamldoc -o $(DOCDIR)/scoop-api.tex.tmp -v -stars\
