@@ -14,7 +14,7 @@ let do_graph_out = ref true
 
 let do_task_graph_out = ref false
 
-let debug = ref true
+let debug = ref false
 
 let debug_footprints = ref false
 
@@ -107,7 +107,6 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
   	let (argtype2, _) = PT.env_lookup arg2.argname env2 in
   	match argtype1.Ptatypes.t, argtype2.Ptatypes.t with 	
   		Ptatypes.ITPtr(_, r1), Ptatypes.ITPtr(_, r2) -> (
-  			ignore(E.log "&Checking pointers\n");
   			let set1 = LF.close_rhoset_pn (LF.RhoSet.singleton r1) in
   			let set2 = LF.close_rhoset_pn (LF.RhoSet.singleton r2) in
   			let final_set = LF.RhoSet.inter set1 set2 in
@@ -210,14 +209,12 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
 				(* do not check with self  if task is not in a loop *)
-				if(BS.isInLoop task1) then (ignore(E.log "Loopaaapappa\n"););
-				if (not (BS.isInLoop task1) && arg.aid == arg'.aid) then (
+				if (not (BS.isInLoop task1) && task1.taskid == task2.taskid) then (
 					ignore(E.log "not in loop\n");
 					arg.safe <- true;
 				)
 				else (
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
-						ignore(E.log "is in loop\n");
 						let res = not (alias arg arg') || LP.array_bounds_safe arg in
 						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
@@ -226,7 +223,6 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 						arg.safe <- res;
 					)
 					else (
-						ignore(E.log "is in loop\n");
 						let res = not (alias arg arg') in
 						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);

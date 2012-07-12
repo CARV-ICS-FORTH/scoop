@@ -5,7 +5,7 @@ open Sdam
 module E = Errormsg
 module LF = Labelflow
 
-let debug = ref true
+let debug = ref false
 let disable = ref false
 
 let options = [
@@ -89,7 +89,7 @@ module BarrierStateTransfer =
 			| _ -> Some acq
     end
 
-    let starting_state (p: phi) : state option = None
+    let starting_state (p: phi) : state option = Some TaskSet.empty
 
     let merge_state (acq1: state) (acq2: state) : state =
       TaskSet.inter acq1 acq2
@@ -168,7 +168,7 @@ let solve () =
   | _ -> 	if !debug then ignore(E.log "phi set not empty\n"); (
 	  List.iter
     (fun p -> PhiHT.replace BarrierStateTransfer.state_before_phi p empty_state)
-    !starting_phis;	
+    !starting_phis;
 		BS.solve !starting_phis;
 	)
 

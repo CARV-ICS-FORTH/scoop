@@ -83,7 +83,7 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
 (* user interface *)
 (* debug moved to ptatypes.ml *)
 let debug_SDAM = ref false
-let debug_region = ref true
+let debug_region = ref false
 (* debug_void moved to ptatypes.ml *)
 let debug_one_effect = ref false
 let do_typing_stats = ref false
@@ -1398,7 +1398,7 @@ and sub_tau (src: tau) (tgt: tau) : unit =
           effect_flows ei2.exist_effect ei1.exist_effect;
           CF.phi_flows ei1.exist_phi ei2.exist_phi;
         end
-      | ITRegion th1, ITRegion th2 -> ignore(E.log "region^(%a) subtypes to region^(%a)\n" d_theta th1 d_theta th2); unify_theta th1 th2;
+      | ITRegion th1, ITRegion th2 -> unify_theta th1 th2;
       | _, ITRegion _
       | ITRegion _, _ -> ignore(warn "subtyping a region to a non region type");
       | _ ->
@@ -2753,7 +2753,6 @@ let handle_new_region (_: exp list)
         type_lval lv input_env input_phi input_effect in
       (match lv_type.t with
         ITRegion(var_theta) ->
-          ignore(E.log "assigning new region to variable\n");
           unify_theta new_region_theta var_theta;
           (*FIXME: i don't know what this line does... *)
           (* mark_global_rho alloc_rho KMalloc_Addr RhoSet.empty; *)
@@ -2814,7 +2813,6 @@ let handle_ralloc (_: exp list)
           rho_flows alloc_rho var_rho;
           mark_global_rho alloc_rho KMalloc_Addr RhoSet.empty;
           (*FIXME: here add an edge between theta and rho *)
-          ignore(E.log "rho flows to theta\n");
           rho_flows2theta var_rho th;
       | _ ->
           ignore (warn "bddt_ralloc result assigned to a non-pointer: %a"
