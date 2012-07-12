@@ -566,7 +566,7 @@ let alphaConvertVarAndAddToEnv (addtoenv: bool) (vi: varinfo) : varinfo =
 (*  ignore (E.log "After adding %s alpha table is: %a\n"
             newvi.vname docAlphaTable alphaTable); *)
   (* ZAKKAK: push the new rename *)
-  renamings := (vi.vname, (newvi.vname, oldloc) )::!renamings;
+  renamings := (vi.vname, (newvi.vname, vi.vdecl) )::!renamings;
   newvi
 
 
@@ -972,24 +972,32 @@ module BlockChunk =
       if c.stmts == stmts' then c else {c with stmts = stmts'}
 
     let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
+(*             ignore( E.log "CONS: at %a \n" d_loc loc); *)
       (* ZAKKAK: rename the arguments in the attribute *)
       let filter1 name (oname, _ ) = (name=oname) in
+(*       let print_them orig (newname, oldloc)= ignore( E.log "CONS2: %s to %s from %a\n" orig newname d_loc oldloc) in *)
       let rec doAparam = function
         | AStr(s) -> 
           let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
-          if (rl = []) then
+          if (rl = []) then (
+(*             ignore( E.log "CONS: No renamings available for %s\n" s); *)
             AStr(s)
-          else (
-            let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
+          ) else (
+(*             List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl); *)
+            let (nn, _) = List.hd (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl) in
+(*             ignore( E.log "CONS: Chose %s\n" nn); *)
             AStr(nn)
           )
         | ACons(s, apl) -> ACons(
           ( if (s<>"in" && s<>"inout" && s<>"out" && s<>"input" && s<>"output") then (
               let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
-              if (rl = []) then
+              if (rl = []) then (
+(*                 ignore( E.log "CONS: No renamings available for %s\n" s); *)
                 s
-              else (
-                let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
+              ) else (
+(*                 List.iter (print_them s) (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl); *)
+                let (nn, _) = List.hd (List.sort ( fun (_, loc1) (_, loc2) -> - (compareLoc loc1 loc2) ) rl) in
+(*                 ignore( E.log "CONS: Chose %s\n" nn); *)
                 nn
               )
             ) else s),
