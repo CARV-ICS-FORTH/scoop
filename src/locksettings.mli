@@ -52,8 +52,12 @@ type handler =
   | Pack
   | Start_unpack
   | End_unpack
+  | New_Region
+  | New_Subregion
+	| Ralloc
 
 val options : (string * Arg.spec * string) list
 val special_functions : handler Lockutil.Strmap.t ref
 val lock_type_names : string list ref
+val region_type_names : string list ref
 

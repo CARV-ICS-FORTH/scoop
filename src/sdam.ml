@@ -40,7 +40,9 @@ and task_descr = {
 	callsite: location;
 	scope: fundec;
 	t_inf: fdinfo;
+	t_gamma: env; 
 	arguments: arg_descr list;
+	actuals: string list;
 }
 
 (** global lists of tasks *)
@@ -83,14 +85,17 @@ let location_to_string (loc: location) : string =
 		@return a new task_descr
 *)	
 let make_task_descr (tname: string) (csite: location) (scp: fundec) 
-																(ti: fdinfo) (args: arg_descr list) : task_descr =
+					(ti: fdinfo) (tgamma: env) (args: arg_descr list) 
+					(acts: string list): task_descr =
 	incr next_task_id;
 	{ taskid = !next_task_id;
 		taskname = tname;
 		callsite = csite;
 		scope = scp;
 		t_inf = ti;
+		t_gamma = tgamma;
 		arguments = args;
+		actuals = acts;		
 	}
 
 (**	constructor of the arg_descr struct

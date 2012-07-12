@@ -5,7 +5,7 @@ open Sdam
 module E = Errormsg
 module LF = Labelflow
 
-let debug = ref false
+let debug = ref true
 let disable = ref false
 
 let options = [

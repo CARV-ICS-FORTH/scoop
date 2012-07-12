@@ -54,6 +54,9 @@ type handler =
   | Pack
   | Start_unpack
   | End_unpack
+  | New_Region
+  | New_Subregion
+  | Ralloc
 
 let lexer = Genlex.make_lexer [
   "Locktype"; 
@@ -74,6 +77,9 @@ let lexer = Genlex.make_lexer [
   "Pack";
   "Start_unpack";
   "End_unpack";
+  "New_Region";
+  "New_Subregion";
+  "Ralloc";
   ";";
 ]
 
@@ -82,6 +88,7 @@ module Strmap = Lockutil.Strmap
 open Genlex
 
 let lock_type_names : string list ref = ref ["spinlock_t"; "pthread_mutex_t"; "sem_t"]
+let region_type_names : string list ref = ref ["bddt_region"; "region_t"]
 let special_functions : handler Strmap.t ref = ref (
   Strmap.add "pthread_mutex_init" Newlock (
   Strmap.add "spin_lock_init" Newlock (
@@ -152,15 +159,18 @@ let special_functions : handler Strmap.t ref = ref (
   Strmap.add "memset" Memset (
   Strmap.add "__memset_generic" Memset (
   Strmap.add "tpc_malloc" Alloc (
-  Strmap.empty))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  Strmap.add "bddt_newregion" New_Region (
+  Strmap.add "bddt_newsubregion" New_Subregion (
+  Strmap.add "bddt_ralloc" Ralloc (
+  Strmap.empty)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 let add_to_sf h s =
   special_functions := Strmap.add s h !special_functions
 
-let add_to_lt s = lock_type_names := s::!lock_type_names
+let add_to_lt s = region_type_names := s::!region_type_names
 
 let parse_entry = parser
-  | [< 'Kwd "Locktype"; 'Ident x; 'Kwd ";" >] -> add_to_lt x
+  | [< 'Kwd "Regiontype"; 'Ident x; 'Kwd ";" >] -> add_to_lt x
   | [< 'Kwd "Alloc"; 'Ident x; 'Kwd ";">] -> add_to_sf Alloc x
   | [< 'Kwd "Free"; 'Ident x; 'Kwd ";">] -> add_to_sf Free x
   | [< 'Kwd "Newlock"; 'Ident x; 'Kwd ";" >] -> add_to_sf Newlock x
@@ -178,6 +188,9 @@ let parse_entry = parser
   | [< 'Kwd "Start_unpack"; 'Ident x; 'Kwd ";" >] -> add_to_sf Start_unpack x
   | [< 'Kwd "End_unpack"; 'Ident x; 'Kwd ";" >] -> add_to_sf End_unpack x
   | [< 'Kwd "Pack"; 'Ident x; 'Kwd ";" >] -> add_to_sf Pack x
+  | [< 'Kwd "New_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Region x
+  | [< 'Kwd "New_Subregion"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Subregion x
+  | [< 'Kwd "Ralloc"; 'Ident x; 'Kwd ";" >] -> add_to_sf Ralloc x
   | [< 'Kwd ";" >] -> ()
   | [< >] -> ()
 

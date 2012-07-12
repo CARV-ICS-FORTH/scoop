@@ -81,9 +81,10 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
   p
 
 (* user interface *)
-let debug = ref false
+(* debug moved to ptatypes.ml *)
 let debug_SDAM = ref false
-let debug_void = ref false
+let debug_region = ref true
+(* debug_void moved to ptatypes.ml *)
 let debug_one_effect = ref false
 let do_typing_stats = ref false
 let do_starting_forks = ref false
@@ -200,6 +201,8 @@ let d_instantiation () i =
 let functions_that_call_fork : (string, unit) Hashtbl.t = Hashtbl.create 117
 let typenames : (string, Cil.typ) Hashtbl.t = Hashtbl.create 117
 let atomic_functions : (Cil.fundec, chi) Hashtbl.t = Hashtbl.create 42
+let regiontypes : Cil.typ list ref = ref []
+let regiontypesigs : Cil.typsig list ref = ref []
 
 class unrollTypeVisitor = object
   inherit nopCilVisitor
@@ -207,12 +210,17 @@ class unrollTypeVisitor = object
     | GType(ti, _) ->
         let t = (Cil.unrollTypeDeep ti.ttype) in
         Hashtbl.add typenames ti.tname t;
+        if List.mem ti.tname !Conf.region_type_names then (
+          regiontypes := TNamed(ti,[])::!regiontypes;
+          regiontypesigs := (typeSig ti.ttype)::(typeSig t)::!regiontypesigs;
+        );
         DoChildren
     | GCompTag(ci,_) ->
         Hashtbl.add typenames ("struct "^ci.cname) (TComp(ci,[]));
         DoChildren
     | _ -> DoChildren
 end
+
 
 (*****************************************************************************)
 
@@ -230,70 +238,8 @@ type global_kind =
 (*type index = Cil.exp*)
 
 (*****************************************************************************)
-let get_vinfo_types : voiddata_t -> (tau_sig * tau) list =
-function
-  | ListTypes l -> l
-  | ConflatedRho -> []
-      (* the caller should test for conflation and handle it *)
 
-module TauPair : Set.OrderedType with type t = (tau*tau) =
-  struct
-    type t = tau*tau
-    let compare (x1,x2) (y1,y2) =
-      if x1.tid < y1.tid then -1
-      else if x1.tid > y1.tid then 1
-      else if x2.tid < y2.tid then -1
-      else if x2.tid > y2.tid then 1
-      else 0
-  end
-module TauPairSet = Set.Make(TauPair)
-
-module TauHT = Hashtbl.Make(
-  struct
-    type t = tau
-    let equal t1 t2 = t1.tid = t2.tid
-    let hash t = Hashtbl.hash t
-  end)
-
-module TauSet = Set.Make(
-  struct
-    type t = tau
-    let compare t1 t2 = t1.tid - t2.tid
-  end)
-
-module InstEdge : Hashtbl.HashedType
-  with type t = (tau*tau*instantiation*bool) =
-  struct
-    type t = tau*tau*instantiation*bool
-    let equal (abs,inst,i,p) (abs',inst',i',p') =
-      abs.tid = abs'.tid &&
-      inst.tid = inst'.tid &&
-      inst_equal i i' &&
-      p = p'
-    let hash (t1,t2,i,p) = 2 * t1.tid + t2.tid
-  end
-
-module InstEdgeTbl = Hashtbl.Make(InstEdge)
-
-module CinfoInst : Hashtbl.HashedType with type t = (cinfo*instantiation) =
-  struct
-    type t = cinfo*instantiation
-    let equal (c1,i1) (c2,i2) =
-      (U.deref c1).cinfo_id = (U.deref c2).cinfo_id && (Inst.equal i1 i2)
-    let hash (t,i) = (U.deref t).cinfo_id
-  end
-module CinfoInstHash = Hashtbl.Make(CinfoInst)
-
-module VinfoInst : Hashtbl.HashedType with type t = (vinfo*instantiation) =
-  struct
-    type t = vinfo*instantiation
-    let equal (c1,i1) (c2,i2) =
-      (U.deref c1).vinfo_id = (U.deref c2).vinfo_id && (Inst.equal i1 i2)
-    let hash (t,i) = (U.deref t).vinfo_id
-  end
-module VinfoInstHash = Hashtbl.Make(VinfoInst)
-
-type labelsets = (rhoSet * effectSet * phiSet)
+(* type constructors moved to ptatypes.ml *)
 
 (*****************************************************************************)
 
@@ -314,6 +260,7 @@ let global_var_tau : tau list ref = ref []  (* taus of global variables *)
 let global_malloc_addr_tau : tau list ref= ref [] (* taus of mallocs and
                                                      (local) &vars *)
 let global_var_rhos : RhoSet.t ref = ref RhoSet.empty (* rhos of global_var_tau *)
+let global_var_thetas : ThetaSet.t ref = ref ThetaSet.empty (* thetas of global_var_tau *)
 let inst_cinfo_hash : cinfo CinfoInstHash.t = CinfoInstHash.create 100
 let inst_vinfo_hash : vinfo VinfoInstHash.t = VinfoInstHash.create 100
 let inst_edges : unit InstEdgeTbl.t = InstEdgeTbl.create 100
@@ -325,7 +272,9 @@ let global_vars_computed = ref false
 let get_global_var_rhos () =
   assert !global_vars_computed;
   !global_var_rhos
-
+let get_global_var_thetas () =
+  assert !global_vars_computed;
+  !global_var_thetas
 (** obsolete, used only in locksmith to reclaim some memory *)
 let clear_globals() : unit = begin
   all_vinfo := [];
@@ -347,23 +296,25 @@ end
 
 type label =
   | Rho of rho
+  | Theta of theta
   | Effect of effect
   | Phi of phi
 
 
-let add_label_to_labelsets (l: label) (rs, es, ps: labelsets)
+let add_label_to_labelsets (l: label) (rs, ts, es, ps: labelsets)
                            : labelsets =
   match l with
-    Rho(r) -> (RhoSet.add r rs), es, ps
-  | Effect(e) -> rs, (EffectSet.add e es), ps
-  | Phi(p) -> rs, es, (PhiSet.add p ps)
+    Rho(r) -> (RhoSet.add r rs),ts, es, ps
+  | Theta(th) -> rs, (ThetaSet.add th ts), es, ps
+  | Effect(e) -> rs, ts, (EffectSet.add e es), ps
+  | Phi(p) -> rs, ts, es, (PhiSet.add p ps)
 
 let get_top_label (t: tau) (e: exp) : label =
   match t.t with
       ITVoid _
     | ITInt _
     | ITComp _
-    | ITFloat
+    | ITFloat 
     | ITExists _ ->
         ignore(error
           "Invalid expression in the list of existentially quantified variables. \
@@ -374,6 +325,7 @@ let get_top_label (t: tau) (e: exp) : label =
     | ITAbs _ -> assert false
     | ITPtr (_,r) ->
         Rho r
+    | ITRegion th -> Theta th
 
 (* OBSOLETE *)
 let fill_thread_local (env: env) : unit = begin
@@ -402,6 +354,7 @@ let fill_thread_local (env: env) : unit = begin
         | ITVoid _
         | ITInt _
         | ITFloat
+        | ITRegion _
         | ITExists _ -> RhoSet.empty
         | ITComp ci ->
             let c = U.deref ci in
@@ -497,150 +450,7 @@ let done_typing () =
 (*****************************************************************************)
 (* pretty-printing *)
 
-let string_of_cinfo (c: cinfo) =
-  (U.deref c).compinfo.cname ^
-  (if !debug_void then 
-    "#" ^ string_of_int (U.deref c).cinfo_id
-  else "") 
-
-let rec d_sig () (ts: tau_sig) : doc =
-  match ts with
-    STVoid -> text "void"
-  | STInt -> text "int"
-  | STFloat -> text "float"
-  | STPtr ts1 -> d_sig () ts1 ++ text "*"
-  | STFun (ts1,tsl) ->
-      d_sig () ts1 ++
-      List.fold_left (fun d x -> d ++ text ", " ++ d_sig () x) (text "(") tsl
-      ++ text ")"
-  | STComp (s, n) ->
-      (if s then text "struct " else text "union ") ++ text n
-  | STBuiltin_va_list -> text "..."
-  | STAbs ts1 -> text "forall(" ++ d_sig () ts1 ++ text ")"
-  | STExists (ts1) -> text "exists(" ++ d_sig () ts1 ++ text ")"
-
-let rec d_siglist (): tau_sig list -> doc = function
-    [] -> nil
-  | h::[] -> begin
-      d_sig () h
-  end
-  | h::tl -> begin
-      d_sig () h ++ text ",\n" ++ d_siglist () tl
-  end
-
-let rec d_short_tau () (t: tau) : doc =
-  match t.t with
-    ITVoid _ -> text "void"
-  | ITInt _ -> text "int"
-  | ITFloat -> text "float"
-  | ITPtr(tref,_) -> text "*" ++ d_short_tau () !tref
-  | ITFun fi -> text "fun"
-  | ITComp ci -> text ("struct " ^ (string_of_cinfo ci))
-  | ITBuiltin_va_list _ -> text "va-list"
-  | ITAbs tref -> text "forall " ++ d_short_tau () !tref
-  | ITExists ei -> text "exists " ++ d_short_tau () ei.exist_tau
-
-let field_set_to_fieldlist (f: field_set) =
-    let l = StrHT.fold (fun fld v a -> (fld,v)::a) f [] in
-    List.sort (fun (f1, _) (f2, _) -> (String.compare f1 f2)) l
-
-let rec d_arglist (al: (string * tau) list) (known: TauSet.t) : doc =
-  match al with
-    [] -> nil
-  | (n,h)::[] -> text (n^": ") ++ d_tau_r h known
-  | (n,h)::tl -> text (n^": ") ++ d_tau_r h known ++ text ",\n" ++ d_arglist tl known
-
-and d_fieldlist (fl: (string * (rho * tau)) list) (known: TauSet.t) : doc =
-  match fl with
-    [] -> nil
-  | (n, (r,t))::[] ->
-      dprintf "  <%a> %s: " d_rho r n ++ d_tau_r t known ++ line
-  | (n, (r,t))::tl ->
-      dprintf "  <%a> %s: " d_rho r n ++ d_tau_r t known ++ line ++ d_fieldlist tl known
-(*
-  | (n, (r,t))::[] ->
-      line ++ align ++ dprintf "  <%s> %s: " d_rho r n ++ line ++ text "  " ++
-        d_tau_r t known ++
-      unalign
-  | (n, (r,t))::tl ->
-      line ++ align ++ dprintf "  <%s> %s: " d_rho r n ++ line ++ text "  " ++
-        d_tau_r t known ++ line ++
-      unalign ++ d_fieldlist tl known
-*)
-
-and d_tauset () ts : doc =
-  let first = ref true in
-  TauSet.fold
-    (fun h d ->
-      d ++ (if !first then (first := false; nil) else text ",\n")
-      ++ d_tau_r h TauSet.empty)
-    ts
-    nil
-
-and d_taulist () : tau list -> doc = function
-    [] -> nil
-  | h::[] -> begin
-    d_tau_r h TauSet.empty;
-  end
-  | h::tl -> begin
-    d_tau_r h TauSet.empty ++ text ",\n" ++ d_taulist () tl
-  end
-
-and d_tau_r (t:tau) (known: TauSet.t) : doc =
-  if TauSet.mem t known then d_sig () t.ts else
-  match t.t with
-  | ITVoid None  -> text "void"
-  | ITVoid (Some vr)  ->
-      let v = U.deref vr in
-      if !debug then dprintf "(void#%d)" v.vinfo_id
-      else text "(void)"
-  | ITInt _ -> text "int"
-  | ITFloat -> text "float"
-  | ITPtr(s,r) ->
-      d_tau_r !s (TauSet.add t known) ++ dprintf "*^{%a}" d_rho r;
-  | ITFun fi ->
-        align ++
-          text "(" ++
-          align ++
-            d_arglist fi.fd_arg_tau_list known ++
-            text ",\n" ++ CF.d_phi () fi.fd_input_phi ++
-          unalign ++ text ")\n->^{" ++
-          align ++
-            d_effect () fi.fd_input_effect ++ text ",\n" ++
-            d_effect () fi.fd_output_effect ++ text ",\n" ++
-            d_chi () fi.fd_chi ++ text "}" ++
-          unalign ++ line ++
-          text "(" ++
-          align ++
-            d_tau_r fi.fd_output_tau known ++ text ",\n" ++
-            (CF.d_phi () fi.fd_output_phi) ++ text ")" ++
-          unalign ++
-        unalign
-  | ITComp(c) ->
-      align ++ dprintf "struct %s {" (string_of_cinfo c) ++ line ++
-        align ++
-        d_fieldlist
-          (field_set_to_fieldlist (U.deref c).cinfo_fields)
-          (TauSet.add t known) ++
-        unalign ++ text "}" ++ unalign
-  | ITBuiltin_va_list(_) -> text "..."
-  | ITAbs s  ->
-      text "(\\forall" ++ d_tau_r !s known ++ text ")"
-  | ITExists ei ->
-      dprintf "(\\exists [%a; %a] " (d_list "" d_exp) ei.exist_abs
-        d_effect ei.exist_effect
-      ++ d_tau_r ei.exist_tau (TauSet.add t known) (*POLYVIOS: why was this TauSet.empty?*)
-      ++ text ")"
-
-let d_tau () (s: tau) : doc = d_tau_r s TauSet.empty
-
-let d_env () (e: env) : doc =
-  let d_entry (v: string) (s, r: tau * rho) (d: doc) : doc =
-    d ++ text v ++ text " : " ++ d_tau_r s TauSet.empty ++ text "\n"
-  in
-  text "Gamma:" ++ align ++ line ++
-       Strmap.fold d_entry e.var_map nil ++
-       unalign ++ text "\n\n"
+(* MOVED TO ptatypes.ml *)
 
 (*****************************************************************************)
 
@@ -775,18 +585,27 @@ let mark_global_rho (r: rho) (k: global_kind) (rs: RhoSet.t)  : unit =
     if k = KGlobal then global_var_rhos := RhoSet.add r !global_var_rhos
   end
 
+(* If th is not in ths, then mark as global and additionally, if it is
+   from a global variable, store in global_var_thetass *)
+let mark_global_theta (th: theta) (k: global_kind) (ths: ThetaSet.t)  : unit =
+  if ThetaSet.mem th ths then () else begin
+    set_global_theta th;
+    if k = KGlobal then global_var_thetas := ThetaSet.add th !global_var_thetas
+  end
+
 let known_globals = TauHT.create 0
 
 let rec set_global_tau_r (t: tau)
                          (k: global_kind)
                          (quantified_labels: labelsets)
                          : unit =
-  let qr, qe, qp = quantified_labels in
+  let qr, qt, qe, qp = quantified_labels in
   if TauHT.mem known_globals t then () else
   match t.t with
     ITVoid None -> ()
   | ITInt b -> assert (not b)
   | ITFloat -> ()
+  | ITRegion(th) -> mark_global_theta th k qt
   | ITBuiltin_va_list(ur)
   | ITVoid (Some ur) -> begin
       let xd = U.deref ur in
@@ -826,13 +645,14 @@ let rec set_global_tau_r (t: tau)
       TauHT.add known_globals t ();
       let qset = (
         RhoSet.union qr ei.exist_rhoset,
+        qt, (* FIXME: handle existencial types and theta labels *)
         EffectSet.union qe ei.exist_effectset,
         qp) in
       set_global_tau_r ei.exist_tau k qset
 (*end*)
 
 let empty_labelsets : labelsets =
-  (RhoSet.empty, EffectSet.empty, PhiSet.empty)
+  (RhoSet.empty, ThetaSet.empty, EffectSet.empty, PhiSet.empty)
 
 (* Stores t in either global_var_tau or global_malloc_addr_tau,
    depending on value of k *)
@@ -896,6 +716,7 @@ end
 let rec allocate (t: tau) : unit = begin
   match t.t with
   | ITVoid None
+  | ITRegion _ -> ignore(E.log "region allocation\n"); ()
   | ITAbs _ ->
       assert false (* these should never happen *)
   | ITExists _ ->
@@ -934,6 +755,7 @@ let rec visit_concrete_tau (f: rho -> unit) (t: tau) : unit = begin
         )
   | ITInt b -> assert (not b)
   | ITFloat -> ()
+  | ITRegion _ -> ()
   | ITPtr(_, _) -> ()
   | ITFun _ -> assert false (* allocating a function?! *)
   | ITComp ci  ->
@@ -989,6 +811,7 @@ let rec get_free_vars t free_vars known =
   | ITInt _
   | ITVoid None
   | ITFloat
+  | ITRegion _ 
   | ITAbs _ -> free_vars
   | ITBuiltin_va_list vi
   | ITVoid (Some vi) -> begin
@@ -1108,6 +931,7 @@ and reannotate (t: tau)
   else begin
     match t.t with
       ITVoid None -> t
+  	| ITRegion _ -> make_tau (ITRegion(make_theta name false)) t.ts
     | ITVoid (Some ur) -> assert false
     | ITPtr(tref, _) -> begin
         (*if List.mem_assq !tref known
@@ -1188,6 +1012,16 @@ and annotate (t: typ)
   let ts = typ_tau_sig t in
   if List.mem_assoc ts known
   then List.assoc ts known
+  else
+  if
+    let t = Cil.unrollTypeDeep t in
+    try (List.mem (typeSig t) !regiontypesigs)
+    with Not_found -> false
+  then (
+  	ignore(E.log "Found Region Type (%a )\n"  LN.d_label_name name); 
+  	make_tau (ITRegion(make_theta name false)) STRegion
+  	(* void_tau *)
+  )
   else
   let result = (
   match t with
@@ -1564,6 +1398,9 @@ and sub_tau (src: tau) (tgt: tau) : unit =
           effect_flows ei2.exist_effect ei1.exist_effect;
           CF.phi_flows ei1.exist_phi ei2.exist_phi;
         end
+      | ITRegion th1, ITRegion th2 -> ignore(E.log "region^(%a) subtypes to region^(%a)\n" d_theta th1 d_theta th2); unify_theta th1 th2;
+      | _, ITRegion _
+      | ITRegion _, _ -> ignore(warn "subtyping a region to a non region type");
       | _ ->
         ignore(warn "subtyping incompatible types:\n%a\n%a"
                d_tau src d_tau tgt)
@@ -1676,6 +1513,7 @@ and conflate_from (src: rho)
       in
       (U.deref ci).cinfo_from_rho <- Some r;
       rho_flows src r
+  | ITRegion(th) -> ignore(warn "region emerges at downcasting: %a\n" d_theta th)
   | ITAbs _ -> assert false
   | ITExists ei ->
       ignore(warn "existential emerges at downcasting");
@@ -1734,6 +1572,7 @@ and conflate_to (t: tau)
       in
       c.cinfo_to_rho <- Some r;
       rho_flows r tgt
+  | ITRegion(th) -> ignore(warn "region is conflated! (%a)" d_theta th)
   | ITAbs _ -> assert false
   | ITExists ei ->
       ignore(warn "Existential labels conflated!!!");
@@ -1870,6 +1709,7 @@ and instantiate (tabs: tau)
             instantiate1 !tref1 !tref2 true i;
             instantiate1 !tref1 !tref2 false i;
         end
+      | ITRegion th1, ITRegion th2 -> inst_theta th1 th2 i; 
       | ITInt b1, ITInt b2 -> assert (not b1); assert (not b2); ()
       | ITInt _, ITFloat -> ()
       | ITFloat, ITInt false -> ()
@@ -2234,7 +2074,7 @@ and fillExist (te:tau) (t: tau) : unit = begin
   let el = Hashtbl.find_all quantified_map ((U.deref c).compinfo.cname) in
   e.exist_tau <- t;
   e.exist_abs <- el;
-  let rs, es, ps = compute_quantified_labels c el in
+  let rs, ths, es, ps = compute_quantified_labels c el in
   e.exist_rhoset <- rs;
   e.exist_effectset <- es;
   e.exist_initialized <- true;
@@ -2405,6 +2245,32 @@ let css_task_process (loc, args_l, loop_d) arg =
 		)
 *)
 
+(* iterates an expression list and returns a list with the names of the actual
+	arguments.  Currently only variables can be arguments, other expressions are
+	result in error *)
+let process_actuals (el: exp list) loc : string list =
+	let rec proc_exp = (fun args_l e ->
+		(if(!debug_SDAM) then ignore(E.log "parsing actual %a\n" d_exp e););
+		ignore(E.log "parsing actual %a\n" d_exp e);
+		ignore(E.log "actuals number:%d\n" (List.length args_l));
+		match e with 
+			Lval(Var(vi), _) -> vi.vname::args_l
+		|	CastE(_, e2) -> proc_exp args_l e2
+		| StartOf(Var(vi), _) -> (
+			ignore(E.error "SDAM:%a:Cannot evaluate startof expr\n" d_loc loc);
+			vi.vname::args_l
+		)
+		| AddrOf(Var(vi), _) -> (
+			ignore(E.error "SDAM:%a:Cannot evaluate addrof expr\n" d_loc loc);
+			vi.vname::args_l
+		)
+		| _ -> (
+			ignore(E.error "SDAM:%a:Cannot evaluate expression as pragma task argument\n" d_loc loc);
+			raise Ignore_pragma
+		)
+	) in 	
+	List.rev (List.fold_left proc_exp [] el)
+
 (*	parses recursively the arguments of the pragma task, and returns 
 		a list with the corresponding argument descriptors 
 *)
@@ -2461,6 +2327,7 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
 			let args_l = css_task_process (loc, loop_d) args in
 (* 		LP.process_call_actuals acts loc !currSid task_d loop_d; *)
 			try (
+				let actuals = process_actuals acts loc in
 		    let (tau, _) = env_lookup vi.vname env in
 				let fd = (
 					match tau.t with
@@ -2477,7 +2344,7 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
 								raise Ignore_pragma
 							)
 				) in
-				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd args_l in      
+				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in      
 				Sdam.addTask task_d;
 				task_d
 			) with Not_found -> (
@@ -2869,6 +2736,92 @@ let handle_free (el: exp list)
     ignore(error "calling free with bad arguments: %a" (d_list "\n" d_exp) el);
     raise TypingBug
 
+let handle_new_region (_: exp list)
+               			  (lvo: lval option)
+                			(_: (tau*uniq) list)
+                			(input_env: env)
+                			(input_phi: phi)
+                			(input_effect: effect)
+                			: gamma =
+  let new_region_theta = make_theta (LN.Const "new_region") true in (*make it concrete*)
+  match lvo with
+    None ->
+      ignore(warn "Creating new region without assigning the result.");
+      (input_env, input_phi, input_effect)
+  | Some(lv) ->
+      let ((lv_type, _, _), lv_env, lv_phi, lv_effect) =
+        type_lval lv input_env input_phi input_effect in
+      (match lv_type.t with
+        ITRegion(var_theta) ->
+          ignore(E.log "assigning new region to variable\n");
+          unify_theta new_region_theta var_theta;
+          (*FIXME: i don't know what this line does... *)
+          (* mark_global_rho alloc_rho KMalloc_Addr RhoSet.empty; *)
+      | _ ->
+          ignore (warn "new region assigned to a non-region var: %a"
+                 d_tau lv_type);
+      );
+      (lv_env, lv_phi, lv_effect)
+                      			
+let handle_new_subregion (_: exp list)
+               			  	 (lvo: lval option)
+                				 (args: (tau*uniq) list)
+                				 (input_env: env)
+                				 (input_phi: phi)
+                				 (input_effect: effect)
+                				 : gamma =
+  (* let new_subregion_theta = make_theta (LN.Const "new_subregion") true in (*make it concrete*) *)
+  let (parent_region_t, _) = List.hd args in
+  match lvo with
+    None ->
+      ignore(warn "Creating new subregion without assigning the result.");
+      (input_env, input_phi, input_effect)
+  | Some(lv) ->
+      let ((lv_type, _, _), lv_env, lv_phi, lv_effect) =
+        type_lval lv input_env input_phi input_effect in
+      (match lv_type.t, parent_region_t.t with
+        ITRegion(var_theta1), ITRegion(var_theta2) ->
+          ignore(E.log "assigning new subregion to variable\n");
+          theta_flows var_theta2 var_theta1;
+          (*FIXME: i don't know what this line does... *)
+          (* mark_global_rho alloc_rho KMalloc_Addr RhoSet.empty; *)
+      | _, _ ->
+          ignore (warn "new subregion assigned to a non-region var: %a"
+                 d_tau lv_type);
+      );
+      (lv_env, lv_phi, lv_effect)
+
+let handle_ralloc (_: exp list)
+               			   (lvo: lval option)
+                			 (args: (tau*uniq) list)
+                			 (input_env: env)
+                			 (input_phi: phi)
+                			 (input_effect: effect)
+                			 : gamma =
+  let (region_t, _) = List.hd args in
+  let alloc_rho = make_rho (LN.Const "alloc") true in
+  match lvo with
+    None ->
+      ignore(warn "Allocating region space without assigning the result.");
+      (input_env, input_phi, input_effect)
+  | Some(lv) ->
+      let ((lv_type, _, _), lv_env, lv_phi, lv_effect) =
+        type_lval lv input_env input_phi input_effect in
+      (match region_t.t,lv_type.t with
+        ITRegion(th), ITPtr(var_tref, var_rho) ->
+          allocate !var_tref;
+          mark_global_tau !var_tref KMalloc_Addr;
+          rho_flows alloc_rho var_rho;
+          mark_global_rho alloc_rho KMalloc_Addr RhoSet.empty;
+          (*FIXME: here add an edge between theta and rho *)
+          ignore(E.log "rho flows to theta\n");
+          rho_flows2theta var_rho th;
+      | _ ->
+          ignore (warn "bddt_ralloc result assigned to a non-pointer: %a"
+                 d_tau lv_type);
+      );
+      (lv_env, lv_phi, lv_effect)
+
 let get_special (k: Conf.handler) : special_function_t =
   match k with
     Conf.Alloc -> handle_alloc
@@ -2888,6 +2841,9 @@ let get_special (k: Conf.handler) : special_function_t =
   | Conf.Pack -> handle_pack
   | Conf.Start_unpack -> handle_start_unpack
   | Conf.End_unpack -> handle_end_unpack
+  | Conf.New_Region -> handle_new_region 
+ 	| Conf.New_Subregion -> handle_new_subregion
+	| Conf.Ralloc -> handle_ralloc
 
 (*****************************************************************************)
 let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
@@ -2926,6 +2882,7 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
       write_rho r lval_phi lval_effect u;
       (lval_env, lval_phi, lval_effect)
   | Call(lvo, e, el, loc) -> begin
+  		(* ignore(E.log "* with enviroment:\n%a\n" d_env input_env); *)
       currentLoc := loc;
       let (args, arg_env, arg_phi, arg_effect) =
         type_exp_list el input_env input_phi input_effect in
@@ -3038,7 +2995,10 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
   match pragma with
     (Attr("css", ACons("start", _)::_), loc) -> (
 		if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
-		((env, phi, eff), (kind, loop_d))   		
+		let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+		CF.phi_flows phi barrier_phi;
+		CF.starting_phis := barrier_phi::!CF.starting_phis;
+		((env, barrier_phi, eff), (kind, loop_d))   		
 	)
 	| (Attr("css", AStr("finish")::_), loc) -> (
 		if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
@@ -3075,10 +3035,10 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
 	) 
 	|	(Attr("css", AStr("task")::args), loc) -> (
 		match kind with
-				Instr(il) -> ( (* task pragmas must be coupled with function calls *)
+				Instr(taskcall::_) -> ( (* task pragmas must be coupled with function calls *)
 				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
 				let task_d = 
-				handle_css_task (List.hd il) env args loc loop_d in	
+				handle_css_task taskcall env args loc loop_d in	
 				let task_phi = make_phi "Task" (CF.PhiTask (task_d.taskname, task_d.taskid)) in
 				CF.phi_flows phi task_phi;
 				CF.starting_phis := task_phi::!CF.starting_phis;

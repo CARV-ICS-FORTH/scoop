@@ -36,7 +36,9 @@ and task_descr = {
 	callsite: location;
 	scope: fundec;
 	t_inf: fdinfo;
+	t_gamma: env; 
 	arguments: arg_descr list;
+	actuals: string list;
 }
 
 (* global lists of tasks *)
@@ -62,7 +64,7 @@ val is_in_arg : string -> bool
 (** Constructors **)
 	
 (* constructor for task_descr struct *)	
-val make_task_descr : string  -> location -> fundec -> fdinfo -> arg_descr list  -> task_descr
+val make_task_descr : string  -> location -> fundec -> fdinfo -> env -> arg_descr list -> string list -> task_descr
 
 (*	constructor of the arg_descr struct *)
 val make_arg_descr : string -> location -> string  -> bool -> varinfo -> exp -> loop_descr option -> array_descr option -> arg_descr

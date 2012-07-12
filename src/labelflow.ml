@@ -222,6 +222,8 @@ type instantiation = {
   inst_locks_r: (lock, lock) Hashtbl.t;
   inst_rho: (rho, rho) Hashtbl.t;
   inst_rho_r: (rho, rho) Hashtbl.t;
+  inst_theta: (theta, theta) Hashtbl.t;
+  inst_theta_r: (theta, theta) Hashtbl.t;
 }
 
 and lock = {
@@ -247,6 +249,20 @@ and rho = {
   (** special struct used to print better error messages *)
 }
 
+and theta = {
+  theta_cfl_node   : node;
+  (** the banshee node that corresponds to this location. *)
+
+  theta_label_name : LN.label_name;
+  (** special struct used to print better error messages *)	
+}
+
+let theta2rho (th: theta) : rho =
+	let r = {
+		rho_cfl_node = th.theta_cfl_node;
+		rho_label_name = th.theta_label_name;
+	} in r
+
 module Rho : Lockutil.HashedOrderedType with type t = rho =
   struct
     type t = rho
@@ -261,6 +277,21 @@ module RhoSet = Set.Make(Rho)
 type rhoSet = RhoSet.t
 
 type rhopath = Graph.edge list
+
+module Theta : Lockutil.HashedOrderedType with type t = theta =
+  struct
+    type t = theta
+    let compare (x: t) (y: t) : int =
+      CFL.Node.compare x.theta_cfl_node y.theta_cfl_node
+    let equal (x: t) (y: t) : bool =
+      (CFL.Node.compare x.theta_cfl_node y.theta_cfl_node = 0)
+    let hash (x: t) : int = CFL.Node.hash x.theta_cfl_node
+  end
+module ThetaHT = Hashtbl.Make(Theta)
+module ThetaSet = Set.Make(Theta)
+type thetaSet = ThetaSet.t
+
+type thetapath = Graph.edge list
 
 module Lock =
   struct
@@ -320,6 +351,12 @@ let all_rho = NodeHT.create 1000
 (* all rhos that correspond to a malloc or & *)
 let all_concrete_rho: rhoSet ref = ref RhoSet.empty
 
+(* all thetass -- map from node to theta *)
+let all_theta = NodeHT.create 1000
+
+(* all thetass that correspond to a new region allocation *)
+let all_concrete_theta: thetaSet ref = ref ThetaSet.empty
+
 (* all locks -- map from node to lock *)
 let all_locks = NodeHT.create 50
 
@@ -340,6 +377,7 @@ let dotstring_of_rho rho = CFL.dotstring_of_node rho.rho_cfl_node
 let dotstring_of_lock_effect e = CFL.dotstring_of_node e.lock_cfl_node
 let dotstring_of_write_effect e = CFL.dotstring_of_node e.effect_write_node
 let dotstring_of_read_effect e = CFL.dotstring_of_node e.effect_read_node
+let dotstring_of_theta th = CFL.dotstring_of_node th.theta_cfl_node
 
 (* instantiation formatting. use string_of_inst if you just want the index *)
 let d_instantiation () (i: instantiation) : doc =
@@ -414,6 +452,53 @@ let d_rhoset () (rs: rhoSet) : doc =
       nil ++*)
   unalign
 
+(* theta *)
+let d_theta () th =
+  dprintf "%a%s" LN.d_label_name th.theta_label_name
+    (if !debug then (CFL.dotstring_of_node th.theta_cfl_node)
+    else (CFL.string_of_node th.theta_cfl_node))
+(*
+let d_thetapath () (fromth, toth: theta * theta) : doc =
+  let path =
+    try Graph.shortest_path fromth.theta_cfl_node toth.theta_cfl_node 
+    with Not_found -> []
+  in
+  let rec d_tp p =
+    match p with
+      [] -> nil
+    | Graph.SubEdge(_, n2)::tl -> 
+        let t2 = NodeHT.find all_theta n2 in
+        (dprintf " => %a\n" d_theta t2) ++ d_tp tl
+    | Graph.OpenEdge(_, n2, i)::tl ->
+        let t2 = NodeHT.find all_theta n2 in
+        let i' = CFL.InstHT.find all_inst i in
+        (dprintf " => %a at %a\n" d_theta t2 d_instantiation i') ++ d_tp tl
+    | Graph.CloseEdge(_, n2, i)::tl ->
+        let t2 = NodeHT.find all_theta n2 in
+        let i' = CFL.InstHT.find all_inst i in
+        (dprintf " => %a at %a\n" d_theta t2 d_instantiation i') ++ d_tp tl
+  in
+  d_theta () fromth ++ align ++ 
+    (if path = [] then line else d_tp path)
+    ++ unalign
+*)
+(* rhoSet formatting *)
+let d_thetaset () (ts: thetaSet) : doc =
+  if ThetaSet.is_empty ts then text "<empty>" else
+  let slist = ThetaSet.fold
+    (fun x d ->
+      let t = sprint 80 (d_theta () x) in
+      t::d)
+    ts []
+  in
+  let slist = List.sort Pervasives.compare slist in
+  align ++ List.fold_left (fun d s -> d ++ (if d = nil then nil else line) ++ text s) nil slist ++
+    (*RhoSet.fold
+      (fun x d -> d ++ (if d <> nil then line else nil) ++ d_rho () x)
+      rs
+      nil ++*)
+  unalign
+
 (* effect formatting *)
 let d_effect () (e: effect) : doc =
   text "(" ++ align ++
@@ -468,6 +553,8 @@ let make_instantiation (is_pack: bool) (instantiated: string) : instantiation =
     (*inst_lock_effect = e;*)
     inst_rho = Hashtbl.create 10;
     inst_rho_r = Hashtbl.create 10;
+    inst_theta = Hashtbl.create 10;
+    inst_theta_r = Hashtbl.create 10;
   } in
   CFL.InstHT.add all_inst i.inst_id i;
   i
@@ -477,6 +564,8 @@ let make_instantiation (is_pack: bool) (instantiated: string) : instantiation =
 
 (* a simple counter of rhos generated so far *)
 let rho_no = ref 0
+(* a simple counter of thetas generated so far *)
+let theta_no = ref 0
 
 (* creates a fresh rho label labeled "s".
  * If concrete=true, the fresh rho is marked as "constant", i.e. it
@@ -492,26 +581,59 @@ let make_rho (n: LN.label_name) (concrete: bool) : rho =
   NodeHT.add all_rho r.rho_cfl_node r;
   r
 
+let make_theta (n: LN.label_name) (concrete: bool) : theta =
+  incr theta_no;
+  let th = {
+    theta_cfl_node = make_node "" concrete true;
+    theta_label_name = n;
+  } in
+  if concrete then all_concrete_theta := ThetaSet.add th !all_concrete_theta;
+  NodeHT.add all_theta th.theta_cfl_node th;
+  th
+
 let update_rho_location rho loc =
   ignore (CFL.update_node_location rho.rho_cfl_node loc); rho
 
+let update_theta_location theta loc =
+  ignore (CFL.update_node_location theta.theta_cfl_node loc); theta
+
 let count_rho () = !rho_no
+
+let count_theta () = !theta_no
 
 (* mark r as global, unless it is in the set qs *)
 let set_global_rho (r: rho) : unit =
   CFL.set_global r.rho_cfl_node
+  
+(* mark th as global, unless it is in the set qs *)
+let set_global_theta (th: theta) : unit =
+  CFL.set_global th.theta_cfl_node
 
 (* A special constant used to denote a lock with no name
  * in the current context.  It is the result of any substitution that's
  * not defined.
  *)
 let unknown_rho : rho = make_rho (LN.Const "unknown") false
+let unknown_theta : theta = make_theta (LN.Const "unknown") false
 
 (* create a subtyping edge from r1 to r2 *)
 let rho_flows r1 r2 = begin
   if Rho.equal r1 unknown_rho then ()
   else if Rho.equal r2 unknown_rho then ()
   else Graph.make_sub_edge r1.rho_cfl_node r2.rho_cfl_node
+end
+
+(* create a subtyping edge from th1 to th2 *)
+let theta_flows th1 th2 = begin
+  if Theta.equal th1 unknown_theta then ()
+  else if Theta.equal th2 unknown_theta then ()
+  else Graph.make_sub_edge th1.theta_cfl_node th2.theta_cfl_node
+end
+
+let rho_flows2theta r th = begin
+  if Rho.equal r unknown_rho then ()
+  else if Theta.equal th unknown_theta then ()
+  else Graph.make_sub_edge r.rho_cfl_node th.theta_cfl_node
 end
 
 (* creates a unification constraint between x and y.
@@ -522,6 +644,16 @@ let unify_rho (x: rho) (y: rho) : unit =
   else begin
     rho_flows x y;
     rho_flows y x;
+  end
+
+(* creates a unification constraint between x and y.
+ * is equivalent with two subtyping constraints
+ *)
+let unify_theta (x: theta) (y: theta) : unit =
+  if Theta.equal x y then ()
+  else begin
+    theta_flows x y;
+    theta_flows y x;
   end
 
 (* returns the join of two rhos.
@@ -555,6 +687,16 @@ let inst_rho (rabs: rho)
   Graph.make_inst_edge rabs.rho_cfl_node rinst.rho_cfl_node polarity i.inst_id
 end
 
+(* instantiate rabs to rinst with polarity "polarity" at instantiation i *)
+let inst_theta (thabs: theta)
+             (thinst: theta)
+             (i: instantiation)
+             : unit = begin
+  Hashtbl.add i.inst_theta thabs thinst;
+  Hashtbl.add i.inst_theta_r thinst thabs;
+  Graph.make_inst_edge thabs.theta_cfl_node thinst.theta_cfl_node true i.inst_id;
+  Graph.make_inst_edge thabs.theta_cfl_node thinst.theta_cfl_node false i.inst_id;
+end
 
 (* locks *)
 
@@ -664,6 +806,9 @@ let is_global_lock (l: lock) : bool =
 
 let is_global_rho (r: rho) : bool =
   CFL.is_global r.rho_cfl_node
+  
+let is_global_theta (th: theta) : bool =
+  CFL.is_global th.theta_cfl_node
 
 (* effects *)
 
@@ -869,6 +1014,18 @@ let get_rho_p2set_m (r: rho) : rhoSet = begin
   rhoset
 end
 
+(* solution of theta *)
+let get_theta_p2set_m (th: theta) : thetaSet = begin
+  let thetaset = CFL.get_all_that_reach_m
+      th.theta_cfl_node
+      (NodeHT.find all_theta)
+      ThetaSet.add
+      ThetaSet.empty
+  in
+  ignore(E.log "theta-p2set: %d\n" (ThetaSet.cardinal thetaset));
+  thetaset
+end
+
 let get_rho_p2set_pn (r: rho) : rhoSet = begin
   let rhoset = CFL.get_all_that_reach_pn
       r.rho_cfl_node
@@ -877,6 +1034,26 @@ let get_rho_p2set_pn (r: rho) : rhoSet = begin
       RhoSet.empty
   in
   rhoset
+end
+
+let get_theta_p2set_pn (th: theta) : thetaSet = begin
+  let thetaset = CFL.get_all_that_reach_pn
+      th.theta_cfl_node
+      (NodeHT.find all_theta)
+      ThetaSet.add
+      ThetaSet.empty
+  in
+  thetaset
+end
+
+let get_rho_from_theta_p2set_pn (th: theta) : rhoSet = begin
+  let rhoset = CFL.get_all_that_reach_pn
+      th.theta_cfl_node
+      (NodeHT.find all_rho)
+      RhoSet.add
+      RhoSet.empty
+  in
+ 	rhoset
 end
 
 (* set closure wrt "flows to". unknowns are removed from the solution *)
@@ -902,6 +1079,29 @@ end
 let close_rhoset_pn (rs: rhoSet) : rhoSet = begin
   let f (r:rho) (s: rhoSet) = RhoSet.union s (get_rho_p2set_pn r) in
   let rhos = RhoSet.fold f rs RhoSet.empty in
+  let result = RhoSet.remove unknown_rho rhos in
+  result
+end
+
+let close_thetaset_m (ts: thetaSet) : thetaSet = begin
+  let f (t:theta) (s: thetaSet) =
+    if ThetaSet.mem t s then s
+    else ThetaSet.union s (get_theta_p2set_m t) in
+  let thetas = ThetaSet.fold f ts ThetaSet.empty in
+  let result = ThetaSet.remove unknown_theta thetas in
+  result
+end
+
+let close_thetaset_pn (ts: thetaSet) : thetaSet = begin
+  let f (th:theta) (s: thetaSet) = ThetaSet.union s (get_theta_p2set_pn th) in
+  let thetas = ThetaSet.fold f ts ThetaSet.empty in
+  let result = ThetaSet.remove unknown_theta thetas in
+  result
+end
+
+let close_rhoset_from_theta_pn (ts: thetaSet) : rhoSet = begin
+  let f (th:theta) (s: rhoSet) = RhoSet.union s (get_rho_from_theta_p2set_pn th) in
+  let rhos = ThetaSet.fold f ts RhoSet.empty in
   let result = RhoSet.remove unknown_rho rhos in
   result
 end
@@ -1163,20 +1363,21 @@ let print_graph (outf: out_channel) : unit = begin
           (CFL.dotstring_of_node rho.rho_cfl_node)
       with Not_found -> ())
     ns;
+    (* ignore(E.log "searching theta node, total %d %d\n" !theta_no (NodeHT.length all_theta)); *)
   CFL.NodeSet.iter
     (fun n ->
       try
-        let lock = NodeHT.find all_locks n in
+        let theta = NodeHT.find all_theta n in
         Printf.fprintf outf "\"%s\" [label=\"%s\\n%s\"]\n"
-          (CFL.dotstring_of_node lock.lock_cfl_node)
-          (LN.string_of_label_name lock.lock_label_name)
-          (CFL.dotstring_of_node lock.lock_cfl_node)
+          (CFL.dotstring_of_node theta.theta_cfl_node)
+          (LN.string_of_label_name theta.theta_label_name)
+          (CFL.dotstring_of_node theta.theta_cfl_node)
       with Not_found -> ())
     ns;
 end
 
 let get_stats () : string = begin
-  (* locks, locations, effects, chi, total *)
-  Printf.sprintf "%d %d %d %d %d" !lock_no !rho_no (!effect_no) (!chi_no * 2) (CFL.total_nodes())
+  (* thetas, locations, effects, chi, total *)
+  Printf.sprintf "%d %d %d %d %d" !theta_no !rho_no (!effect_no) (!chi_no * 2) (CFL.total_nodes())
 end
 

@@ -5,15 +5,18 @@ open Ptatypes
 module E = Errormsg
 module LT = Locktype
 module LF = Labelflow
+module CF = Controlflow
 module BS = Barrierstate
 module PT = Ptatype
 module LP = Loopa
  
-let do_graph_out = ref false
+let do_graph_out = ref true
 
 let do_task_graph_out = ref false
 
-let debug = ref false
+let debug = ref true
+
+let debug_footprints = ref false
 
 let options = [
   "--save-graph",
@@ -35,18 +38,39 @@ let taskScope2 = ref dummyFunDec
 (** return rhoSet for arg. If arg is a scalar it will return an empty set
 			@param argname the argument whose aliasing set we seek
 			@return the rhoSet with variables that alias with arg
+			@exception if arg type is region
 *)
+exception RegionType;;
 let get_rhoSet (argname: string) (scope: fundec) : LF.rhoSet =
   let env = List.assoc scope !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup argname env in
-  (* ignore(E.log "lookup of %s gives location %a with type %a\n" argname
-            LF.d_rho argaddress PT.d_tau argtype); *)
+  ignore(E.log "lookup of %s gives location %a with type %a\n" argname LF.d_rho argaddress d_tau argtype);
   match argtype.Ptatypes.t with
   | Ptatypes.ITPtr(_, r) -> LF.close_rhoset_pn (LF.RhoSet.singleton r)
+  | Ptatypes.ITRegion th -> raise RegionType
   | _ ->  if !debug then ignore(E.log "Warning: %s is not a pointer\n" argname);
 	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
 			   * so that is_aliased returns false *)
+(*
+let get_thetaSet (argname: string) (scope: fundec) : LF.thetaSet =
+  let env = List.assoc scope !PT.global_fun_envs in
+  let (argtype, argaddress) = PT.env_lookup argname env in
+  ignore(E.log "lookup of %s gives location %a with type %a\n" argname LF.d_rho argaddress d_tau argtype);
+  match argtype.Ptatypes.t with
+  | Ptatypes.ITRegion th -> LF.close_thetaset_pn (LF.ThetaSet.singleton th)
+  | _ ->  if !debug then ignore(E.log "Warning: %s is not a region\n" argname);
+	  LF.RhoSet.empty (* if arg is not a pointer, return an empty set
+			   * so that is_aliased returns false *)
+*)
 
+let get_thetaSet (argname: string) (scope: fundec) : LF.thetaSet =
+  let env = List.assoc scope !PT.global_fun_envs in
+  let (argtype, _) = PT.env_lookup argname env in
+  ignore(E.log "lookup of %s with type %a\n" argname d_tau argtype);
+  match argtype.Ptatypes.t with
+  	Ptatypes.ITRegion th -> LF.close_thetaset_pn (LF.ThetaSet.singleton th)
+  | _ ->  if !debug then ignore(E.log "Warning: %s is not a region\n" argname); LF.ThetaSet.empty
+			   
 (** return true if argument arg is scalar
 			@param arg the argument we want to check
 			@return true if arg is scalar
@@ -63,7 +87,8 @@ let is_scalar (arg: arg_descr) (scope: fundec) : bool =
   let env = List.assoc scope !PT.global_fun_envs in
   let (argtype, argaddress) = PT.env_lookup arg.argname env in
   match argtype.Ptatypes.t with
-  | Ptatypes.ITPtr(_, r) -> false
+  | Ptatypes.ITPtr(_, _)
+  |	Ptatypes.ITRegion _ -> false
   | _ ->  true
 				 
 (** checks if arg1 aliases to arg2 
@@ -76,29 +101,93 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
      be aliased, but we treat them as if the were not) *)
   if((is_in_arg arg1.iotype) && (is_in_arg arg2.iotype)) then false
   else (
-    let set1 = get_rhoSet arg1.argname !taskScope1 in
-    let set2 = get_rhoSet arg2.argname !taskScope2 in
-    (* get concrete rhoSet, meaning get only array and mallocs *)
-		(* FIXME: concrete set always empty???? *)
-		(* let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in *)
-		let final_set = LF.RhoSet.inter set1 set2 in
-		if !debug then (
-			ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
-			ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
-			ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
-			ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
-		);
-			(*
-			if((compare arg1.argname "e") == 0) then (
-				ignore(E.log "arg:%s - arg:%s\n" arg1.argname arg2.argname);
-				LF.RhoSet.iter (fun fromRho -> 
-					LF.RhoSet.iter (fun toRho ->
-						ignore(E.log "%a\n" LF.d_rhopath (fromRho, toRho));
-					) set2
-				) set1;
+ 		let env1 = List.assoc !taskScope1 !PT.global_fun_envs in
+  	let (argtype1, _) = PT.env_lookup arg1.argname env1 in
+  	let env2 = List.assoc !taskScope2 !PT.global_fun_envs in
+  	let (argtype2, _) = PT.env_lookup arg2.argname env2 in
+  	match argtype1.Ptatypes.t, argtype2.Ptatypes.t with 	
+  		Ptatypes.ITPtr(_, r1), Ptatypes.ITPtr(_, r2) -> (
+  			ignore(E.log "&Checking pointers\n");
+  			let set1 = LF.close_rhoset_pn (LF.RhoSet.singleton r1) in
+  			let set2 = LF.close_rhoset_pn (LF.RhoSet.singleton r2) in
+  			let final_set = LF.RhoSet.inter set1 set2 in
+				if !debug then (
+					ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+					ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
+					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
+					ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+				);
+				not (LF.RhoSet.is_empty final_set)
+  		)
+  	| Ptatypes.ITRegion(th1), Ptatypes.ITRegion(th2) -> (
+  	  	let set1 = LF.close_thetaset_pn (LF.ThetaSet.singleton th1) in
+  			let set2 = LF.close_thetaset_pn (LF.ThetaSet.singleton th2) in
+  			let final_set = LF.ThetaSet.inter set1 set2 in
+				if !debug then (
+					ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+					ignore(E.log "%s set           : %a\n" arg1.argname LF.d_thetaset set1);
+					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_thetaset set2);
+					ignore(E.log "rhoset intersection: %a\n" LF.d_thetaset final_set);
+				);
+				not (LF.ThetaSet.is_empty final_set)
+  		)
+  	| Ptatypes.ITPtr(_, r), Ptatypes.ITRegion(th) -> (
+				let set1 = LF.close_rhoset_pn (LF.RhoSet.singleton r) in
+				let set2 = LF.close_rhoset_from_theta_pn (LF.ThetaSet.singleton th) in
+				let final_set = LF.RhoSet.inter set1 set2 in
+				if !debug then (
+					ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+					ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
+					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
+					ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+				);
+				not (LF.RhoSet.is_empty final_set)
+			)
+		| Ptatypes.ITRegion(th), Ptatypes.ITPtr(_, r) -> (
+				let set1 = LF.close_rhoset_from_theta_pn (LF.ThetaSet.singleton th) in
+				let set2 = LF.close_rhoset_pn (LF.RhoSet.singleton r) in
+				let final_set = LF.RhoSet.inter set1 set2 in
+				if !debug then (
+					ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+					ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
+					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
+					ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
+				);
+				not (LF.RhoSet.is_empty final_set)
+			)
+  	| _ -> if !debug then ignore(E.log "Warning: Not a region or pointer\n"); true (*conservative but safe approach*)
+  	(*
+  	try (
+		  let set1 = get_rhoSet arg1.argname !taskScope1 in
+		  let set2 = get_rhoSet arg2.argname !taskScope2 in
+		  (* get concrete rhoSet, meaning get only array and mallocs *)
+			(* FIXME: concrete set always empty???? *)
+			(* let final_set = LF.concrete_rhoset (LF.RhoSet.inter set1 set2) in *)
+			let final_set = LF.RhoSet.inter set1 set2 in
+			if !debug then (
+				ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+				ignore(E.log "%s set           : %a\n" arg1.argname LF.d_rhoset set1);
+				ignore(E.log "%s set           : %a\n" arg2.argname LF.d_rhoset set2);
+				ignore(E.log "rhoset intersection: %a\n" LF.d_rhoset final_set);
 			);
-			*)
-    not (LF.RhoSet.is_empty final_set)
+				(*
+				if((compare arg1.argname "e") == 0) then (
+					ignore(E.log "arg:%s - arg:%s\n" arg1.argname arg2.argname);
+					LF.RhoSet.iter (fun fromRho -> 
+						LF.RhoSet.iter (fun toRho ->
+							ignore(E.log "%a\n" LF.d_rhopath (fromRho, toRho));
+						) set2
+					) set1;
+				);
+				*)
+		  not (LF.RhoSet.is_empty final_set)
+    ) with RegionType -> (
+    	ignore(E.log "Argument %s is a region\n" arg1.argname);
+    	let set1 = get_thetaSet arg1.argname !taskScope1 in
+    	ignore(E.log "%s set           : %a\n" arg1.argname LF.d_thetaset set1);
+    	true
+    )
+    *) 
 	)
             
 
@@ -121,11 +210,14 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 				taskScope1 := task1.scope;
 				taskScope2 := task2.scope;
 				(* do not check with self  if task is not in a loop *)
+				if(BS.isInLoop task1) then (ignore(E.log "Loopaaapappa\n"););
 				if (not (BS.isInLoop task1) && arg.aid == arg'.aid) then (
+					ignore(E.log "not in loop\n");
 					arg.safe <- true;
 				)
 				else (
 					(if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
+						ignore(E.log "is in loop\n");
 						let res = not (alias arg arg') || LP.array_bounds_safe arg in
 						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
@@ -134,6 +226,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
 						arg.safe <- res;
 					)
 					else (
+						ignore(E.log "is in loop\n");
 						let res = not (alias arg arg') in
 						if(arg.force_safe && not res) then (
 							ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
@@ -191,8 +284,17 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
 let type_arguments (tasks_l: task_descr list) : unit =
 	ignore(E.log "Typing formal arguments\n");
 	List.iter (fun task ->
+		let (read_vars, write_vars) = Labelflow.solve_chi_m task.t_inf.fd_chi in
+		if !debug_footprints then (
+			ignore(E.log "=== %s ===\n" task.taskname);
+			ignore(E.log "readRho\n%a\n" LF.d_rhoset read_vars);
+			ignore(E.log "writeRho\n%a\n" LF.d_rhoset write_vars);
+			ignore(E.log "%a\n" d_env task.t_gamma);
+			List.iter (fun act ->
+				ignore(E.log "Task:%s:actual:%s\n" task.taskname act);
+			) task.actuals;
+		);
 		List.iter (fun arg -> 
-			let (read_vars, write_vars) = Labelflow.solve_chi_m task.t_inf.fd_chi in
 			let (argname, arg_t) = arg in 
 			(match arg_t.t with
 						ITPtr(_, r) -> (
@@ -248,6 +350,7 @@ end
 let find_dependencies (f: file) (disable_sdam: bool) : unit = begin	
   program_file := f;
 
+(*  Rmtmps.removeUnusedTemps f;*)
 (* 	Rmalias.removeAliasAttr f; *)
 	Cfg.computeFileCFG f;
   ignore(E.log "SDAM:Finding data dependencies...\n");
@@ -281,11 +384,15 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
 		solve_task_dependencies (List.rev !tasks_l);
 		type_arguments (List.rev !tasks_l);
   (* BS.solve(); *) 
-(*   if !do_graph_out then begin
+  if !do_graph_out then begin
     Dotpretty.init_file "graph-begin.dot" "initial constraints";
     Labelflow.print_graph !Dotpretty.outf;
     Dotpretty.close_file ();
-  end; *)
+	
+		Dotpretty.init_file "cf-graph.dot" "control flow graph";
+    Lockstate.print_graph !Dotpretty.outf;
+    Dotpretty.close_file ();
+	end;
 (*   ignore(E.log "SDAM: Checking for argument dependencies.\n");
   List.iter find_task_dependencies !tasks_l;
   if !do_verbose_output then begin (* this is bocus... *)

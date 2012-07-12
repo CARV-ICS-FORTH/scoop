@@ -34,11 +34,16 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *)
+ 
 type node (* all kinds of labels *)
 type lock (* lock label. can be concrete, or variable. variables have
            * a solution, a set of labels that flow there.
            *)
 type rho  (* location label.  can be concrete. *)
+type theta
+
+val theta2rho : theta -> rho
+
 type effect (* continuation effect label, cannot be concrete.
              * solution includes a pair of rhosets, the read and write
              * effects
@@ -60,6 +65,7 @@ val options : (string * Arg.spec * string) list
 val flow_effect : bool ref
 
 module RhoSet : Set.S with type elt = rho
+module ThetaSet : Set.S with type elt = theta
 module LockSet : Set.S with type elt = lock
 module Effect : Set.OrderedType with type t = effect
 module EffectSet : Set.S with type elt = effect
@@ -67,12 +73,14 @@ module EffectMap : Map.S with type key = effect
 
 (* sets of labels, per kind of label *)
 type rhoSet = RhoSet.t  (* set of rho labels *)
+type thetaSet = ThetaSet.t  (* set of theta labels *)
 type lockSet = LockSet.t (* set of lock labels *)
 type effectSet = EffectSet.t (* set of effect labels *)
 
 (* various hashtables *)
 module LockHT : Hashtbl.S with type key = lock
 module RhoHT : Hashtbl.S with type key = rho
+module ThetaHT : Hashtbl.S with type key = theta
 module Rho : Hashtbl.HashedType with type t = rho
 module Inst : Hashtbl.HashedType with type t = instantiation
 module InstHT : Hashtbl.S with type key = instantiation
@@ -109,26 +117,39 @@ val get_stats: unit -> string
 val make_rho : Labelname.label_name -> bool -> rho
 val update_rho_location : rho -> Cil.location -> rho
 
+val make_theta : Labelname.label_name -> bool -> theta
+val update_theta_location : theta -> Cil.location -> theta
+
 (* how many rhos have been created *)
 val count_rho : unit -> int
+val count_theta : unit -> int
 
 (* mark r as global *)
 val set_global_rho : rho -> unit
+val set_global_theta : theta -> unit
 
 (* A special constant used to denote a lock with no name
  * in the current context.  It is the result of any substitution that's
  * not defined.
  *)
 val unknown_rho : rho
+val unknown_theta : theta
 
 (* create a subtyping edge from r1 to r2 *)
 val rho_flows : rho -> rho -> unit
+val theta_flows : theta -> theta -> unit
+val rho_flows2theta: rho -> theta -> unit
 (*val lock_flows : lock -> lock -> unit*)
 
 (* creates a unification constraint between x and y.
  * is equivalent with two subtyping constraints
  *)
 val unify_rho : rho -> rho -> unit
+
+(* creates a unification constraint between x and y.
+ * is equivalent with two subtyping constraints
+ *)
+val unify_theta : theta -> theta -> unit
 
 (* returns the join of two rhos.
  * a fresh rho to which they both flow
@@ -139,6 +160,9 @@ val unify_rho : rho -> rho -> unit
  * negative(false) polarity at the given instantiation *)
 val inst_rho : rho -> rho -> bool -> instantiation -> unit
 
+(* instantiate the first argument to the second with positive (true) or
+ * negative(false) polarity at the given instantiation *)
+val inst_theta : theta -> theta -> instantiation -> unit
 
 (* locks *)
 
@@ -271,9 +295,19 @@ val get_lock_p2set : lock -> lockSet
 val get_rho_p2set_m : rho -> rhoSet
 val get_rho_p2set_pn : rho -> rhoSet
 
+(* return a set of thetas that the argument might point to *)
+val get_theta_p2set_m : theta -> thetaSet
+val get_theta_p2set_pn : theta -> thetaSet
+
 (* close a set with respect to "flows to" *)
 val close_rhoset_m : rhoSet -> rhoSet
 val close_rhoset_pn : rhoSet -> rhoSet
+
+(* close a set with respect to "flows to" *)
+val close_thetaset_m : thetaSet -> thetaSet
+val close_thetaset_pn : thetaSet -> thetaSet
+
+val close_rhoset_from_theta_pn : thetaSet -> rhoSet
 
 val close_lockset : lockSet -> lockSet
 
@@ -336,12 +370,14 @@ val close_nonlinear : unit -> unit
 val dotstring_of_lock_effect : lock_effect -> string
 val dotstring_of_lock : lock -> string
 val dotstring_of_rho : rho -> string
+val dotstring_of_theta : theta -> string
 val dotstring_of_inst : instantiation -> string
 val dotstring_of_read_effect : effect -> string
 val dotstring_of_write_effect : effect -> string
 
 val d_lock : unit -> lock -> Pretty.doc
 val d_rho : unit -> rho -> Pretty.doc
+val d_theta : unit -> theta -> Pretty.doc
 
 (* lockSet formatting *)
 val d_lockset : unit -> lockSet -> Pretty.doc
@@ -349,7 +385,12 @@ val d_lockset : unit -> lockSet -> Pretty.doc
 (* rhoSet formatting *)
 val d_rhoset : unit -> rhoSet -> Pretty.doc
 
+(* thetaSet formatting *)
+val d_thetaset : unit -> thetaSet -> Pretty.doc
+
 val d_rhopath : unit -> (rho * rho) -> Pretty.doc
+
+(*val d_thetapath : unit -> (theta * theta) -> Pretty.doc*)
 
 (* effect formatting *)
 val d_effect : unit -> effect -> Pretty.doc

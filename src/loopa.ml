@@ -36,7 +36,7 @@ let getLoopIndex (body_stmts: stmt list) : loop_descr option =
 		match il with 
 			Instr(Set((Var(vi), NoOffset), e, _)::[]) -> ( 
 				if !debug then ignore(E.log "Found index %s\n" vi.vname);
-				if(vi.vaddrof) then (ignore(E.log "variable %s is beign referenced\n" vi.vname); None)
+				if(vi.vaddrof) then None
 				else (
 					let rec isModified = (function
 							[] -> false
