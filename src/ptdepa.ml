@@ -99,7 +99,10 @@ let is_scalar (arg: arg_descr) (scope: fundec) : bool =
 let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
   (* if both arguments are only inputs, return false (they could 
      be aliased, but we treat them as if the were not) *)
-  if((is_in_arg arg1.iotype) && (is_in_arg arg2.iotype)) then false
+  if((is_in_arg arg1.iotype) && (is_in_arg arg2.iotype)) then (
+  	ignore(E.log "comparing %s(%d) - %s(%d): both in ingore deps\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+  	false
+  )
   else (
  		let env1 = List.assoc !taskScope1 !PT.global_fun_envs in
   	let (argtype1, _) = PT.env_lookup arg1.argname env1 in
@@ -128,6 +131,10 @@ let alias (arg1: arg_descr) (arg2: arg_descr) : bool =
 					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_thetaset set2);
 					ignore(E.log "rhoset intersection: %a\n" LF.d_thetaset final_set);
 				);
+									ignore(E.log "comparing %s(%d) - %s(%d)\n" arg1.argname arg1.aid arg2.argname arg2.aid);
+					ignore(E.log "%s set           : %a\n" arg1.argname LF.d_thetaset set1);
+					ignore(E.log "%s set           : %a\n" arg2.argname LF.d_thetaset set2);
+					ignore(E.log "rhoset intersection: %a\n" LF.d_thetaset final_set);
 				not (LF.ThetaSet.is_empty final_set)
   		)
   	| Ptatypes.ITPtr(_, r), Ptatypes.ITRegion(th) -> (

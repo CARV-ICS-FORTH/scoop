@@ -55,6 +55,7 @@ type handler =
   | Start_unpack
   | End_unpack
   | New_Region
+  | Delete_Region
   | New_Subregion
   | Ralloc
 
@@ -78,6 +79,7 @@ let lexer = Genlex.make_lexer [
   "Start_unpack";
   "End_unpack";
   "New_Region";
+  "Delete_Region";
   "New_Subregion";
   "Ralloc";
   ";";
@@ -162,7 +164,8 @@ let special_functions : handler Strmap.t ref = ref (
   Strmap.add "bddt_newregion" New_Region (
   Strmap.add "bddt_newsubregion" New_Subregion (
   Strmap.add "bddt_ralloc" Ralloc (
-  Strmap.empty)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  Strmap.add "bddt_deleteregion" Delete_Region (
+  Strmap.empty))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 let add_to_sf h s =
   special_functions := Strmap.add s h !special_functions
@@ -191,6 +194,7 @@ let parse_entry = parser
   | [< 'Kwd "New_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Region x
   | [< 'Kwd "New_Subregion"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Subregion x
   | [< 'Kwd "Ralloc"; 'Ident x; 'Kwd ";" >] -> add_to_sf Ralloc x
+  | [< 'Kwd "Delete_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf Delete_Region x  
   | [< 'Kwd ";" >] -> ()
   | [< >] -> ()
 

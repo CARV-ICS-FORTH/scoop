@@ -871,6 +871,8 @@ let add_to_read_chi r x =
   Graph.make_sub_edge r.rho_cfl_node x.chi_read_node
 let add_to_write_chi r x =
   Graph.make_sub_edge r.rho_cfl_node x.chi_write_node
+let add_theta_to_write_chi r x =
+  Graph.make_sub_edge r.theta_cfl_node x.chi_write_node
 let set_global_chi x =
   CFL.set_global x.chi_read_node;
   CFL.set_global x.chi_write_node
@@ -944,6 +946,13 @@ let add_to_write_effect (loc: rho) (ef: effect) : unit =
   then raise (LabelFlowBug "cannot add variables to the empty effect");
   if Rho.compare loc unknown_rho = 0 then ()
   else Graph.make_sub_edge loc.rho_cfl_node ef.effect_write_node
+  
+(* create an "effect-membership" edge: loc is written in ef *)
+let add_theta_to_write_effect (loc: theta) (ef: effect) : unit =
+  if Effect.compare ef empty_effect = 0
+  then raise (LabelFlowBug "cannot add variables to the empty effect");
+  if Theta.compare loc unknown_theta = 0 then ()
+  else Graph.make_sub_edge loc.theta_cfl_node ef.effect_write_node  
 
 (* create an "effect-membership" edge: loc is written in ef *)
 let add_to_share_effect (loc: rho) (ef: effect) : unit =

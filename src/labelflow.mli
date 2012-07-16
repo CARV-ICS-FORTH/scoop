@@ -82,6 +82,7 @@ module LockHT : Hashtbl.S with type key = lock
 module RhoHT : Hashtbl.S with type key = rho
 module ThetaHT : Hashtbl.S with type key = theta
 module Rho : Hashtbl.HashedType with type t = rho
+module Theta : Hashtbl.HashedType with type t = theta
 module Inst : Hashtbl.HashedType with type t = instantiation
 module InstHT : Hashtbl.S with type key = instantiation
 
@@ -212,6 +213,7 @@ val inst_chi : chi -> chi -> bool -> instantiation -> unit
 val solve_chi_m : chi -> (rhoSet * rhoSet)
 val solve_chi_pn : chi -> (rhoSet * rhoSet)
 val add_to_write_chi : rho -> chi -> unit
+val add_theta_to_write_chi : theta -> chi -> unit
 val dump_all_chi : unit -> unit
 
 (* effects *)
@@ -257,6 +259,9 @@ val add_to_read_effect : rho -> effect -> unit
 
 (* create an "effect-membership" edge: loc is written in ef *)
 val add_to_write_effect : rho -> effect -> unit
+
+(* create an "effect-membership" edge: loc is written in ef *)
+val add_theta_to_write_effect : theta -> effect -> unit
 
 (* create an "effect-membership" edge: loc is shared bt/w threads in ef *)
 val add_to_share_effect : rho -> effect -> unit

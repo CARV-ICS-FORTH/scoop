@@ -430,6 +430,22 @@ let write_rho (r: rho) (p: phi) (e:effect) (u:uniq): unit =
     Correlation.deref r p e
   )
 
+let write_theta (th: theta) (p: phi) (e:effect) (u:uniq): unit =
+  if !debug then ignore(E.log "%a: write access to %a\n" d_loc !currentLoc d_theta th);
+  if LF.Theta.equal th unknown_theta then () else
+  if !do_uniq && (safe_ignore u) then (
+    if !debug then 
+      ignore(warn "MISSED unique write of %a\n" d_theta th);
+    if !debug then
+      ignore(warn "removing thread-local write %a\n" d_theta th);
+  ) else (
+    if !debug then 
+      ignore(warn "NO LONGER unique write of %a\n" d_theta th);
+    add_theta_to_write_effect th e;
+    add_theta_to_write_chi th !current_chi;
+    (* Correlation.deref th p e *)
+  )
+
 let defer (f: unit -> unit) : unit =
   let l = !Cil.currentLoc in
   Q.push (l,f) eval_after_typing
@@ -2761,6 +2777,21 @@ let handle_new_region (_: exp list)
                  d_tau lv_type);
       );
       (lv_env, lv_phi, lv_effect)
+
+let handle_deleteregion (el: exp list)
+                				(_: lval option)
+                				(args: (tau*uniq) list)
+                				(input_env: env)
+                				(input_phi: phi)
+                				(input_effect: effect)
+                				: gamma =
+  match args with
+    ({t=(ITRegion th)},u)::_ ->
+      write_theta th input_phi input_effect u;
+      (input_env, input_phi, input_effect)
+  | _ ->
+    ignore(error "calling delete region with bad arguments: %a" (d_list "\n" d_exp) el);
+    raise TypingBug
                       			
 let handle_new_subregion (_: exp list)
                			  	 (lvo: lval option)
@@ -2840,6 +2871,7 @@ let get_special (k: Conf.handler) : special_function_t =
   | Conf.Start_unpack -> handle_start_unpack
   | Conf.End_unpack -> handle_end_unpack
   | Conf.New_Region -> handle_new_region 
+  | Conf.Delete_Region -> handle_deleteregion
  	| Conf.New_Subregion -> handle_new_subregion
 	| Conf.Ralloc -> handle_ralloc
 

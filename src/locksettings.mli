@@ -53,6 +53,7 @@ type handler =
   | Start_unpack
   | End_unpack
   | New_Region
+  | Delete_Region
   | New_Subregion
 	| Ralloc
 
