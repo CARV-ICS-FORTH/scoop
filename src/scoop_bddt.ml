@@ -258,8 +258,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
           let div = BinOp(Div, plus, Lval block_size, uint64_t) in
           let args = [Lval this; CastE(voidPtrType, arg_desc.address); arg_type2integer arg_desc.atype; Lval block_size; div ] in
           let st = mkStmtOneInstr (Call (None, Lval (var addAttribute_Task), args, locUnknown)) in
-          stl := L.rev (mkStmt(Instr (L.rev !il))::[st]);
-          stl := st::(!stl);
+          stl := st::[mkStmt(Instr (L.rev !il))];
 
         );
         (* this -> closure.total_arguments++; *)
