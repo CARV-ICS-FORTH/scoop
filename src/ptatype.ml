@@ -732,7 +732,7 @@ end
 let rec allocate (t: tau) : unit = begin
   match t.t with
   | ITVoid None
-  | ITRegion _ -> ignore(E.log "region allocation\n"); ()
+  | ITRegion _ -> (* ignore(E.log "region allocation\n"); *) ()
   | ITAbs _ ->
       assert false (* these should never happen *)
   | ITExists _ ->
@@ -1034,7 +1034,7 @@ and annotate (t: typ)
     try (List.mem (typeSig t) !regiontypesigs)
     with Not_found -> false
   then (
-  	ignore(E.log "Found Region Type (%a )\n"  LN.d_label_name name); 
+  	(* ignore(E.log "Found Region Type (%a )\n"  LN.d_label_name name); *)
   	make_tau (ITRegion(make_theta name false)) STRegion
   	(* void_tau *)
   )
@@ -2267,8 +2267,8 @@ let css_task_process (loc, args_l, loop_d) arg =
 let process_actuals (el: exp list) loc : string list =
 	let rec proc_exp = (fun args_l e ->
 		(if(!debug_SDAM) then ignore(E.log "parsing actual %a\n" d_exp e););
-		ignore(E.log "parsing actual %a\n" d_exp e);
-		ignore(E.log "actuals number:%d\n" (List.length args_l));
+		(* ignore(E.log "parsing actual %a\n" d_exp e);
+		ignore(E.log "actuals number:%d\n" (List.length args_l)); *)
 		match e with 
 			Lval(Var(vi), _) -> vi.vname::args_l
 		|	CastE(_, e2) -> proc_exp args_l e2
@@ -2304,7 +2304,7 @@ let css_task_process (loc, loop_d) args =
         	let tmp_size = SizeOfE (Lval (var var_i)) in
        	 	let array_d = LP.getArrayDescr var_i loc !currSid in
         	let arg_d = Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d in
-					ignore(E.log "adding argument %s\n" arg_d.argname);
+					(* ignore(E.log "adding argument %s\n" arg_d.argname); *)
 					proc_attrs (arg_d::args_l) rest
 				)
 				| _ -> (
