@@ -2058,6 +2058,14 @@ and type_exp (e: exp)
           ignore(error "StartOf operator does not return pointer");
           raise TypingBug
       end
+  |	Question(e1, e2, e3, _) ->       
+  		let ((s1,u1), exp_env1, exp_phi1, exp_effect1) =
+        type_exp e1 input_env input_phi input_effect in
+      let ((s2,u2), exp_env2, exp_phi2, exp_effect2) =
+        type_exp e2 exp_env1 exp_phi1 exp_effect1 in
+      let ((s3,u3), exp_env3, exp_phi3, exp_effect3) =
+        type_exp e2 exp_env2 exp_phi2 exp_effect2 in  
+      ((s3, u3), exp_env2, exp_phi3, exp_effect3) (* TODO: not sure if everything works fine with this *)
 
 (*****************************************************************************)
 and compute_quantified_labels (c: cinfo) (el: exp list) : labelsets =
