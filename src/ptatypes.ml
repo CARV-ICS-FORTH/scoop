@@ -234,7 +234,7 @@ let rec d_sig () (ts: tau_sig) : doc =
   | STBuiltin_va_list -> text "..."
   | STAbs ts1 -> text "forall(" ++ d_sig () ts1 ++ text ")"
   | STExists (ts1) -> text "exists(" ++ d_sig () ts1 ++ text ")"
-  | STRegion _ -> text "region" 
+  | STRegion -> text "region" 
 
 let rec d_siglist (): tau_sig list -> doc = function
     [] -> nil

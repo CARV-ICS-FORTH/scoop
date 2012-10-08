@@ -47,6 +47,9 @@ LINKFLAGS = \
 	     $(DYCKCFL_DIR)/dyckcfl.o $(DYCKCFL_DIR)/mr_dyckcfl.o \
 	     $(REGION_DIR)/libregions.a \
 	     $(ENGINE_DIR)/libnsengine.a
+
+       #-ccopt '-static'
+
 CAML_CFLAGS := -ccopt -I$(DYCKCFL_DIR) -ccopt -I$(REGION_DIR) -ccopt -I$(ENGINE_DIR)
 
 

@@ -533,6 +533,7 @@ let feature : featureDescr =
     @ Labelflow.options
     @ Lprof.options
     @ Ptatype.options
+    @ Ptdepa.options
     ;
     fd_doit = 
     (function (f: file) ->
