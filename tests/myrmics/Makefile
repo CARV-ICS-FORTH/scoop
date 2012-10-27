@@ -2,7 +2,7 @@ INCLUDE=../../headers
 
 FLAGS=
 
-all: test_trans.c array1_trans.c
+all: test_trans.c array1_trans.c mm_myrmics_trans.c mm_myrmics1_trans.c mm_myrmics2_trans.c
    
 %_trans.c: %.c
 	@scoop --runtime=myrmics --out-name=$*_trans --tpcIncludePath=${INCLUDE} -I${INCLUDE} $^ $(EXTRAOPTS)

@@ -81,6 +81,8 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
   p
 
 (* user interface *)
+(** the str following the pragma, default is css (#pragma css ...) *)
+let pragma_str = ref "css"
 (* debug moved to ptatypes.ml *)
 let debug_SDAM = ref false
 let debug_region = ref false
@@ -2194,7 +2196,7 @@ and type_offcinit (c: cinfo)
 		a list with the corresponding argument descriptors 
 *)
 let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr list), (loop_d: loop_descr option)) arg =
-  if(not (is_dataflow_tag iotyp)) then (
+  if not (is_dataflow_tag iotyp) then (
     match arg with
       (* handle strided... *)
       AIndex(AIndex(ACons(varname, []), _), ABinOp( BOr, _, _))
@@ -2202,45 +2204,59 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
     | AIndex(ACons(varname, []), _)
     | ACons(varname, []) ->
       (* we need to find the argument in the current arg_l to mark it as safe *)
-      List.iter (fun a -> if(varname == a.argname) then (a.safe <- true; a.force_safe <- true;)) args_l;
+      List.iter 
+        (fun a ->
+          if(varname == a.argname) then 
+            a.safe <- true; a.force_safe <- true;
+        ) args_l;
       (iotyp, loc, args_l, loop_d)
-    | _ ->	ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
-        		raise Ignore_pragma
-  )
-  else (
+    | _ ->
+      ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
+      raise Ignore_pragma
+  ) else (
     match arg with
       (* handle strided... *)
-      AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) -> (
-        let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
+      AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) ->
+        let attrParamToExp' = 
+          attrParamToExp !program_file loc ~currFunction:!currentFunction
+        in
         let tmp_size = attrParamToExp' varsize in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d in
+        let arg_d =
+          Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
+        in
         (iotyp, loc, arg_d::args_l, loop_d)
-      )
       (* Brand new stride syntax... *)
-   	| AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) -> (
-    		let attrParamToExp' = attrParamToExp !program_file loc ~currFunction:!currentFunction in
+   	| AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
+    		let attrParamToExp' =
+          attrParamToExp !program_file loc ~currFunction:!currentFunction
+        in
         let tmp_size = attrParamToExp' bs_c in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d in
+        let arg_d = 
+          Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
+        in
         (iotyp, loc, arg_d::args_l, loop_d)
-       )
-    | AIndex(ACons(varname, []), varsize) -> (
-        let tmp_size = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
+    | AIndex(ACons(varname, []), varsize) ->
+        let tmp_size =
+          attrParamToExp !program_file loc ~currFunction:!currentFunction varsize
+        in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d in
+        let arg_d =
+          Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
+        in
         (iotyp, loc, arg_d::args_l, loop_d)
-      )
-    | ACons(varname, []) -> (
+    | ACons(varname, []) ->
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let tmp_size = SizeOfE (Lval (var var_i)) in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d in
+        let arg_d =
+          Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
+        in
         (iotyp, loc, arg_d::args_l, loop_d)
-      )
     | _ -> (
         ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
         raise Ignore_pragma
@@ -2305,30 +2321,45 @@ let css_task_process (loc, loop_d) args =
 		|	(AStr("highpriority"))::rest -> proc_attrs args_l rest
 		| AStr("region")::region_attr -> (
 			match region_attr with 
-				AStr(region_name)::region_type -> (
+      | AStr(region_name)::region_type -> (
 				match region_type with
-					ACons(iotyp, args')::rest -> (
+        | ACons(iotyp, args')::rest ->
         	let var_i = find_scoped_var loc !currentFunction !program_file region_name in
         	let tmp_size = SizeOfE (Lval (var var_i)) in
        	 	let array_d = LP.getArrayDescr var_i loc !currSid in
-        	let arg_d = Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d in
+        	let arg_d =
+            Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d 
+          in
 					(* ignore(E.log "adding argument %s\n" arg_d.argname); *)
 					proc_attrs (arg_d::args_l) rest
-				)
 				| _ -> (
 					ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
 					raise Ignore_pragma
 				)
 			)
+      (* support region in/out/inout(a,b,c) *)
+      | ACons(iotyp, args)::rest ->
+        let process_reg = function
+          | ACons(varname, []) ->
+        	  let var_i = find_scoped_var loc !currentFunction !program_file varname in
+            let tmp_size = SizeOfE (Lval (var var_i)) in
+            let array_d = LP.getArrayDescr var_i loc !currSid in
+            Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
+          | _ -> 
+            ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
+            raise Ignore_pragma
+        in
+        proc_attrs ((List.map process_reg args)@args_l) rest
 			|	_ -> (
 				ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
 				raise Ignore_pragma
 			)
 		)
-		
 		| ACons(iotyp, args')::rest -> (
-				let (_, _, args_l', _) = List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args' in
-				proc_attrs args_l' rest
+      let (_, _, args_l', _) =
+        List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args'
+      in
+			proc_attrs args_l' rest
 		)
 		| _::rest -> (
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
@@ -3031,63 +3062,68 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
 
 and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
   match pragma with
-    (Attr("css", ACons("start", _)::_), loc) -> (
-		if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
-		let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-		CF.phi_flows phi barrier_phi;
-		CF.starting_phis := barrier_phi::!CF.starting_phis;
-		((env, barrier_phi, eff), (kind, loop_d))   		
-	)
-	| (Attr("css", AStr("finish")::_), loc) -> (
-		if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
-		let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-		CF.phi_flows phi barrier_phi;
-		CF.starting_phis := barrier_phi::!CF.starting_phis;
+  | (Attr(pr_str, rest), loc) when pr_str = !pragma_str -> (
+    match rest with
+    | ACons("start", _)::_ -> (
+      if !debug_SDAM then ignore(E.log "SDAM: Start parallel region.\n");
+      let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+      CF.phi_flows phi barrier_phi;
+      CF.starting_phis := barrier_phi::!CF.starting_phis;
+      ((env, barrier_phi, eff), (kind, loop_d))   		
+    )
+    | AStr("finish")::_ -> (
+      if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
+      let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+      CF.phi_flows phi barrier_phi;
+      CF.starting_phis := barrier_phi::!CF.starting_phis;
 
-		((env, barrier_phi, eff), (kind, loop_d))
-	)
-	| (Attr("css", AStr("barrier")::_), loc) -> (
-		if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
-		let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-		CF.phi_flows phi barrier_phi;
-		CF.starting_phis := barrier_phi::!CF.starting_phis;
-		((env, barrier_phi, eff), (kind, loop_d))
-	) 
-	| (Attr("css", AStr("wait")::rest), loc) -> ( (* TODO: maybe obsolete syntax *)
-		match rest with 
-    	ACons("on", exps)::_ -> (
-			ignore(E.warn "Wait on task analysis not supported yet...\n"); 
-			((env, phi, eff), (kind, loop_d))
-		)
-  	| AStr("all")::_ -> (
-			if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
-			let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
-			CF.phi_flows phi barrier_phi;
-			CF.starting_phis := barrier_phi::!CF.starting_phis;
-			((env, barrier_phi, eff), (kind, loop_d))
-			)
-		| _ -> ( 
-			if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-			((env, phi, eff), (kind, loop_d))
-		)
-	) 
-	|	(Attr("css", AStr("task")::args), loc) -> (
-		match kind with
-				Instr(taskcall::_) -> ( (* task pragmas must be coupled with function calls *)
-				if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
-				let task_d = 
-				handle_css_task taskcall env args loc loop_d in	
-				let task_phi = make_phi "Task" (CF.PhiTask (task_d.taskname, task_d.taskid)) in
-				CF.phi_flows phi task_phi;
-				CF.starting_phis := task_phi::!CF.starting_phis;
-				((env, task_phi, eff), (kind, loop_d))
-			)
-			| _ -> ignore(warnLoc loc "SDAM:Invalid syntax!\n"); ((env, phi, eff), (kind, loop_d))
-	)
-	| (_, loc) -> ( 
+      ((env, barrier_phi, eff), (kind, loop_d))
+    )
+    | AStr("barrier")::_ -> 
+      if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+      let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+      CF.phi_flows phi barrier_phi;
+      CF.starting_phis := barrier_phi::!CF.starting_phis;
+      ((env, barrier_phi, eff), (kind, loop_d))
+    | AStr("wait")::rest -> ( (* TODO: maybe obsolete syntax *)
+      match rest with 
+      | ACons("on", exps)::_ ->
+        ignore(E.warn "Wait on task analysis not supported yet...\n"); 
+        ((env, phi, eff), (kind, loop_d))
+      | AStr("all")::_ ->
+        if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+        let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
+        CF.phi_flows phi barrier_phi;
+        CF.starting_phis := barrier_phi::!CF.starting_phis;
+        ((env, barrier_phi, eff), (kind, loop_d))
+      | _ ->
+        if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
+        ((env, phi, eff), (kind, loop_d))
+    ) 
+    |	AStr("task")::args -> (
+      match kind with
+      | Instr(taskcall::_) -> (* task pragmas must be coupled with function calls *)
+        if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
+        let task_d = 
+          handle_css_task taskcall env args loc loop_d
+        in	
+        let task_phi =
+          make_phi "Task" (CF.PhiTask (task_d.taskname, task_d.taskid))
+        in
+        CF.phi_flows phi task_phi;
+        CF.starting_phis := task_phi::!CF.starting_phis;
+        ((env, task_phi, eff), (kind, loop_d))
+      | _ -> 
+        ignore(warnLoc loc "SDAM:Invalid syntax!\n");
+        ((env, phi, eff), (kind, loop_d))
+    )
+    | _ ->
+      ignore(warnLoc loc "SDAM:Invalid syntax!\n");
+      ((env, phi, eff), (kind, loop_d))
+  )
+	| (_, loc) ->
 		if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
 		((env, phi, eff), (kind, loop_d))
-	)
 
 (*****************************************************************************)
 

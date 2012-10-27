@@ -489,7 +489,9 @@ class findTaskDeclVisitor cgraph = object
                     | "myrmics" -> Scoop_myrmics.make_tpc_issue is_hp
                     | _ -> E.s (unimp "Runtime \"%s\" doesn't have a make_tpc_issue yet" !arch);
                   in
-                  let (stmts, args) = make_tpc_issuef loc var_i oargs args !ppc_file !currentFunction in
+                  let (stmts, args) =
+                    make_tpc_issuef loc var_i oargs args !ppc_file !currentFunction
+                  in
                   spu_tasks := (funname, (dummyFunDec, var_i, args))::!spu_tasks;
                   ChangeTo(mkStmt (Block(mkBlock stmts)) )
                 in
@@ -547,6 +549,8 @@ let feature : featureDescr =
       isCell := Str.string_match (Str.regexp "^cell") !arch 0;
 
       pragma_str := if (!arch="myrmics") then !arch else !pragma_str;
+      (* Inform SDAM about the different pragma we are using *)
+      Ptatype.pragma_str := !pragma_str;
 
       if(!arch = "cellBlade") then (
         blade := true;
@@ -643,6 +647,7 @@ let feature : featureDescr =
       (* SDAM *)
       if ( !arch = "bddt" ||
            !arch = "adam" ||
+           !arch = "myrmics" ||
            !arch = "cellgod" ||
            !arch = "scc" ||
            !arch = "PAPAC" ||
