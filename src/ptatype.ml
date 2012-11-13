@@ -2262,28 +2262,6 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         raise Ignore_pragma
       )
   )
-(*	parses recursively the arguments of the pragma task, and returns 
-		a list with the corresponding argument descriptors 
-*)
-(*
-let css_task_process (loc, args_l, loop_d) arg =
-	match arg with 
-		AStr("highpriority") -> (loc, args_l, loop_d) (* TODO: learn what this is... *)
-	|	ACons(iotyp, args) -> (
-			let (_, _, args_l', _) = List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args in
-			(loc, args_l', loop_d)
-		)
-  (* support region r in(a,b,c) etc. *)
-  | AStr("region")
-  | AStr(_)
-  | ACons(_, _) -> (* TODO handle regions *)
-  	ignore(E.log "***handling regions");
-    (loc, args_l, loop_d)
-	| _ -> (
-			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
-			raise Ignore_pragma
-		)
-*)
 
 (* iterates an expression list and returns a list with the names of the actual
 	arguments.  Currently only variables can be arguments, other expressions are

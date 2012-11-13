@@ -8,9 +8,11 @@
 #define SCOOP_STRIDE_ARG                  0x4
 #define SCOOP_SAFE_ARG                    0x8
 #define SCOOP_BYVALUE_ARG                 0x9
-#define SCOOP_REGION_ARG                  0x16
-#define SCOOP_REDUCTION_ARG               0x35
-#define SCOOP_HIGHPRIORITY_ARG            0x64
+#define SCOOP_REGION_ARG                  0x10
+// values 0x14 0x15 0x16 and 0x17 are free since a region cannot be stride
+#define SCOOP_NOTRANSFER_ARG              0x14 //TODO add support in SCOOP
+#define SCOOP_REDUCTION_ARG               0x15
+#define SCOOP_HIGHPRIORITY_ARG            0x16
 
 #define SCOOP_IS_INARG(x)                 ((x) & SCOOP_IN_ARG)
 #define SCOOP_IS_OUTARG(x)                ((x) & SCOOP_OUT_ARG)
@@ -21,6 +23,7 @@
 #define SCOOP_IS_SAFEARG(x)               ((x) & SCOOP_SAFE_ARG)
 #define SCOOP_IS_BYVALUEARG(x)            ((x) & SCOOP_BYVALUE_ARG)
 #define SCOOP_IS_REGIONARG(x)             ((x) & SCOOP_REGION_ARG)
+#define SCOOP_IS_NOTRANSFER(x)            ((x) & SCOOP_NOTRANSFER_ARG)
 
 // NOTE: no write on globals
 

@@ -102,9 +102,9 @@ let doArgument targs ttyps (orig_tname: string) (tid: int)
   in
   let arg_type_tmp =
     (* arg_flag|TPC_REGION_ARG; *)
-    if (isRegion arg_desc) then
-      arg_type_tmp lor 0x16
-    else
+    if (isRegion arg_desc) then (
+      arg_type_tmp lor 0x10
+    ) else
       arg_type_tmp
   in
 
