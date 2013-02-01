@@ -1,10 +1,10 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2010,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -130,7 +130,7 @@ let blocking = ref true
     @return true or false
  *)
 let uses_index (e: exp) : bool =
-  match (e) with 
+  match (e) with
     (BinOp(PlusPI, _, _, _))
     | (BinOp(IndexPI, _, _, _))
     | (Lval(_, Index(_, _))) -> true
@@ -239,7 +239,7 @@ let is_typedef (g: global) : bool = match g with
 let isCompType = function
   | TComp _ -> true
   | _ -> false
-  
+
 (** Check whether a type is scalar
     @param t the type [Cil.typ]
     @return true or false
@@ -400,7 +400,7 @@ let __find_global_var (f: file) (name: string) : varinfo =
     raise Not_found
   with Found_var v -> v
 
-(** find the global variable named {e name} in file {e f} 
+(** find the global variable named {e name} in file {e f}
     @param f the file to look in
     @param name the name of the global variable to search
     @raise Not_found when there is no global variable with name {e name} in {e f}
@@ -423,7 +423,7 @@ let __find_formal_var (fd: fundec) (name: string) : varinfo =
     List.iter findit fd.sformals;
     raise Not_found
   with Found_var v -> v
-(** find the variable named {e name} in the formals of {e fd} 
+(** find the variable named {e name} in the formals of {e fd}
     @param fd the function declaration to look in
     @param name the name of the formal variable to search
     @raise Not_found when there is no formal variable with name {e name} in {e fd}
@@ -453,7 +453,7 @@ let __find_local_var (fd: fundec) (name: string) : varinfo =
     List.iter findit fd.slocals;
     raise Not_found
   with Found_var v -> v
-(** find the variable named {e name} in the locals of {e fd}  
+(** find the variable named {e name} in the locals of {e fd}
     @param fd the function declaration to look in
     @param name the name of the local variable to search
     @raise Not_found when there is no local variable with name {e name} in {e fd}
@@ -467,7 +467,7 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
   )
 
 (** find the variable named {e name} in fundec {e fd}
-   else look if it's a global of file {e f}  
+   else look if it's a global of file {e f}
     @param fd the function declaration to look in
     @param f the file to look in
     @param name the name of the formal variable to search
@@ -477,10 +477,10 @@ let find_local_var (fd: fundec) (name: string) : varinfo =
 let find_scoped_var (loc: location) (fd: fundec) (f: file) (name: string) : varinfo =
   try
     __find_local_var fd name
-  with Not_found -> 
+  with Not_found ->
       ( try
         __find_formal_var fd name
-      with Not_found -> 
+      with Not_found ->
           ( try
             __find_global_var f name
           with Not_found ->
@@ -500,7 +500,7 @@ let find_enum (f: file) (name: string) : enuminfo =
   let findit = function
     | GEnumTag(ei, _) when ei.ename = name -> raise (Found_enum ei)
     | _ -> ()
-  in 
+  in
   try
     iterGlobals f findit;
     raise Not_found
@@ -519,45 +519,46 @@ let find_enum (f: file) (name: string) : enuminfo =
  *)
 let rec expScalarToPointer (loc: location) (e: exp) : exp =
   match e with
-    AddrOf _
-    | StartOf _ -> e
-    | Const _ -> E.s (unimp "%a\n\tConstants are not supported yet as a task argument" d_loc loc)
-    | SizeOf _
-    | SizeOfE _
-    | SizeOfStr _ -> E.s (unimp "%a\n\tsizeof is not supported yet as a task argument" d_loc loc)
-    | AlignOf _ 
-    | AlignOfE _ -> E.s (unimp "%a\n\tAlignOf is not supported yet as a task argument" d_loc loc)
-    | UnOp _
-    | BinOp _ -> E.s (unimp "%a\n\tOperations are not supported yet as a task argument" d_loc loc)
-    | CastE (t, e') -> (
-      match t with
-          TVoid _
-        | TPtr _
-        | TArray _
-        | TFun _ -> e
-        | _ -> CastE(TPtr(t, []), expScalarToPointer loc e')
-    )
-    | Lval (lh, off) -> (
-      match lh with
-        Var vi -> (
-          if (isScalar_v vi) then
-            mkAddrOrStartOf (lh, off)
-          else
-            e
-        )
-        | Mem e' -> e'
-    )
+  | AddrOf _
+  | StartOf _ -> e
+  | Const _ -> E.s (unimp "%a\n\tConstants are not supported yet as a task arguments" d_loc loc)
+  | SizeOf _
+  | SizeOfE _
+  | SizeOfStr _ -> E.s (unimp "%a\n\tsizeof is not supported yet as a task argument" d_loc loc)
+  | AlignOf _
+  | AlignOfE _ -> E.s (unimp "%a\n\tAlignOf is not supported yet as a task argument" d_loc loc)
+  | UnOp _
+  | BinOp _ -> E.s (unimp "%a\n\tOperations are not supported yet as task arguments" d_loc loc)
+  | CastE (t, e') -> (
+    match t with
+    | TVoid _
+    | TPtr _
+    | TArray _
+    | TFun _ -> e
+    | _ -> CastE(TPtr(t, []), expScalarToPointer loc e')
+  )
+  | Lval (lh, off) -> (
+    match lh with
+      Var vi -> (
+        if (isScalar_v vi) then
+          mkAddrOrStartOf (lh, off)
+        else
+          e
+      )
+      | Mem e' -> e'
+  )
+  | Question _ -> E.s (unimp "%a\n\tConditionals are not supported yet as task arguments" d_loc loc)
 
 (** Takes a function declaration and changes the types of its scalar formals to pointers
     @param f the function declaration to change
  *)
 let formalScalarsToPointers (loc: location) (f: fundec) : unit =
   match f.svar.vtype with
-    TFun (rt, Some args, va, a) -> 
+    TFun (rt, Some args, va, a) ->
       if (va) then
         E.s (errorLoc loc "Functions with va args cannot be executed as tasks");
 
-      let scalarToPointer arg = 
+      let scalarToPointer arg =
         let (name, t, a) = arg in
         if (isScalar_t t) then
           (name, TPtr(t, []), a)
@@ -567,9 +568,9 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
       let formals = f.sformals in
       let args = List.map scalarToPointer args in
       (* Change the function type. *)
-      f.svar.vtype <- TFun (rt, Some args, false, a); 
-      
-      let scalarToPointer arg = 
+      f.svar.vtype <- TFun (rt, Some args, false, a);
+
+      let scalarToPointer arg =
         if (isScalar_t arg.vtype) then
           arg.vtype <- TPtr(arg.vtype, [])
         else
@@ -626,8 +627,8 @@ let arg_type2string (arg_t: arg_type) : string =
 		@return true if it is dataflow annotation
  *)
 let is_dataflow_tag (typ: string): bool =
-	match typ with 
-			"safe" -> false 
+	match typ with
+			"safe" -> false
 		| _ -> true
 
 (** Maps the arg_t to ints as defined by the TPC headers
@@ -661,7 +662,7 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
       deep_copy_function name callgraph spu_file ppc_file
     in
     Inthash.iter deep_copy cnode.CG.cnCallees;
-    
+
     (* now copy current *)
     try
       (* First check whether the function is defined *)
@@ -684,16 +685,16 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
  *)
 let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
   match unrollType f.svar.vtype with
-    TFun (_, Some args, va, a) -> 
+    TFun (_, Some args, va, a) ->
       f.svar.vtype <- TFun(t, Some args, va, a);
     | _ -> assert false
 end
 
 (*(** returns the extra formal arguments added to a tpc_function_* by SCOOP *)
 let get_tpc_added_formals (new_f: fundec) (old_f: fundec) : varinfo list = begin
-  List.filter 
-    (fun formal -> 
-        List.exists 
+  List.filter
+    (fun formal ->
+        List.exists
           (fun formal2 -> formal <> formal2 )
           old_f.sformals
     )
@@ -773,8 +774,8 @@ let getSizeOfArg (arg: arg_descr) : exp =
 (******************************************************************************)
 
 (** exception returning the stmt that failed to give a loop lower bound *)
-exception CouldntGetLoopLower of stmt 
-(** returns the lower bound of a loop 
+exception CouldntGetLoopLower of stmt
+(** returns the lower bound of a loop
     @param s the loop stmt
     @param prevstmt the previously visited statement
     @raise CouldntGetLoopLower when it fails
@@ -790,8 +791,8 @@ let get_loop_lower (s: stmt) (prevstmt: stmt) : exp =
     | _ -> raise (CouldntGetLoopLower s)
 
 (** exception returning the stmt that failed to give a loop upper bound *)
-exception CouldntGetLoopUpper of stmt 
-(** returns the upper bound of a loop 
+exception CouldntGetLoopUpper of stmt
+(** returns the upper bound of a loop
     @param s the loop stmt
     @raise CouldntGetLoopUpper when it fails
     @return the upper bound of the loop as a Cil.exp
@@ -807,8 +808,8 @@ let get_loop_condition (s: stmt) : exp =
     | _ -> raise (CouldntGetLoopUpper s)
 
 (** exception returning the stmt that failed to give a loop successor expression *)
-exception CouldntGetLoopSuccessor of stmt 
-(** returns the successor expression (step) of a loop 
+exception CouldntGetLoopSuccessor of stmt
+(** returns the successor expression (step) of a loop
     @param s the loop stmt
     @raise CouldntGetLoopSuccessor when it fails
     @return the successor (step) of the loop as a Cil.exp
@@ -855,7 +856,7 @@ let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar name type' in
   let n = L.length tasks in
-  let init' = 
+  let init' =
       let rec loopElems acc i =
         if i < 0 then acc
         else (
@@ -878,10 +879,10 @@ let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) li
   let type' = TArray (etype, None, []) in
   let vi = makeGlobalVar "Task_table" type' in
   let n = L.length tasks in
-  let init' = 
-      let rec loopElems acc i = 
+  let init' =
+      let rec loopElems acc i =
         if i < 0 then acc
-        else loopElems ((Index(integer i, NoOffset), makeZeroInit etype) :: acc) (i - 1) 
+        else loopElems ((Index(integer i, NoOffset), makeZeroInit etype) :: acc) (i - 1)
       in
       CompoundInit(etype, loopElems [] (n - 1))
   in
@@ -894,9 +895,9 @@ let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) li
 (*                         AttrParam to Expression                            *)
 (******************************************************************************)
 
-(* Type signatures. Two types are identical iff they have identical 
+(* Type signatures. Two types are identical iff they have identical
  * signatures *)
-let rec unrollSigtype (f:file) (ts: typsig) : typ = 
+let rec unrollSigtype (f:file) (ts: typsig) : typ =
   let unrollSigtype' = unrollSigtype f in
   match ts with
     TSArray (ts, Some i, attrs) -> TArray( unrollSigtype' ts, Some(kinteger64 IInt i), attrs )
@@ -916,7 +917,7 @@ exception NotAnExpression of attrparam
   @raise NotAnExpression when it fails
   @return the converted Cil.attrparam as a Cil.exp
  *)
-let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp= 
+let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp=
   assert (currFunction.svar.vname <> "@dummy");
   let rec subAttr2Exp (a: attrparam) : exp= (
     match a with
@@ -967,7 +968,7 @@ let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !cu
 (*                             FILE handling                                  *)
 (******************************************************************************)
 
-(** writes an AST (list of globals) into a file 
+(** writes an AST (list of globals) into a file
     @param f the file to be written
     @param fname  the name of the file on the disk
     @param globals  the globals of the file to be written
@@ -1038,7 +1039,7 @@ let comparator (a: (int * exp)) (b: (int * exp)) : int =
   else (-1)
 
 
-(** Comparator for use with [List.sort], 
+(** Comparator for use with [List.sort],
     takes an arg_descr list and sorts it according to the type of the arguments
     input @ inout @ output *)
 let sort_args (a: arg_descr) (b: arg_descr) : int =
@@ -1070,7 +1071,7 @@ let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
     @param args the arguments extracted from the annotation
     @param oargs the original arguments of the function call
     @return a [(int*arg_descr) list] where the int is the correct place in the
-    argument list for the argument described in the arg_descr 
+    argument list for the argument described in the arg_descr
  *)
 let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list =
   L.map (fun arg ->
@@ -1091,7 +1092,7 @@ let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list 
     @param f the file to merge the header with
     @param header the header to merge
     @param def defines to be passed to the preprocessor
-    @param incPath the include path to give to the preprocessor 
+    @param incPath the include path to give to the preprocessor
  *) (* the original can be found in lockpick.ml *)
 let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
     (incPath: string) : unit = (
@@ -1134,4 +1135,81 @@ class add_at_first_decl (gl_new: global list) : cilVisitor = object (self)
  *)
 let add_at_top (f: file) (globals: global list) : unit =
   let v = new add_at_first_decl globals in
-  visitCilFile v f;
+  visitCilFile v f
+
+(******************************************************************************)
+(*                             Argument processor                             *)
+(******************************************************************************)
+
+(** processes recursively the arguments' info found in in() out() and
+    inout() directives *)
+let rec scoop_process_args size_in_bytes ppc_file typ loc args : arg_descr list =
+  let attrParamToExp' = attrParamToExp ppc_file loc in
+  let arg_f = str2arg_flow typ loc in
+  let scoop_process_args = scoop_process_args size_in_bytes ppc_file typ loc in
+  match args with
+  (* Brand new stride syntax... *)
+  | (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig)::rest) ->
+    (* Brand new stride syntax with optional 2nd dimension of the original array... *)
+    let orig_c =
+      match orig with
+      | ABinOp( BOr, _, orig_c) -> orig_c
+      | _ -> orig
+    in
+    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let tmp_addr = Lval(var vi) in
+    let size = SizeOf( getBType vi.vtype vi.vname ) in
+    let tmp_bs_c = attrParamToExp' bs_c in
+    (* block's row size = bs_c * sizeof(type) *)
+    let tmp_bs_c = BinOp(Mult, tmp_bs_c, size, intType) in
+    let tmp_bs_r = attrParamToExp' bs_r in
+    let tmp_orig_c = attrParamToExp' orig_c in
+    (* original array row size = orig_c * sizeof(type) *)
+    let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
+    let tmp_t = Stride(arg_f, tmp_orig_c, tmp_bs_r, tmp_bs_c) in
+    { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
+  (* handle strided (legacy) ... *) (* Check documentation for the syntax *)
+  | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
+    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let tmp_addr = Lval(var vi) in
+    let tmp_size = attrParamToExp' varsize in
+    let tmp_els = attrParamToExp' var_els in
+    let tmp_elsz = attrParamToExp' var_elsz in
+    let tmp_t = Stride(arg_f, tmp_size, tmp_els, tmp_elsz) in
+    { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
+  (* variable with its size *)
+  | (AIndex(ACons(varname, []), varsize)::rest) ->
+    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let tmp_addr = Lval(var vi) in
+    let tmp_size =
+      if (size_in_bytes) then
+        attrParamToExp ppc_file loc varsize
+      else (
+        let size = SizeOf( getBType vi.vtype vi.vname ) in
+        let n = attrParamToExp ppc_file loc varsize in
+        (* argument size = n * sizeof(type) *)
+        BinOp(Mult, n, size, intType)
+      )
+    in
+    let tmp_t =
+      if (isScalar_v vi) then
+        Scalar(arg_f, tmp_size)
+      else
+        Normal(arg_f, tmp_size)
+    in
+    { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
+  (* support optional sizes example int_a would have size of sizeof(int_a) *)
+  | (ACons(varname, [])::rest) ->
+    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let tmp_addr = Lval(var vi) in
+    let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
+    let tmp_t =
+      if (isScalar_v vi) then
+        Scalar(arg_f, tmp_size)
+      else
+        Normal(arg_f, tmp_size)
+    in
+    { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
+  | [] -> []
+  | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" typ)
+

@@ -1,9 +1,9 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2010,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -33,9 +33,19 @@
  *
  *)
 
-val make_tpc_func :  Cil.location -> Cil.varinfo -> Cil.exp list ->
-    Scoop_util.arg_descr list -> Cil.file ref -> Cil.file ref ->
-    (Cil.fundec * (int * Scoop_util.arg_descr) list)
-
 val make_case : Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
     ((int * Scoop_util.arg_descr) list) -> Cil.stmt
+
+class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> Cil.file ->
+  string -> object
+    inherit Cil.nopCilVisitor
+    val mutable spu_tasks :
+      ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
+    val callgraph : Callgraph.callgraph
+    val ppc_file : Cil.file
+    val spu_file : Cil.file
+    val pragma_str : string
+    (* visits all stmts and checks for pragma directives *)
+    method vstmt : Cil.stmt -> Cil.stmt Cil.visitAction
+    method getTasks : ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
+  end

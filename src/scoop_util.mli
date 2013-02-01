@@ -1,10 +1,10 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2010,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -230,7 +230,7 @@ val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -
 (*                         AttrParam to Expression                            *)
 (******************************************************************************)
 
-(* Convert an attribute into an expression, if possible. Otherwise raise 
+(* Convert an attribute into an expression, if possible. Otherwise raise
  * NotAnExpression *)
 val attrParamToExp : Cil.file -> Cil.location -> ?currFunction:Cil.fundec ->
     Cil.attrparam -> Cil.exp
@@ -327,3 +327,12 @@ val dbg_print : bool ref -> string -> unit
 
 (** Adds a list of globals right BEFORE the first function definition *)
 val add_at_top : Cil.file -> Cil.global list -> unit
+
+(******************************************************************************)
+(*                             Argument processor                             *)
+(******************************************************************************)
+
+(** processes recursively the arguments' info found in in() out() and
+    inout() directives *)
+val scoop_process_args : bool -> Cil.file -> string -> Cil.location ->
+  Cil.attrparam list -> arg_descr list

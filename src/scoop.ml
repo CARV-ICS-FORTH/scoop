@@ -1,10 +1,10 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2010,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  *  Polyvios Pratikakis <polyvios@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -140,387 +140,7 @@ let options =
       " SCOOP: Disable the static dependence analysis module";
   ]
 
-(* create 1 global list (the spe output file) *)
-(** holds the processed tasks *)
-let spu_tasks = ref []
-
-(** processes recursively the arguments' info found in in() out() and
-    inout() directives *)
-let rec scoop_process_args typ args loc : arg_descr list =
-  let attrParamToExp' = attrParamToExp !ppc_file loc in
-  let arg_f = str2arg_flow typ loc in
-  match args with
-    (* Brand new stride syntax... *)
-    (AIndex(AIndex(ACons(varname, []), ABinOp( BOr, bs_r, bs_c)), orig)::rest) ->
-      (* Brand new stride syntax with optional 2nd dimension of the original array... *)
-      let orig_c = 
-        match orig with
-          ABinOp( BOr, _, orig_c) -> orig_c
-          | _ -> orig
-      in
-      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_addr = Lval(var vi) in
-      let size = SizeOf( getBType vi.vtype vi.vname ) in
-      let tmp_bs_c = attrParamToExp' bs_c in
-      (* block's row size = bs_c * sizeof(type) *)
-      let tmp_bs_c = BinOp(Mult, tmp_bs_c, size, intType) in
-      let tmp_bs_r = attrParamToExp' bs_r in
-      let tmp_orig_c = attrParamToExp' orig_c in
-      (* original array row size = orig_c * sizeof(type) *)
-      let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
-      let tmp_t = Stride(arg_f, tmp_orig_c, tmp_bs_r, tmp_bs_c) in
-      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
-    (* handle strided (legacy) ... *) (* Check documentation for the syntax *)
-    | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
-      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_addr = Lval(var vi) in
-      let tmp_size = attrParamToExp' varsize in
-      let tmp_els = attrParamToExp' var_els in
-      let tmp_elsz = attrParamToExp' var_elsz in
-      let tmp_t = Stride(arg_f, tmp_size, tmp_els, tmp_elsz) in
-      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
-    (* variable with its size *)
-    | (AIndex(ACons(varname, []), varsize)::rest) ->
-      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_addr = Lval(var vi) in
-      let tmp_size = 
-        if (!arch <> "XPPFX" && !arch<>"PAPAC") then
-          attrParamToExp !ppc_file loc varsize
-        else (
-          let size = SizeOf( getBType vi.vtype vi.vname ) in
-          let n = attrParamToExp !ppc_file loc varsize in
-          (* argument size = n * sizeof(type) *)
-          BinOp(Mult, n, size, intType)
-        )
-      in
-      let tmp_t =
-        if (isScalar_v vi) then
-          Scalar(arg_f, tmp_size)
-        else
-          Normal(arg_f, tmp_size)
-      in
-      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
-    (* support optional sizes example int_a would have size of sizeof(int_a) *)
-    | (ACons(varname, [])::rest) ->
-      let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-      let tmp_addr = Lval(var vi) in
-      let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
-      let tmp_t =
-        if (isScalar_v vi) then
-          Scalar(arg_f, tmp_size)
-        else
-          Normal(arg_f, tmp_size)
-      in
-      { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args typ rest loc)
-    | [] -> []
-    | _ -> E.s (errorLoc loc "Syntax error in #pragma %s task %s(...)\n" (!pragma_str) typ)
-
-(** parses the #pragma css task arguments *)
-let rec scoop_process pragma loc =
-  match pragma with
-    (AStr("highpriority")::rest) ->
-      let (_, lst) = scoop_process rest loc in
-      (true, lst)
-    | (ACons("safe", args)::rest) ->
-      (* kasas' mess here *)
-      (* ignore safe tags, it's a hint for the analysis *)
-      scoop_process rest loc
-    (* support region r in(a,b,c) etc. *)
-    | AStr("region")::(AStr(region)::(ACons(arg_typ, args)::rest)) ->
-      if ( not (!arch = "adam" || !arch = "bddt") ) then (
-        E.s (unimp "%a\n\tThis region syntax is not supported in %s" d_loc loc !arch);
-      ) else (
-        let (hp, lst) = scoop_process rest loc in
-        let r_vi = find_scoped_var loc !currentFunction !ppc_file region in
-        let tmp_addr = Lval(var r_vi) in
-        let args_l = List.map
-          (fun a -> match a with
-              ACons(name, []) -> name
-            | _ -> E.s (errorLoc loc "#pragma %s task region %s %s(...) should include only variable names" (!pragma_str) region arg_typ);
-          ) args
-        in
-        let tmp_t = Region(str2arg_flow arg_typ loc, args_l) in
-        (hp, { aname=region; address=tmp_addr; atype=tmp_t;}::lst)
-      )
-    (* support region in/out/inout(a,b,c) *)
-    | AStr("region")::(ACons(arg_typ, args)::rest) ->
-      if ( !arch <> "myrmics" ) then (
-        E.s (unimp "%a\n\tThis region syntax is not supported in %s" d_loc loc !arch);
-      ) else (
-        let arg_f = str2arg_flow arg_typ loc in
-        let process_regs = function
-          | ACons(varname, []) ->
-            let vi = find_scoped_var loc !currentFunction !ppc_file varname in
-            let tmp_addr = Lval(var vi) in
-            let tmp_t = Region(arg_f, [varname]) in
-            { aname=varname; address=tmp_addr; atype=tmp_t;}
-          | _ -> E.s (errorLoc loc "Syntax error in #pragma %s task %s(...)\n" (!pragma_str) arg_typ);
-        in
-        let (hp, lst) = scoop_process rest loc in
-        (hp, (L.map process_regs args)@lst)
-      )
-    | (ACons(arg_typ, args)::rest) ->
-      let (hp, lst) = scoop_process rest loc in
-      (hp, (scoop_process_args arg_typ args loc)@lst)
-    | [] -> (false, [])
-    | _ -> E.s (errorLoc loc "Syntax error in #pragma %s task\n" (!pragma_str));
-
-(** populates the global list of tasks [tasks] *)
-class findTaskDeclVisitor cgraph = object
-  inherit nopCilVisitor
-  val callgraph = cgraph 
-  (* visits all stmts and checks for pragma directives *)
-  method vstmt (s: stmt) : stmt visitAction =
-    let prags = s.pragmas in
-    if (prags <> []) then (
-      match (List.hd prags) with
-        (* Support #pragma css ... *)
-        (Attr(pr_str, rest), loc) when pr_str = !pragma_str -> (
-          match rest with
-          (* Support #pragma css wait on(...) *)
-            [AStr("wait"); ACons("on", exps)] -> (
-              if (!arch = "XPPFX") then (
-                Scoop_XPPFX.make_wait_on !currentFunction !ppc_file loc exps s
-              ) else if (!arch = "myrmics") then (
-                Scoop_myrmics.make_wait_on !currentFunction !ppc_file loc exps s
-              ) else
-                DoChildren
-          )
-          (* Support #pragma css wait all *)
-          | [AStr("wait"); AStr("all")]
-          (* Support #pragma css barrier*)
-          | [AStr("barrier")] -> (
-            if (!arch = "myrmics") then 
-              E.s (unimp "%a\n\twait all is not supported in %s" d_loc loc !arch)
-            else (
-              let twa = find_function_sign (!ppc_file) "tpc_wait_all" in
-              let instr = Call (None, Lval (var twa), [], locUnknown) in
-              let s' = {s with pragmas = List.tl s.pragmas} in
-              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-            )
-          )
-          (* Support #pragma css start *)
-          | [AStr("start")]
-          (* Support #pragma css start(...) *)
-          | [ACons("start", [])] -> (
-            if (!arch = "myrmics") then
-              E.s (unimp "%a\n\tstart is not supported in %s" d_loc loc !arch)
-            else (
-              let ts = find_function_sign (!ppc_file) "tpc_init" in
-              let instr = Call (None, Lval (var ts), [], locUnknown) in
-              let s' = {s with pragmas = List.tl s.pragmas} in
-              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-            )
-          )
-          | [ACons("start", exp::rest)] -> (
-            if (!arch = "myrmics") then
-              E.s (unimp "%a\n\tstart is not supported in %s" d_loc loc !arch)
-            else (
-              let ts = find_function_sign (!ppc_file) "tpc_init" in
-              let args =
-                if (!arch="cell") then
-                  [attrParamToExp !ppc_file loc exp]
-                else if (!arch="cellgod" || !arch="PAPAC") then
-                  attrParamToExp !ppc_file loc exp::[attrParamToExp !ppc_file loc (L.hd rest)]
-                else (
-                  match rest with
-                    first::second::_ -> attrParamToExp !ppc_file loc exp::(attrParamToExp !ppc_file loc first::[attrParamToExp !ppc_file loc second])
-                    | _ -> E.s (errorLoc loc "#pragma %s start takes 3 arguments" (!pragma_str))
-                )
-              in
-              let instr = Call (None, Lval (var ts), args, locUnknown) in
-              let s' = {s with pragmas = List.tl s.pragmas} in
-              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-            )
-          )
-          (* Support #pragma css finish *)
-          | [AStr("finish")] -> (
-            if (!arch = "myrmics") then
-              E.s (unimp "%a\n\tfinish is not supported in %s" d_loc loc !arch)
-            else (
-              let ts = find_function_sign (!ppc_file) "tpc_shutdown" in
-              let instr = Call (None, Lval (var ts), [], locUnknown) in
-              let s' = {s with pragmas = List.tl s.pragmas} in
-              ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-            )
-          )
-          (* Support #pragma css malloc *)
-          | [AStr("malloc")] -> (
-            if (!arch = "myrmics") then
-              E.s (unimp "%a\n\ttpc_malloc is not supported in %s" d_loc loc !arch)
-            else (
-              let tm = find_function_sign (!ppc_file) "tpc_malloc" in
-              match s.skind with
-                  Instr(Call(Some res, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
-
-
-                    let instr = Call (Some res, Lval (var tm), oargs, locUnknown) in
-                    ChangeTo(mkStmtOneInstr instr)
-                  )
-                | _ -> DoChildren
-            )
-          )
-          (* Support #pragma css free *)
-          | [AStr("free")] -> (
-            if (!arch = "myrmics") then
-              E.s (unimp "%a\n\ttpc_malloc is not supported in %s" d_loc loc !arch)
-            else (
-              let tf = find_function_sign (!ppc_file) "tpc_free" in
-              match s.skind with
-                  Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
-
-
-                    let instr = Call (None, Lval (var tf), oargs, locUnknown) in
-                    ChangeTo(mkStmtOneInstr instr)
-                  )
-                | _ -> DoChildren
-            )
-          )
-          (* Support #pragma css task... *)
-          | AStr("task")::rest -> (
-            match s.skind with
-            Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
-              let funname = vi.vname in
-              let (is_hp, args) = scoop_process rest loc in
-              dbg_print debug ("Found task \""^funname^"\"");
-
-
-              if !isCell then ( (* CELL *)
-                let rest_f new_fd =
-                  (* add arguments to the call *)
-                  let call_args =
-                    let expS2P = expScalarToPointer loc in
-                    ref (L.rev (L.map expS2P oargs))
-                  in
-
-                  (* for each actual argument of the call find it's (pragma)
-                      declared size and push it to the argument list of the
-                      new call *)
-                  let rec getSizeNstride = function
-                    | Lval ((Var(vi),_))
-                    | StartOf ((Var(vi),_)) -> (
-                      try
-                        let arg_desc = L.find (fun a -> (a.aname=vi.vname)) args in
-                        let vsize = getSizeOfArg arg_desc in
-                        call_args := vsize::!call_args;
-                        if (isStrided arg_desc) then (
-                          let (vels, velsz) =
-                            match arg_desc.atype with
-                                Stride(_, _, els, elsz) -> (els, elsz)
-                              | _ -> assert false
-                          in
-                          call_args := velsz::!call_args;
-                          call_args := vels::!call_args;
-                        );
-                      with Not_found ->
-                        E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
-                    )
-                    | CastE (_, ex') -> getSizeNstride ex';
-                    (* The following are not supported yet *)
-                    | Const _ -> raise (Invalid_argument "Const");
-                    | SizeOf _ -> raise (Invalid_argument "Sizeof");
-                    | SizeOfE _ -> raise (Invalid_argument "SizeofE");
-                    | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
-                    | AlignOf _ -> raise (Invalid_argument "Alignof");
-                    | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
-                    | UnOp _ -> raise (Invalid_argument "UnOp");
-                    | BinOp _ -> raise (Invalid_argument "BinOp");
-                    | AddrOf _ -> raise (Invalid_argument "AddrOf");
-                    | _ -> raise (Invalid_argument "Uknown");
-                  in
-                  L.iter getSizeNstride oargs;
-
-                  let instr = Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown) in
-                  let call = mkStmt (Instr(instr::restInst)) in
-                  ChangeTo(call)
-                in
-                try
-                  (* fast workaround *)
-                  if (!arch = "cell" ) then
-                    (* check if we have seen this function before *)
-                    let (new_fd, _, _) = List.assoc funname !spu_tasks in
-                    rest_f new_fd
-                  else
-                    raise Not_found
-                with Not_found -> (
-                  let rest_f2 var_i =
-                    (* select the function to create the custom tpc_calls *)
-                    let make_tpc_funcf = match !arch with
-                        "cell" -> Scoop_cell.make_tpc_func
-                      | _ (*"cellgod"*) -> Scoop_cellgod.make_tpc_func
-                    in
-                    let (new_fd, args) = make_tpc_funcf loc var_i oargs args ppc_file spu_file in
-                    add_after_s !ppc_file var_i.vname new_fd;
-                    spu_tasks := (funname, (new_fd, var_i, args))::!spu_tasks;
-                    rest_f new_fd
-                  in
-                  (* try to find the function definition *)
-                  try
-                    (* checking for the function definition *)
-                    let task = find_function_fundec_g (!ppc_file.globals) funname in
-                    (* copy itself and the callees *)
-                    deep_copy_function funname callgraph !spu_file !ppc_file;
-                    rest_f2 task.svar
-                  (* else try to find the function signature/prototype *)
-                  with Not_found -> (
-                    let task = find_function_sign (!ppc_file) funname in
-                    rest_f2 task
-                  )
-                )
-              ) else ( (* END CELL *)
-
-                (* check whether all argument annotations correlate to an actual argument *)
-                let check arg =
-                  if ( not ((isRegion arg) || (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) )then (
-                    let args_err = ref "(" in
-                    List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
-                    args_err := ((!args_err)^")");
-                    E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.aname !args_err);
-                  ) in
-                L.iter check args;
-
-                let rest_f2 var_i =
-                  (* select the function to create the issuer *)
-                  let make_tpc_issuef = match !arch with
-                      "adam" -> Scoop_adam.make_tpc_issue is_hp
-                    | "bddt" -> Scoop_bddt.make_tpc_issue is_hp
-                    | "XPPFX" -> Scoop_XPPFX.make_tpc_issue is_hp
-                    | "PAPAC" -> Scoop_PAPAC.make_tpc_issue is_hp
-                    | "myrmics" -> Scoop_myrmics.make_tpc_issue is_hp
-                    | _ -> E.s (unimp "Runtime \"%s\" doesn't have a make_tpc_issue yet" !arch);
-                  in
-                  let (stmts, args) =
-                    make_tpc_issuef loc var_i oargs args !ppc_file !currentFunction
-                  in
-                  spu_tasks := (funname, (dummyFunDec, var_i, args))::!spu_tasks;
-                  ChangeTo(mkStmt (Block(mkBlock stmts)) )
-                in
-                (* try to find the function definition *)
-                try
-                  (* checking for the function definition *)
-                  let task = find_function_fundec_g (!ppc_file.globals) funname in
-                  rest_f2 task.svar
-                (* else try to find the function signature/prototype *)
-                with Not_found -> (
-                  let task = find_function_sign (!ppc_file) funname in
-                  rest_f2 task
-                )
-              )
-
-
-            )
-            | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
-            | _ -> dbg_print debug "Ignoring pragma"; DoChildren
-          )
-          (* warn about ignored #pragma css ... directives *)
-          | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(!pragma_str, rest))); DoChildren
-        )
-        | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
-    ) else 
-      DoChildren
-end
-
-let feature : featureDescr = 
+let feature : featureDescr =
   { fd_name = "scoop";
     fd_enabled = ref true;
     fd_description = "find all pragmas declaring spu tasks";
@@ -537,9 +157,9 @@ let feature : featureDescr =
     @ Ptatype.options
     @ Ptdepa.options
     ;
-    fd_doit = 
+    fd_doit =
     (function (f: file) ->
-				
+
       if (!arch = "unknown") then (
         E.s (error "No architecture specified. Exiting!")
       ) else if (!arch = "cell" && !queue_size = "0") then (
@@ -570,7 +190,17 @@ let feature : featureDescr =
       let callgraph = CG.computeGraph f in
 
       (* find tpc_decl pragmas *)
-      let fspuVisitor = new findTaskDeclVisitor callgraph in
+      let fspuVisitor =
+        match !arch with
+        | "adam" -> new Scoop_adam.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "bddt" -> new Scoop_bddt.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "cell" -> new Scoop_cell.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+        | "cellgod" -> new Scoop_cellgod.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+        | "myrmics" -> new Scoop_myrmics.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "PAPAC" -> new Scoop_PAPAC.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "XPPFX" -> new Scoop_XPPFX.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
+      in
 
       let def = " "^(!cflags)^
         ( if (!stats) then " -DSTATISTICS=1" else " ")^
@@ -649,7 +279,6 @@ let feature : featureDescr =
            !arch = "adam" ||
            !arch = "myrmics" ||
            !arch = "cellgod" ||
-           !arch = "scc" ||
            !arch = "PAPAC" ||
            !arch = "XPPFX" ) then
         (Ptdepa.find_dependencies f !dis_sdam);
@@ -658,7 +287,7 @@ let feature : featureDescr =
         (function
           GFun(fd,_) ->
             currentFunction := fd;
-            ignore(visitCilFunction fspuVisitor fd);
+            ignore(visitCilFunction (fspuVisitor :> Cil.cilVisitor) fd);
         | _ -> ()
         )
       ;
@@ -667,7 +296,7 @@ let feature : featureDescr =
       (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
 
       (* tasks  (new_tpc * old_original * args) *)
-      let (_, tasks) = List.split (L.rev !spu_tasks) in
+      let (_, tasks) = List.split (L.rev fspuVisitor#getTasks) in
       if (!arch = "cellgod") then (
         (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
         (!spu_file).globals <- (!spu_file).globals@[(make_task_table "Task_table" tasks)]

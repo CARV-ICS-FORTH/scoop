@@ -80,7 +80,7 @@ let mkSet table i arg =
  * @param arg the argument we want to place
  * @return the generated Set instrs
  *)
-let doArgument targs ttyps (orig_tname: string) (tid: int) 
+let doArgument targs ttyps (orig_tname: string) (tid: int)
  (arg: (int * arg_descr) ) : instr list = (
   let (i_m, arg_desc) = arg in
   let arg_addr = arg_desc.address in
@@ -123,7 +123,7 @@ let doArgument targs ttyps (orig_tname: string) (tid: int)
  * @return the stmts that will replace the call paired with a list of numbered
  * argument descriptors
  *)
-let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
+let make_tpc_issue (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
   incr un_id;
 
@@ -208,3 +208,126 @@ let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam l
   let instr = Call (None, Lval (var two), [filename; integer loc.line; Lval (var scoop2179_args); integer num_args], locUnknown) in
   let s' = {s with pragmas = List.tl s.pragmas} in
   ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
+
+(** parses the #pragma css task arguments *)
+let rec scoop_process ppc_file loc pragma =
+  let scoop_process = scoop_process ppc_file loc in
+  match pragma with
+    | (ACons("safe", args)::rest) ->
+      (* kasas' mess here *)
+      (* ignore safe tags, it's a hint for the analysis *)
+      scoop_process rest
+    (* support notransfer in(a,b,c) etc. *)
+    | AStr("notransfer")::(ACons(arg_typ, args)::rest) ->
+      let arg_f = str2arg_flow arg_typ loc in
+      let process_regs = function
+        | ACons(varname, []) ->
+          let vi = find_scoped_var loc !currentFunction ppc_file varname in
+          let tmp_addr = Lval(var vi) in
+          let tmp_t = Region(arg_f, [varname]) in
+          { aname=varname; address=tmp_addr; atype=tmp_t;}
+        | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" arg_typ);
+      in
+      (*FIXME*)
+      let lst = scoop_process rest in
+      (L.map process_regs args)@lst
+      (*let lst = scoop_process rest in*)
+      (*(scoop_process_args arg_typ args loc)@lst*)
+    (* support region in/out/inout(a,b,c) *)
+    | AStr("region")::(ACons(arg_typ, args)::rest) ->
+      let arg_f = str2arg_flow arg_typ loc in
+      let process_regs = function
+        | ACons(varname, []) ->
+          let vi = find_scoped_var loc !currentFunction ppc_file varname in
+          let tmp_addr = Lval(var vi) in
+          let tmp_t = Region(arg_f, [varname]) in
+          { aname=varname; address=tmp_addr; atype=tmp_t;}
+        | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" arg_typ);
+      in
+      let lst = scoop_process rest in
+      (L.map process_regs args)@lst
+    | (ACons(arg_typ, args)::rest) ->
+      let lst = scoop_process rest in
+      (scoop_process_args false ppc_file arg_typ loc args)@lst
+    | [] -> []
+    | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task\n");
+
+(** populates the global list of tasks [tasks] *)
+class findTaskDeclVisitor (cgraph : Callgraph.callgraph) ppc_f pragma =
+  object
+  inherit nopCilVisitor
+  val mutable spu_tasks = []
+  val callgraph = cgraph
+  val ppc_file = ppc_f
+  val pragma_str = pragma
+  (* visits all stmts and checks for pragma directives *)
+  method vstmt (s: stmt) : stmt visitAction =
+    let debug = ref false in
+    let prags = s.pragmas in
+    if (prags <> []) then (
+      match (List.hd prags) with
+        (* Support #pragma css ... *)
+        (Attr(pr_str, rest), loc) when pr_str = pragma_str -> (
+          match rest with
+          (* Support #pragma css wait on(...) *)
+          | [AStr("wait"); ACons("on", exps)] -> (
+              make_wait_on !currentFunction ppc_file loc exps s
+          )
+          (* Support #pragma css wait all *)
+          | [AStr("wait"); AStr("all")]
+          (* Support #pragma css barrier*)
+          | [AStr("barrier")] -> (
+            let twa = find_function_sign ppc_file "tpc_wait_all" in
+            let instr = Call (None, Lval (var twa), [], locUnknown) in
+            let s' = {s with pragmas = List.tl s.pragmas} in
+            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          (* Support #pragma css task... *)
+          | AStr("task")::rest -> (
+            match s.skind with
+            Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+              let funname = vi.vname in
+              let args = scoop_process ppc_file loc rest in
+              dbg_print debug ("Found task \""^funname^"\"");
+
+              (* check whether all argument annotations correlate to an actual argument *)
+              let check arg =
+                if ( not ((isRegion arg) || (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) )then (
+                  let args_err = ref "(" in
+                  List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
+                  args_err := ((!args_err)^")");
+                  E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.aname !args_err);
+                ) in
+              L.iter check args;
+
+              let rest_f2 var_i =
+                let (stmts, args) =
+                  make_tpc_issue loc var_i oargs args ppc_file !currentFunction
+                in
+                spu_tasks <- (funname, (dummyFunDec, var_i, args))::spu_tasks;
+                ChangeTo(mkStmt (Block(mkBlock stmts)) )
+              in
+              (* try to find the function definition *)
+              try
+                (* checking for the function definition *)
+                let task = find_function_fundec_g ppc_file.globals funname in
+                rest_f2 task.svar
+              (* else try to find the function signature/prototype *)
+              with Not_found -> (
+                let task = find_function_sign ppc_file funname in
+                rest_f2 task
+              )
+
+            )
+            | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
+            | _ -> dbg_print debug "Ignoring pragma"; DoChildren
+          )
+          (* warn about ignored #pragma css ... directives *)
+          | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
+        )
+        | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
+    ) else
+      DoChildren
+
+  method getTasks = spu_tasks
+end

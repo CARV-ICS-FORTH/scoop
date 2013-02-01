@@ -1,9 +1,9 @@
 (*
  *
- * Copyright (c) 2010, 
+ * Copyright (c) 2010,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -34,12 +34,13 @@
  *)
 
 (** Responsible for generating code for the ADAM runtime on the
-    Cell Processor 
+    Cell Processor
     @author Foivos Zakkak, zakkak\@ics.forth.gr *)
 
 open Cil
 open Scoop_util
 module E = Errormsg
+module L = List
 
 (** keeps the current funcid for the new tpc_function_* *)
 let func_id = ref 0
@@ -228,12 +229,12 @@ let doArgument (i: int) (this: lval) (bis: lval) (fd: fundec) (arg: (int * arg_d
  *         descriptors
  *)
 let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
-    (args: arg_descr list) (ppc_file: file ref) (spu_file: file ref)
+    (args: arg_descr list) (ppc_file: file) (spu_file: file)
     : (fundec * (int * arg_descr) list) = (
   incr un_id;
   print_endline ("Creating tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id));
   let args = List.sort sort_args (List.rev args) in
-  let skeleton = find_function_fundec (!ppc_file) "tpc_call_tpcAD65" in
+  let skeleton = find_function_fundec ppc_file "tpc_call_tpcAD65" in
   let f_new = copyFunction skeleton ("tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id)) in
   f_new.sformals <- [];
   (* set the formals to much the original function's arguments *)
@@ -260,16 +261,16 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   (* this->closure.funcid = (uint8_t)funcid; *)
   let this_closure = mkFieldAccess this "closure" in
   let funcid_set = Set (mkFieldAccess this_closure "funcid",
-  CastE(find_type !spu_file "uint8_t", integer !func_id), locUnknown) in
+  CastE(find_type spu_file "uint8_t", integer !func_id), locUnknown) in
   let stmts = ref [mkStmtOneInstr funcid_set] in
   (*(* this->closure.total_arguments = (uint8_t)arguments.size() *)
   instrs := Set (mkFieldAccess this_closure "total_arguments",
-  CastE(find_type !spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
+  CastE(find_type spu_file "uint8_t", integer (args_num+1)), locUnknown)::!instrs;*)
 
-  let uint32_t = (find_type !spu_file "uint32_t") in
+  let uint32_t = (find_type spu_file "uint32_t") in
   (* uint32_t block_index_start *)
   let bis = var (makeLocalVar f_new "block_index_start" uint32_t) in
-  
+
   let args_n =
   (* if we have arguments *)
   if (f_new.sformals <> []) then (
@@ -277,15 +278,15 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
     let args_n = number_args args oargs in
     let i_n = ref (args_num+1) in
     incr querie_no;
-    let mapped = (List.map 
-      (fun arg -> decr i_n; doArgument !i_n this bis f_new arg !spu_file
-                  !unaligned_args !ppc_file func_vi.vname !querie_no)
+    let mapped = (List.map
+      (fun arg -> decr i_n; doArgument !i_n this bis f_new arg spu_file
+                  !unaligned_args ppc_file func_vi.vname !querie_no)
       args_n) in
     stmts := mapped@(!stmts);
     args_n
   ) else [] in
 
-  (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS); 
+  (* Foo_32412312231 is located before assert(this->closure.total_arguments<MAX_ARGS);
     for x86*)
   let map_fun = (fun s -> Scoop_util.replace_fake_call_with_stmt s "Foo_32412312231" (List.rev !stmts)) in
   f_new.sbody.bstmts <- List.map map_fun f_new.sbody.bstmts;
@@ -293,3 +294,177 @@ let make_tpc_func (loc: location) (func_vi: varinfo) (oargs: exp list)
   incr func_id;
   (f_new, args_n)
 )
+
+(** parses the #pragma css task arguments *)
+let rec scoop_process ppc_file loc pragma =
+  match pragma with
+    | (ACons(arg_typ, args)::rest) ->
+      let (hp, lst) = scoop_process ppc_file loc rest in
+      (hp, (scoop_process_args false ppc_file arg_typ loc args)@lst)
+    | [] -> (false, [])
+    | _ -> E.s (errorLoc loc "Syntax error in #pragma css task\n");
+
+(** populates the global list of tasks [tasks] *)
+class findTaskDeclVisitor (cgraph : Callgraph.callgraph) ppc_f spu_f pragma =
+  object
+  inherit nopCilVisitor
+  val mutable spu_tasks = []
+  val callgraph = cgraph
+  val ppc_file = ppc_f
+  val spu_file = spu_f
+  val pragma_str = pragma
+  (* visits all stmts and checks for pragma directives *)
+  method vstmt (s: stmt) : stmt visitAction =
+    let debug = ref false in
+    let prags = s.pragmas in
+    if (prags <> []) then (
+      match (List.hd prags) with
+        (* Support #pragma css ... *)
+        (Attr(pr_str, rest), loc) when pr_str = pragma_str -> (
+          match rest with
+          (* Support #pragma css wait all *)
+          | [AStr("wait"); AStr("all")]
+          (* Support #pragma css barrier*)
+          | [AStr("barrier")] -> (
+            let twa = find_function_sign ppc_file "tpc_wait_all" in
+            let instr = Call (None, Lval (var twa), [], locUnknown) in
+            let s' = {s with pragmas = List.tl s.pragmas} in
+            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          (* Support #pragma css start *)
+          | [AStr("start")]
+          (* Support #pragma css start(...) *)
+          | [ACons("start", [])] -> (
+            let ts = find_function_sign ppc_file "tpc_init" in
+            let instr = Call (None, Lval (var ts), [], locUnknown) in
+            let s' = {s with pragmas = List.tl s.pragmas} in
+            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          | [ACons("start", exp::rest)] -> (
+            let ts = find_function_sign ppc_file "tpc_init" in
+            let args =
+                attrParamToExp ppc_file loc exp::[attrParamToExp ppc_file loc (L.hd rest)]
+            in
+            let instr = Call (None, Lval (var ts), args, locUnknown) in
+            let s' = {s with pragmas = List.tl s.pragmas} in
+            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          (* Support #pragma css finish *)
+          | [AStr("finish")] -> (
+            let ts = find_function_sign ppc_file "tpc_shutdown" in
+            let instr = Call (None, Lval (var ts), [], locUnknown) in
+            let s' = {s with pragmas = List.tl s.pragmas} in
+            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+          )
+          (* Support #pragma css malloc *)
+          | [AStr("malloc")] -> (
+            let tm = find_function_sign ppc_file "tpc_malloc" in
+            match s.skind with
+            | Instr(Call(Some res, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+                let instr = Call (Some res, Lval (var tm), oargs, locUnknown) in
+                ChangeTo(mkStmtOneInstr instr)
+            )
+            | _ -> DoChildren
+          )
+          (* Support #pragma css free *)
+          | [AStr("free")] -> (
+            let tf = find_function_sign ppc_file "tpc_free" in
+            match s.skind with
+            | Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+                let instr = Call (None, Lval (var tf), oargs, locUnknown) in
+                ChangeTo(mkStmtOneInstr instr)
+            )
+            | _ -> DoChildren
+          )
+          (* Support #pragma css task... *)
+          | AStr("task")::rest -> (
+            match s.skind with
+            Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+              let funname = vi.vname in
+              let (is_hp, args) = scoop_process ppc_file loc rest in
+              dbg_print debug ("Found task \""^funname^"\"");
+
+              let rest_f new_fd =
+                (* add arguments to the call *)
+                let call_args =
+                  let expS2P = expScalarToPointer loc in
+                  ref (L.rev (L.map expS2P oargs))
+                in
+
+                (* for each actual argument of the call find it's (pragma)
+                    declared size and push it to the argument list of the
+                    new call *)
+                let rec getSizeNstride = function
+                  | Lval ((Var(vi),_))
+                  | StartOf ((Var(vi),_)) -> (
+                    try
+                      let arg_desc = L.find (fun a -> (a.aname=vi.vname)) args in
+                      let vsize = getSizeOfArg arg_desc in
+                      call_args := vsize::!call_args;
+                      if (isStrided arg_desc) then (
+                        let (vels, velsz) =
+                          match arg_desc.atype with
+                              Stride(_, _, els, elsz) -> (els, elsz)
+                            | _ -> assert false
+                        in
+                        call_args := velsz::!call_args;
+                        call_args := vels::!call_args;
+                      );
+                    with Not_found ->
+                      E.s (errorLoc loc "You probably forgot to add \"%s\" in the pragma directive\n" vi.vname)
+                  )
+                  | CastE (_, ex') -> getSizeNstride ex';
+                  (* The following are not supported yet *)
+                  | Const _ -> raise (Invalid_argument "Const");
+                  | SizeOf _ -> raise (Invalid_argument "Sizeof");
+                  | SizeOfE _ -> raise (Invalid_argument "SizeofE");
+                  | SizeOfStr _ -> raise (Invalid_argument "SizeofStr");
+                  | AlignOf _ -> raise (Invalid_argument "Alignof");
+                  | AlignOfE _ -> raise (Invalid_argument "AlignOfE");
+                  | UnOp _ -> raise (Invalid_argument "UnOp");
+                  | BinOp _ -> raise (Invalid_argument "BinOp");
+                  | AddrOf _ -> raise (Invalid_argument "AddrOf");
+                  | _ -> raise (Invalid_argument "Uknown");
+                in
+                L.iter getSizeNstride oargs;
+
+                let instr =
+                  Call (None, Lval (var new_fd.svar), L.rev !call_args, locUnknown)
+                in
+                let call = mkStmt (Instr(instr::restInst)) in
+                ChangeTo(call)
+              in
+              let rest_f2 var_i =
+                let (new_fd, args) =
+                  make_tpc_func loc var_i oargs args ppc_file spu_file
+                in
+                Lockutil.add_after_s ppc_file var_i.vname new_fd;
+                spu_tasks <- (funname, (new_fd, var_i, args))::spu_tasks;
+                rest_f new_fd
+              in
+              (* try to find the function definition *)
+              try
+                (* checking for the function definition *)
+                let task = find_function_fundec_g ppc_file.globals funname in
+                (* copy itself and the callees *)
+                deep_copy_function funname callgraph spu_file ppc_file;
+                rest_f2 task.svar
+              (* else try to find the function signature/prototype *)
+              with Not_found -> (
+                let task = find_function_sign ppc_file funname in
+                rest_f2 task
+              )
+
+            )
+            | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
+            | _ -> dbg_print debug "Ignoring pragma"; DoChildren
+          )
+          (* warn about ignored #pragma css ... directives *)
+          | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
+        )
+        | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
+    ) else
+      DoChildren
+
+  method getTasks = spu_tasks
+end
