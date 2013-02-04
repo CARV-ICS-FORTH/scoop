@@ -81,6 +81,9 @@ and arg_type =
   | Normal of arg_flow * exp (** Normal arguments only need their size *)
   | Region of arg_flow * string list (** Region arguments include all the
                                       arguments of the region *)
+  | NTRegion of arg_flow * string list (** No transfer arguments include all the
+                                      arguments of the region that should not be
+                                      transfered *)
 
 (** The arguments' data flow *)
 and arg_flow =
@@ -163,6 +166,15 @@ let isRegion (arg: arg_descr) : bool =
       Region(_) -> true
     | _ -> false
 
+(** Check if an argument is a no transfer region
+    @param arg the argument's type
+    @return true or false
+*)
+let isNTRegion (arg: arg_descr) : bool =
+   match arg.atype with
+      NTRegion(_) -> true
+    | _ -> false
+
 (** Check if an arguments type is out
     @param arg the argument's type
     @return true or false
@@ -172,7 +184,8 @@ let isOut (arg: arg_descr) : bool =
       Scalar(OUT, _)
     | Stride(OUT, _, _, _)
     | Normal(OUT, _)
-    | Region(OUT, _) -> true
+    | Region(OUT, _)
+    | NTRegion(OUT, _) -> true
     | _ -> false
 
 (** Check if an arguments type is in
@@ -184,7 +197,8 @@ let isIn (arg: arg_descr) : bool =
       Scalar(IN, _)
     | Stride(IN, _, _, _)
     | Normal(IN, _)
-    | Region(IN, _) -> true
+    | Region(IN, _)
+    | NTRegion(IN, _) -> true
     | _ -> false
 
 (** Check if there is any indiced argument in the task (if any task) in the given
@@ -605,7 +619,8 @@ let arg_type2int (arg_t: arg_type) : int =
       Scalar( flow, _)
     | Stride ( flow, _, _, _)
     | Normal ( flow, _)
-    | Region ( flow, _) -> (flow2int flow)
+    | Region ( flow, _)
+    | NTRegion ( flow, _) -> (flow2int flow)
 
 
 (** Returns a string discribing the argument as IN/OUT/INOUT
@@ -620,7 +635,8 @@ let arg_type2string (arg_t: arg_type) : string =
       Scalar( flow, _)
     | Stride ( flow, _, _, _)
     | Normal ( flow, _)
-    | Region ( flow, _) -> (flow2str flow)
+    | Region ( flow, _)
+    | NTRegion ( flow, _) -> (flow2str flow)
 
 (** Checks if tag is data annotation.
 		@param typ the dataflow annotation
@@ -755,7 +771,8 @@ let getFlowOfArg (arg: arg_descr) : arg_flow =
       Scalar(flow, _)
     | Stride(flow, _, _, _)
     | Normal(flow, _)
-    | Region(flow, _) -> flow
+    | Region(flow, _)
+    | NTRegion(flow, _) -> flow
 
 
 (** returns the expression with the size of {e arg}
@@ -767,7 +784,8 @@ let getSizeOfArg (arg: arg_descr) : exp =
       Scalar(_, size)
     | Stride(_, size, _, _)
     | Normal(_, size) -> size
-    | Region(_, _) -> zero
+    | Region(_, _)
+    | NTRegion(_, _) -> zero
 
 (******************************************************************************)
 (*                                   LOOP                                     *)

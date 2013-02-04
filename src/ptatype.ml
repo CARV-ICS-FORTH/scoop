@@ -1,11 +1,11 @@
 (*
  *
- * Copyright (c) 2004-2010, 
+ * Copyright (c) 2004-2010,
  *  Polyvios Pratikakis <polyvios@cs.umd.edu>
  *  Michael Hicks       <mwh@cs.umd.edu>
  *  Jeff Foster         <jfoster@cs.umd.edu>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -42,8 +42,8 @@ open Lockutil
 open Labelflow
 open Scoop_util
 open Shared
-open Ptatypes 
- 
+open Ptatypes
+
 module E = Errormsg
 module U = Uref
 module Lprof = Lockprofile
@@ -59,7 +59,7 @@ module Conf = Locksettings
 module Q = Worklist.QueueWorklist
 module CF = Controlflow
 module PhiSet = CF.PhiSet
-module LP = Loopa 
+module LP = Loopa
 
 let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
@@ -107,7 +107,7 @@ let options = [
   "--debug-ptatype",
   Arg.Set(debug),
   "SDAM: Print debugging information during sdam-typechecking phace (constraint//phi generation).";
-  
+
   "--debug-typing",
     Arg.Set(debug),
     " Print progress information during the typechecking phase (constraint generation)";
@@ -118,7 +118,7 @@ let options = [
 
   "--do-starting-forks",
     Arg.Set(do_starting_forks),
-    " Consider thread creation points to be independent"; 
+    " Consider thread creation points to be independent";
 
   "--no-void",
     Arg.Set(do_void_conflate),
@@ -143,7 +143,7 @@ let options = [
   "--no-ignore-casts",
     Arg.Clear(do_ignore_casts),
     " Create subtyping constraints for each cast, rather than ignoring them";
-  
+
   "--no-use-one-effect",
     Arg.Clear(do_one_effect),
     " Don't use only one effect variable for the whole body of non-forking functions";
@@ -316,7 +316,7 @@ let get_top_label (t: tau) (e: exp) : label =
       ITVoid _
     | ITInt _
     | ITComp _
-    | ITFloat 
+    | ITFloat
     | ITExists _ ->
         ignore(error
           "Invalid expression in the list of existentially quantified variables. \
@@ -333,7 +333,7 @@ let get_top_label (t: tau) (e: exp) : label =
 let fill_thread_local (env: env) : unit = begin
   thread_local_rhos := RhoSet.empty;
   Uniq.forall_unique
-    (fun v -> 
+    (fun v ->
       if !debug then ignore (E.log "%s is thread-local\n" v);
       let (t,r) = Strmap.find v env.var_map in
       thread_local_rhos := RhoSet.add r !thread_local_rhos;
@@ -381,7 +381,7 @@ let is_atomic (v: varinfo) : bool =
   Cil.hasAttribute "atomic" v.vattr
 
 let uniq_deref u =
-  match u with 
+  match u with
     UnqVar -> UnqStorage
   | UnqStorage -> NotUnq
   | NotUnq -> NotUnq
@@ -389,7 +389,7 @@ let safe_ignore u =
   match u with
     UnqVar | UnqStorage -> true
   | NotUnq -> false
-let uniq2str u = 
+let uniq2str u =
   match u with
     UnqVar -> "Unique Variable"
   | UnqStorage -> "Unique Storage"
@@ -401,13 +401,13 @@ let read_rho (r: rho) (p: phi) (e:effect) (u:uniq): unit =
   if LF.Rho.equal r unknown_rho then () else
   if !do_uniq && (safe_ignore u) then (
     (* SANITY; thread_local_rhos is obsolete *)
-    if !debug && not (RhoSet.mem r !thread_local_rhos) then 
+    if !debug && not (RhoSet.mem r !thread_local_rhos) then
       ignore(warn "NEW unique read of %a\n" d_rho r);
     if !debug then
       ignore(warn "removing thread-local read %a\n" d_rho r);
   ) else (
     (* SANITY; thread_local_rhos is obsolete *)
-    if !debug && (RhoSet.mem r !thread_local_rhos) then 
+    if !debug && (RhoSet.mem r !thread_local_rhos) then
       ignore(warn "NO LONGER unique read of %a\n" d_rho r);
     add_to_read_effect r e;
     add_to_read_chi r !current_chi;
@@ -419,13 +419,13 @@ let write_rho (r: rho) (p: phi) (e:effect) (u:uniq): unit =
   if LF.Rho.equal r unknown_rho then () else
   if !do_uniq && (safe_ignore u) then (
     (* SANITY; thread_local_rhos is obsolete *)
-    if !debug && not (RhoSet.mem r !thread_local_rhos) then 
+    if !debug && not (RhoSet.mem r !thread_local_rhos) then
       ignore(warn "MISSED unique write of %a\n" d_rho r);
     if !debug then
       ignore(warn "removing thread-local write %a\n" d_rho r);
   ) else (
     (* SANITY; thread_local_rhos is obsolete *)
-    if !debug && (RhoSet.mem r !thread_local_rhos) then 
+    if !debug && (RhoSet.mem r !thread_local_rhos) then
       ignore(warn "NO LONGER unique write of %a\n" d_rho r);
     add_to_write_effect r e;
     add_to_write_chi r !current_chi;
@@ -436,12 +436,12 @@ let write_theta (th: theta) (p: phi) (e:effect) (u:uniq): unit =
   if !debug then ignore(E.log "%a: write access to %a\n" d_loc !currentLoc d_theta th);
   if LF.Theta.equal th unknown_theta then () else
   if !do_uniq && (safe_ignore u) then (
-    if !debug then 
+    if !debug then
       ignore(warn "MISSED unique write of %a\n" d_theta th);
     if !debug then
       ignore(warn "removing thread-local write %a\n" d_theta th);
   ) else (
-    if !debug then 
+    if !debug then
       ignore(warn "NO LONGER unique write of %a\n" d_theta th);
     add_theta_to_write_effect th e;
     add_theta_to_write_chi th !current_chi;
@@ -461,7 +461,7 @@ let done_typing () =
     Cil.currentLoc := tmp;
     loop()
   in
-  try loop() with Q.Empty -> () 
+  try loop() with Q.Empty -> ()
 
 
 
@@ -496,11 +496,11 @@ let is_existential (al: attributes) : bool =
   in
   f al
 *)
-  
+
 let rec typsig_to_tau_sig (t: Cil.typsig) : tau_sig =
-  match t with 
+  match t with
   | TSBase(TInt _) -> STInt
-  | TSBase(TFloat _) -> STFloat 
+  | TSBase(TFloat _) -> STFloat
   | TSBase(TVoid _) -> STVoid
   | TSBase(TBuiltin_va_list _) -> STBuiltin_va_list
   | TSEnum _ -> STInt
@@ -508,7 +508,7 @@ let rec typsig_to_tau_sig (t: Cil.typsig) : tau_sig =
   | TSArray (t,l,_) -> STPtr(typsig_to_tau_sig t)
   | TSComp (s, n, al) -> STComp(s,n)
   | TSFun(rts,argts,_,_) ->
-      STFun(typsig_to_tau_sig rts, 
+      STFun(typsig_to_tau_sig rts,
       List.map (fun ts -> (typsig_to_tau_sig ts)) argts)
   | _ -> assert false
 
@@ -526,7 +526,7 @@ let make_optional_phi_var (name: string): phi option =
   if !do_void_conflate || !do_void_single
   then Some (make_phi name CF.PhiVar) else None
 
-let make_vinfo (r: rho): vinfo = 
+let make_vinfo (r: rho): vinfo =
   if !debug_void then ignore(E.log "make_vinfo: #%d at %a\n" !next_info d_loc !Cil.currentLoc);
   let r_opt =
     if (!do_void_conflate || !do_void_single)
@@ -570,7 +570,7 @@ let make_cinfo (c: compinfo) (name: LN.label_name) =
   all_cinfo := ci::!all_cinfo;
   Q.push ci worklist_cinfo;
   ci
-    
+
 let mkEmptyExist ts : tau =
   let e = {
     exist_tau = integer_tau;
@@ -761,7 +761,7 @@ let rec visit_concrete_tau (f: rho -> unit) (t: tau) : unit = begin
   | ITAbs _ -> assert false (* these should never happen *)
   | ITExists _ ->
       ignore(error "dereferencing existential labels outside unpack");
-      raise TypingBug 
+      raise TypingBug
   | ITVoid (Some ur) ->
       defer
         (fun () ->
@@ -784,7 +784,7 @@ let rec visit_concrete_tau (f: rho -> unit) (t: tau) : unit = begin
             (fun s (r,t) ->
               f r;
               visit_concrete_tau f t)
-            c.cinfo_fields 
+            c.cinfo_fields
         )
 end
 
@@ -829,7 +829,7 @@ let rec get_free_vars t free_vars known =
   | ITInt _
   | ITVoid None
   | ITFloat
-  | ITRegion _ 
+  | ITRegion _
   | ITAbs _ -> free_vars
   | ITBuiltin_va_list vi
   | ITVoid (Some vi) -> begin
@@ -850,7 +850,7 @@ let rec get_free_vars t free_vars known =
           get_free_vars t' (RhoSet.add r fr) (TauSet.add t known))
         c.cinfo_fields
         free_vars
-  | ITFun fdi -> 
+  | ITFun fdi ->
       List.fold_left
         (fun fv (_,t') -> get_free_vars t' fv (TauSet.add t known))
         (get_free_vars fdi.fd_output_tau free_vars (TauSet.add t known))
@@ -919,7 +919,7 @@ and env_flows (e1: env) (e2: env) : unit =
       (fun (t1,r1) (t2,r2) -> sub_tau t1 t2; rho_flows r1 r2; true)
       e1.var_map e2.var_map);
   end
-  
+
 and join_gamma (env1,phi1,eff1: gamma) (env2,phi2,eff2: gamma) : gamma =
   unify_env env1 env2;
   (env1, join_phi phi1 phi2 CF.PhiVar, join_effects eff1 eff2)
@@ -1062,7 +1062,7 @@ and annotate (t: typ)
             rt
         | TComp(c, al) ->
             let rt1 = annotate tptd known (LN.Deref name) in
-            let r = 
+            let r =
               match rt1.t with
                 ITComp(ci) when not !do_field_sensitive -> getSome (U.deref ci).cinfo_field_rho
               | _ -> make_rho name false
@@ -1398,7 +1398,7 @@ and sub_tau (src: tau) (tgt: tau) : unit =
           then U.unify unify_cinfo (ci1, ci2)
           else (
             match locopt with
-              None -> 
+              None ->
                 ignore(error "assigning concrete structs of different type:\n\
                               %a\n %a\n" d_tau src d_tau tgt)
             | Some(r1,r2) -> begin
@@ -1407,7 +1407,7 @@ and sub_tau (src: tau) (tgt: tau) : unit =
                 conflate src r2 phi_in phi_out TauSet.empty;
               end
           )
-          
+
       (* from all fields of a union to a type *)
       | ITAbs _, _
       | _, ITAbs _ -> assert false
@@ -1516,7 +1516,7 @@ and conflate_from (src: rho)
       conflate_from src fi.fd_output_tau phi_in phi_out (TauSet.add t known)
   | ITComp(ci) ->
       let c = U.deref ci in
-      let r = 
+      let r =
         match c.cinfo_from_rho with
           None ->
             defer (fun () ->
@@ -1576,7 +1576,7 @@ and conflate_to (t: tau)
       conflate_to fi.fd_output_tau tgt phi_in phi_out known
   | ITComp(ci) ->
       let c = U.deref ci in
-      let r = 
+      let r =
         match c.cinfo_to_rho with
           None ->
             defer (fun () ->
@@ -1698,7 +1698,7 @@ and get_cinfo_field (fi: fieldinfo) (ci: cinfo)
     Cil.currentLoc := storeloc;
     (r,s)
   end
-  
+
 
 and instantiate (tabs: tau)
                 (tinst: tau)
@@ -1727,7 +1727,7 @@ and instantiate (tabs: tau)
             instantiate1 !tref1 !tref2 true i;
             instantiate1 !tref1 !tref2 false i;
         end
-      | ITRegion th1, ITRegion th2 -> inst_theta th1 th2 i; 
+      | ITRegion th1, ITRegion th2 -> inst_theta th1 th2 i;
       | ITInt b1, ITInt b2 -> assert (not b1); assert (not b2); ()
       | ITInt _, ITFloat -> ()
       | ITFloat, ITInt false -> ()
@@ -1803,7 +1803,7 @@ and type_binop (b : binop)
   | IndexPI ->
       if isPtr s1 then s1 else s2
   | MinusPP
-  | MinusA | Mult | Div | Mod 
+  | MinusA | Mult | Div | Mod
   | Shiftlt | Shiftrt | BAnd | BXor | BOr -> integer_tau
   | Lt | Gt | Le | Ge | LAnd | LOr -> integer_tau
   | Eq -> integer_tau
@@ -1818,13 +1818,13 @@ and type_binop (b : binop)
  *  - the structure that is being typed.
  *  - input environment
  *  - input phi
- *  - input effect 
+ *  - input effect
  * outputs:
  *  - tau (returned type)
  *  - output rho (for stuff whose address might be taken)
  *  - output environment
  *  - output phi
- *  - output effect 
+ *  - output effect
  * when a type-rule doesn't need/return all of them, the corresponding function
  * might not have them in its signature.
  *)
@@ -1861,12 +1861,12 @@ and type_var (var: varinfo)     (* name of variable typed *)
       env_lookup var.vname input_env
     with Not_found ->
       ignore(error "undefined variable %s" var.vname);
-      raise TypingBug 
+      raise TypingBug
   in
   let (out_rho, out_env) = (r, input_env) in
-  let unq = 
+  let unq =
     if !do_uniq && Uniq.is_unique var.vname !current_uniqueness then
-      UnqVar 
+      UnqVar
     else NotUnq
   in
   if !debug then ignore(E.log "var |%s| is %s\n" var.vname (uniq2str unq));
@@ -2010,7 +2010,7 @@ and type_ref (lv: lval)
 and type_exp (e: exp)
              (input_env: env)
              (input_phi: phi)
-             (input_effect: effect) 
+             (input_effect: effect)
              : ((tau * uniq) * env * phi * effect) =
   match e with
     Const(c) ->
@@ -2035,7 +2035,7 @@ and type_exp (e: exp)
         type_exp e1 input_env input_phi input_effect in
       let ((s2,u2), exp_env2, exp_phi2, exp_effect2) =
         type_exp e2 exp_env1 exp_phi1 exp_effect1 in
-      let u = match bop with 
+      let u = match bop with
         PlusA | PlusPI | IndexPI | MinusA | MinusPI | MinusPP -> u1
       | _ -> NotUnq in
       (((type_binop bop s1 s2),u), exp_env2, exp_phi2, exp_effect2)
@@ -2060,13 +2060,13 @@ and type_exp (e: exp)
           ignore(error "StartOf operator does not return pointer");
           raise TypingBug
       end
-  |	Question(e1, e2, e3, _) ->       
+  |	Question(e1, e2, e3, _) ->
   		let ((s1,u1), exp_env1, exp_phi1, exp_effect1) =
         type_exp e1 input_env input_phi input_effect in
       let ((s2,u2), exp_env2, exp_phi2, exp_effect2) =
         type_exp e2 exp_env1 exp_phi1 exp_effect1 in
       let ((s3,u3), exp_env3, exp_phi3, exp_effect3) =
-        type_exp e2 exp_env2 exp_phi2 exp_effect2 in  
+        type_exp e2 exp_env2 exp_phi2 exp_effect2 in
       ((s3, u3), exp_env2, exp_phi3, exp_effect3) (* TODO: not sure if everything works fine with this *)
 
 (*****************************************************************************)
@@ -2083,7 +2083,7 @@ and compute_quantified_labels (c: cinfo) (el: exp list) : labelsets =
     el
 
 and fillExist (te:tau) (t: tau) : unit = begin
-  let e = 
+  let e =
     match te.t with
     | ITExists(e) -> e
     | _ -> assert false (*impossible*)
@@ -2136,7 +2136,7 @@ and type_init (i: init)
   | CompoundInit(t, l) ->
       let s = annotate t [] name in
       allocate s;
-      let out_env = 
+      let out_env =
         match s.t with
         | ITComp(ci) -> List.fold_left (type_offcinit ci name) input_env l
         | ITPtr(tref, _) -> List.fold_left (type_offainit !tref name) input_env l
@@ -2192,21 +2192,21 @@ and type_offcinit (c: cinfo)
 (*      | _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);*)
 (*end*)
 
-(*	parses recursively the arguments in an argument data annotation team and returns 
-		a list with the corresponding argument descriptors 
+(*	parses recursively the arguments in an argument data annotation team and returns
+		a list with the corresponding argument descriptors
 *)
 let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr list), (loop_d: loop_descr option)) arg =
   if not (is_dataflow_tag iotyp) then (
     match arg with
       (* handle strided... *)
       AIndex(AIndex(ACons(varname, []), _), ABinOp( BOr, _, _))
-    | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, _)), _) 
+    | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, _)), _)
     | AIndex(ACons(varname, []), _)
     | ACons(varname, []) ->
       (* we need to find the argument in the current arg_l to mark it as safe *)
-      List.iter 
+      List.iter
         (fun a ->
-          if(varname == a.argname) then 
+          if(varname == a.argname) then
             a.safe <- true; a.force_safe <- true;
         ) args_l;
       (iotyp, loc, args_l, loop_d)
@@ -2217,7 +2217,7 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
     match arg with
       (* handle strided... *)
       AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) ->
-        let attrParamToExp' = 
+        let attrParamToExp' =
           attrParamToExp !program_file loc ~currFunction:!currentFunction
         in
         let tmp_size = attrParamToExp' varsize in
@@ -2235,7 +2235,7 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         let tmp_size = attrParamToExp' bs_c in
         let var_i = find_scoped_var loc !currentFunction !program_file varname in
         let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d = 
+        let arg_d =
           Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
         in
         (iotyp, loc, arg_d::args_l, loop_d)
@@ -2271,7 +2271,7 @@ let process_actuals (el: exp list) loc : string list =
 		(if(!debug_SDAM) then ignore(E.log "parsing actual %a\n" d_exp e););
 		(* ignore(E.log "parsing actual %a\n" d_exp e);
 		ignore(E.log "actuals number:%d\n" (List.length args_l)); *)
-		match e with 
+		match e with
 			Lval(Var(vi), _) -> vi.vname::args_l
 		|	CastE(_, e2) -> proc_exp args_l e2
 		| StartOf(Var(vi), _) -> (
@@ -2286,19 +2286,20 @@ let process_actuals (el: exp list) loc : string list =
 			ignore(E.error "SDAM:%a:Cannot evaluate expression as pragma task argument\n" d_loc loc);
 			raise Ignore_pragma
 		)
-	) in 	
+	) in
 	List.rev (List.fold_left proc_exp [] el)
 
-(*	parses recursively the arguments of the pragma task, and returns 
-		a list with the corresponding argument descriptors 
+(*	parses recursively the arguments of the pragma task, and returns
+		a list with the corresponding argument descriptors
 *)
 let css_task_process (loc, loop_d) args =
-	let rec proc_attrs args_l args = 
-		match args with 
+	let rec proc_attrs args_l args =
+		match args with
 			[] -> args_l
 		|	(AStr("highpriority"))::rest -> proc_attrs args_l rest
-		| AStr("region")::region_attr -> (
-			match region_attr with 
+		| AStr("region")::region_attr
+		| AStr("notransfer")::region_attr -> (
+			match region_attr with
       | AStr(region_name)::region_type -> (
 				match region_type with
         | ACons(iotyp, args')::rest ->
@@ -2306,7 +2307,7 @@ let css_task_process (loc, loop_d) args =
         	let tmp_size = SizeOfE (Lval (var var_i)) in
        	 	let array_d = LP.getArrayDescr var_i loc !currSid in
         	let arg_d =
-            Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d 
+            Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d
           in
 					(* ignore(E.log "adding argument %s\n" arg_d.argname); *)
 					proc_attrs (arg_d::args_l) rest
@@ -2323,7 +2324,7 @@ let css_task_process (loc, loop_d) args =
             let tmp_size = SizeOfE (Lval (var var_i)) in
             let array_d = LP.getArrayDescr var_i loc !currSid in
             Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
-          | _ -> 
+          | _ ->
             ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
             raise Ignore_pragma
         in
@@ -2343,7 +2344,7 @@ let css_task_process (loc, loop_d) args =
 			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
 			raise Ignore_pragma
 		)
-	in proc_attrs [] args 
+	in proc_attrs [] args
 
 (** parses instruction task to collect task and arguments
 		@param il the instruction coupled with current task pragma
@@ -2354,7 +2355,7 @@ let css_task_process (loc, loop_d) args =
 		@return a new task descriptor
 *)
 let handle_css_task il env args loc loop_d : task_descr =  begin
-	match il with 
+	match il with
   	Call(_, Lval((Var(vi), _)), acts, loc) -> (
 (*		let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in *)
 			let args_l = css_task_process (loc, loop_d) args in
@@ -2377,7 +2378,7 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
 								raise Ignore_pragma
 							)
 				) in
-				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in      
+				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in
 				Sdam.addTask task_d;
 				task_d
 			) with Not_found -> (
@@ -2385,8 +2386,8 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
 					raise Ignore_pragma
 				)
 		)
-  | _ -> ( 
-			ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ignoring pragma" d_loc loc); 
+  | _ -> (
+			ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ignoring pragma" d_loc loc);
 			raise Ignore_pragma
 		)
 end
@@ -2413,7 +2414,7 @@ let handle_fork (_: exp list)
                 : gamma =
   match args with
     ({t =ITPtr(_,r1)},u1)::(t2,u2)::({t= ITPtr(tref, b)},u3)::(arg,_)::[] ->
-      let fi = 
+      let fi =
         match (!tref).t with
           ITFun fi -> fi
         | _ -> assert false;
@@ -2450,10 +2451,10 @@ let handle_fork (_: exp list)
         CF.starting_phis := phi_forked::!CF.starting_phis;
       CF.phi_flows phi_forked fi.fd_input_phi;
       CF.phi_flows phi_before phi_after;
-      CF.phi_flows phi_before phi_forked;      
+      CF.phi_flows phi_before phi_forked;
 
       add_fork input_effect eff_after eff_forked
-        phi_before phi_after phi_forked 
+        phi_before phi_after phi_forked
         (function () -> find_free_vars input_env);
 
       (* log *)
@@ -2465,7 +2466,7 @@ let handle_fork (_: exp list)
       (input_env, phi_after, eff_after)
   | _ ->
       ignore(error "calling fork with bad arguments");
-      raise TypingBug 
+      raise TypingBug
 
 let handle_memset (_: exp list)
                   (_: lval option)
@@ -2623,7 +2624,7 @@ let handle_end_unpack (el: exp list)
                       (input_effect: effect)
                       : gamma =
   if !do_existentials then begin
-    let err () = 
+    let err () =
       ignore(error "end_unpack() argument should be a local variable, \
                     pointer to an unpacked existential struct");
       raise TypingBug
@@ -2809,7 +2810,7 @@ let handle_deleteregion (el: exp list)
   | _ ->
     ignore(error "calling delete region with bad arguments: %a" (d_list "\n" d_exp) el);
     raise TypingBug
-                      			
+
 let handle_new_subregion (_: exp list)
                			  	 (lvo: lval option)
                 				 (args: (tau*uniq) list)
@@ -2887,7 +2888,7 @@ let get_special (k: Conf.handler) : special_function_t =
   | Conf.Pack -> handle_pack
   | Conf.Start_unpack -> handle_start_unpack
   | Conf.End_unpack -> handle_end_unpack
-  | Conf.New_Region -> handle_new_region 
+  | Conf.New_Region -> handle_new_region
   | Conf.Delete_Region -> handle_deleteregion
  	| Conf.New_Subregion -> handle_new_subregion
 	| Conf.Ralloc -> handle_ralloc
@@ -3047,7 +3048,7 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
       let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
       CF.phi_flows phi barrier_phi;
       CF.starting_phis := barrier_phi::!CF.starting_phis;
-      ((env, barrier_phi, eff), (kind, loop_d))   		
+      ((env, barrier_phi, eff), (kind, loop_d))
     )
     | AStr("finish")::_ -> (
       if !debug_SDAM then ignore(E.log "SDAM: Finish parallel region.\n");
@@ -3057,19 +3058,19 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
 
       ((env, barrier_phi, eff), (kind, loop_d))
     )
-    | AStr("barrier")::_ -> 
-      if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+    | AStr("barrier")::_ ->
+      if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n");
       let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
       CF.phi_flows phi barrier_phi;
       CF.starting_phis := barrier_phi::!CF.starting_phis;
       ((env, barrier_phi, eff), (kind, loop_d))
     | AStr("wait")::rest -> ( (* TODO: maybe obsolete syntax *)
-      match rest with 
+      match rest with
       | ACons("on", exps)::_ ->
-        ignore(E.warn "Wait on task analysis not supported yet...\n"); 
+        ignore(E.warn "Wait on task analysis not supported yet...\n");
         ((env, phi, eff), (kind, loop_d))
       | AStr("all")::_ ->
-        if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n"); 
+        if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n");
         let barrier_phi = make_phi "Barrier" CF.PhiBarrier in
         CF.phi_flows phi barrier_phi;
         CF.starting_phis := barrier_phi::!CF.starting_phis;
@@ -3077,21 +3078,21 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
       | _ ->
         if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
         ((env, phi, eff), (kind, loop_d))
-    ) 
+    )
     |	AStr("task")::args -> (
       match kind with
       | Instr(taskcall::_) -> (* task pragmas must be coupled with function calls *)
         if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
-        let task_d = 
+        let task_d =
           handle_css_task taskcall env args loc loop_d
-        in	
+        in
         let task_phi =
           make_phi "Task" (CF.PhiTask (task_d.taskname, task_d.taskid))
         in
         CF.phi_flows phi task_phi;
         CF.starting_phis := task_phi::!CF.starting_phis;
         ((env, task_phi, eff), (kind, loop_d))
-      | _ -> 
+      | _ ->
         ignore(warnLoc loc "SDAM:Invalid syntax!\n");
         ((env, phi, eff), (kind, loop_d))
     )
@@ -3112,12 +3113,12 @@ and type_stmt_list ((gm: gamma), (loop_d: loop_descr option)) stmts =
     (g', loop_d)
   in
   List.fold_left f g stmts
-  
-and type_pragma_list g pragmas = 
+
+and type_pragma_list g pragmas =
   let f g s =
     let g' = type_pragma g s in
     g'
-  in 
+  in
   List.fold_left f g pragmas
 
 and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gamma =
@@ -3129,9 +3130,9 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
   let (env,phi,eff) = Hashtbl.find env.goto_tbl stmt in
 (*  let ((env', phi', eff'),_) = List.fold_left (type_pragma) ((env, phi, eff),stmt.skind) stmt.pragmas in*)
   match stmt.skind with
-    Instr(il) -> 
+    Instr(il) ->
       let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
-      List.fold_left (type_instr ) (env', phi', eff') il    
+      List.fold_left (type_instr ) (env', phi', eff') il
   | Return(e, loc) ->
       currentLoc := loc;
       let ((env, phi, eff), _) = type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas in
@@ -3181,7 +3182,7 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
 					let (i_inf, i_exp) = getSome loop_i in
 					Sdam.make_loop_descr i_inf i_exp
 				)
-				else 
+				else
 					Sdam.make_loop_descr None None
 			) in *)
 (*			let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff),(stmt.skind, loop_d)) stmt.pragmas in *)
@@ -3198,11 +3199,11 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
       CF.phi_flows p2 begin_phi;
       effect_flows eff ef2;
       effect_flows ef2 eff;
-      env_flows env2 env;  
+      env_flows env2 env;
       (* match with the last statement, which should be the loop index incrementation *)
 (*      let last_stmt = (List.hd (List.rev b.bstmts)) in *)
 (*       Loopa.simple_loop_pattern last_stmt.skind;*)
-      
+
       (*let live_vars = LV.getLiveSet stmt.sid in
       down e env (getSome live_vars);
       *)
@@ -3214,7 +3215,7 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
   | Loop(_,_,_,None)
   | Break _
   | Continue _
-  | Switch _ -> 
+  | Switch _ ->
     ignore(type_pragma_list ((env, phi, eff), (stmt.skind, loop_d)) stmt.pragmas);
     assert false
   | TryExcept _ (* wrong compiler *)
@@ -3293,8 +3294,8 @@ let addfun (fd: fundec) : unit = begin
       let in_eff = make_effect (fd.svar.vname^"-input") false in
       let start_env = fresh_env () in
       let (arg_types, arg_env) = addvars fd.sformals start_env in
-      let arg_types = 
-        if b then 
+      let arg_types =
+        if b then
           let r = make_rho (LN.Const "va_list") false in
           let vi = make_vinfo r in
           let t = make_tau (ITBuiltin_va_list vi) STBuiltin_va_list in
@@ -3339,7 +3340,7 @@ let addfun (fd: fundec) : unit = begin
         env_add_var locals_env fd.svar.vname (fun_abs_type, const_rho)
       in
 			(* TODO: anchor1 *)
-      
+
       (* using this Gamma, type the function body *)
       let ((_, phi_stmt, eff_stmt), _) =
         type_stmt_list ((final_env, in_phi, in_eff), None) fd.sbody.bstmts in
@@ -3480,7 +3481,7 @@ let propagate_cinfo_i (ci1: cinfo) (ci2: cinfo) (i: instantiation): unit =
       end
     ) c2.cinfo_fields;
   ()
-  
+
 let dump_vinfo_stats () : unit =
   if !debug then ignore(E.log "calculating void* statistics\n");
   let (t,c,e,s) = List.fold_left
@@ -3800,7 +3801,7 @@ let init f : unit = begin
   global_env := {
     goto_tbl = Hashtbl.create 1;
     var_map =
-      Hashtbl.fold 
+      Hashtbl.fold
         (fun name (resTyp, argTypes, isva) (h: (tau*rho) Strmap.t) ->
           let t = (TFun(resTyp,
                  Some (List.map (fun at -> ("", at, [])) argTypes),
@@ -3811,7 +3812,7 @@ let init f : unit = begin
           then undef_functions := Strset.add name !undef_functions;
           Strmap.add name (tau,unknown_rho) h)
         Cil.gccBuiltins Strmap.empty;
-    unpacked_map = Strmap.empty; 
+    unpacked_map = Strmap.empty;
   };
 
   (* find all functions that call fork *)
@@ -3833,7 +3834,7 @@ let init f : unit = begin
         else ()
       with Not_found -> ())
     graph;
-  (*if !debug_one_effect then 
+  (*if !debug_one_effect then
     Hashtbl.iter (fun s _ -> ignore(E.log "function %s calls fork\n" s)) functions_that_call_fork;*)
   if !debug then ignore(E.log "found what calls fork\n");
 end

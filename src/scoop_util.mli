@@ -63,7 +63,8 @@ type arg_descr =
 
 (* The arguments' type *)
 and arg_type =
-  | Scalar of arg_flow * Cil.exp (* Scalar arguments only need their size (maybe not) *)
+  | Scalar of arg_flow * Cil.exp (* Scalar arguments only need their size (maybe
+                                    not) *)
   | Stride of arg_flow * Cil.exp * Cil.exp * Cil.exp
                               (* Stride args have three sizes
                                 1. stride size
@@ -72,7 +73,10 @@ and arg_type =
                               *)
   | Normal of arg_flow * Cil.exp (* Normal arguments only need their size *)
   | Region of arg_flow * string list (* Region arguments include all the
-                                      arguments of the region *)
+                                        arguments of the region *)
+  | NTRegion of arg_flow * string list (** No transfer arguments include all the
+                                           arguments of the region that should
+                                           not be transfered *)
 
 (* The arguments' data flow *)
 and arg_flow =
@@ -114,6 +118,9 @@ val isScalar : arg_descr -> bool
 
 (* Check if an argument is region *)
 val isRegion : arg_descr -> bool
+
+(* Check if an argument is a no transfer region *)
+val isNTRegion : arg_descr -> bool
 
 (* Check if an arguments type is out *)
 val isOut : arg_descr -> bool
@@ -180,7 +187,8 @@ val __find_local_var : Cil.fundec -> string -> Cil.varinfo
 
 (* find the variable named <name> in fundec <fd>
    else look if it's a global of file <f> *)
-val find_scoped_var : Cil.location -> Cil.fundec -> Cil.file -> string -> Cil.varinfo
+val find_scoped_var : Cil.location -> Cil.fundec -> Cil.file -> string ->
+  Cil.varinfo
 
 (* find the enum named <name> in file f *)
 val find_enum : Cil.file -> string -> Cil.enuminfo
@@ -196,7 +204,8 @@ val find_enum : Cil.file -> string -> Cil.enuminfo
  *)
 val expScalarToPointer : Cil.location -> Cil.exp -> Cil.exp
 
-(** Takes a function declaration and changes the types of its scalar formals to pointers
+(** Takes a function declaration and changes the types of its scalar formals to
+    pointers
     @param f the function declaration to change
  *)
 val formalScalarsToPointers : Cil.location -> Cil.fundec -> unit
@@ -224,7 +233,8 @@ val arg_type2integer : arg_type -> Cil.exp
 
 (* recursively copies a function definition and all it's callees
    from the ppc_file to the spu_file *)
-val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file -> unit
+val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file
+-> unit
 
 (******************************************************************************)
 (*                         AttrParam to Expression                            *)
@@ -304,7 +314,8 @@ val make_null_task_table :
 (*                                 MISC                                       *)
 (******************************************************************************)
 
-val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list -> Cil.stmt
+val replace_fake_call_with_stmt : Cil.stmt -> string -> Cil.stmt list ->
+  Cil.stmt
 
 (** Comparators for use with [List.sort] *)
 val comparator : (int * Cil.exp) -> (int * Cil.exp) -> int
@@ -315,7 +326,8 @@ val sort_args_n : (int*arg_descr) -> (int*arg_descr) -> int
 
 val sort_args_n_inv : (int*arg_descr) -> (int*arg_descr) -> int
 
-(** assigns to each argument description its place in the original argument list *)
+(** assigns to each argument description its place in the original argument list
+ *)
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
 (** Preprocesses a header file and merges it with a file. *)

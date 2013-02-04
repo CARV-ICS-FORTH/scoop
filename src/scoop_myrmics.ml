@@ -104,6 +104,8 @@ let doArgument targs ttyps (orig_tname: string) (tid: int)
     (* arg_flag|TPC_REGION_ARG; *)
     if (isRegion arg_desc) then (
       arg_type_tmp lor 0x10
+    ) else if (isNTRegion arg_desc) then (
+      arg_type_tmp lor 0x14
     ) else
       arg_type_tmp
   in
@@ -213,26 +215,22 @@ let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam l
 let rec scoop_process ppc_file loc pragma =
   let scoop_process = scoop_process ppc_file loc in
   match pragma with
-    | (ACons("safe", args)::rest) ->
-      (* kasas' mess here *)
-      (* ignore safe tags, it's a hint for the analysis *)
+    | ACons("safe", args)::rest ->
+      (* ignore safe tags, it's a hint for the analysis, let it handle it *)
       scoop_process rest
-    (* support notransfer in(a,b,c) etc. *)
+    (* support notransfer in/out/inout(a,b,c) etc. *)
     | AStr("notransfer")::(ACons(arg_typ, args)::rest) ->
       let arg_f = str2arg_flow arg_typ loc in
       let process_regs = function
         | ACons(varname, []) ->
           let vi = find_scoped_var loc !currentFunction ppc_file varname in
           let tmp_addr = Lval(var vi) in
-          let tmp_t = Region(arg_f, [varname]) in
+          let tmp_t = NTRegion(arg_f, [varname]) in
           { aname=varname; address=tmp_addr; atype=tmp_t;}
         | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" arg_typ);
       in
-      (*FIXME*)
       let lst = scoop_process rest in
       (L.map process_regs args)@lst
-      (*let lst = scoop_process rest in*)
-      (*(scoop_process_args arg_typ args loc)@lst*)
     (* support region in/out/inout(a,b,c) *)
     | AStr("region")::(ACons(arg_typ, args)::rest) ->
       let arg_f = str2arg_flow arg_typ loc in
