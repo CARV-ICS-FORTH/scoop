@@ -396,10 +396,11 @@ let doRegions (loc: location) (this: lval) (ppc_file: file) (args: arg_descr lis
 (* Preprocess the header file <header> and merges it with f.  The
  * given header should be in the gcc include path.  Modifies f
  *) (* the original can be found in lockpick.ml *)
+(*FIXME*)
 let preprocessAndMergeWithHeader_x86 (f: file) (header: string) (def: string)
     : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
-  ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" "^header^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" -I"^header^" "^header^"/scoop/tpc_scoop.h - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;

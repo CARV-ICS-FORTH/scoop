@@ -57,7 +57,7 @@ let doRegions (loc: location) (this: lval) (f: file) (args: arg_descr list )  (o
   let stl = ref [] in
   let addAttribute_Task = find_function_sign f ("AddAttribute_Task") in
   let sizeOf_region_t = SizeOf(find_type f "region_t") in
-  let block_size = var (find_global_var f "__block_sz") in
+  let block_size = var (find_global_var f "block_size_g") in
   let uint64_t = (find_type f "uint64_t") in
   try
     (* Go through the arguments defined in pragma *)
@@ -155,7 +155,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let flag = mkFieldAccess idxlv "flag" in
   let eal_in = mkFieldAccess idxlv "eal_in" in
   let eal_out = mkFieldAccess idxlv "eal_out" in
-  let block_size = var (find_global_var f "__block_sz") in
+  let block_size = var (find_global_var f "block_size_g") in
   let pplus = (BinOp(PlusA, Lval total_arguments, one, intType)) in
 
   (* Declare doArgument *)
