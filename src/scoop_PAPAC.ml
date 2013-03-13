@@ -1,6 +1,6 @@
 (*
  *
- * Copyright (c) 2011,
+ * Copyright (c) 2011-2013,
  *  Foivos Zakkak        <zakkak@ics.forth.gr>
  * All rights reserved.
  *
@@ -62,12 +62,6 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   let arg_size = getSizeOfArg arg_desc in
   let il = ref [] in
 
-  let c_start =
-    try Lval (var (find_global_var f "shm_start"))
-    with Not_found ->
-      E.s (errorLoc loc "shm_start Not found");
-  in
-
   (* taskd->args[i] *)
   let tpc_task_argument_pt = TPtr(find_type f  "tpc_task_argument", []) in
 (*   let idxlv = addOffsetLval (Index(integer i, NoOffset)) arguments in *)
@@ -78,7 +72,7 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
       uint32_t size;
       uint32_t stride;
       uint32_t element_num; *)
-  let uint32_t = (find_type f "uint32_t") in
+  (*let uint32_t = (find_type f "uint32_t") in*)
   let addr_in = mkFieldAccess idxlv "addr_in" in
   let addr_out = mkFieldAccess idxlv "addr_out" in
   let flag = mkFieldAccess idxlv "type" in
@@ -86,15 +80,9 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   let stride = mkFieldAccess idxlv "stride" in
   let element_num = mkFieldAccess idxlv "element_num" in
 
-  let arg_addr_minus =
-    if (isScalar arg_desc) then (
-      mkCast arg_addr voidPtrType
-    ) else (
-      mkCast (BinOp(MinusA , mkCast arg_addr uint32_t, mkCast c_start uint32_t, uint32_t)) voidPtrType
-    )
-  in
-  il := Set(addr_in, arg_addr_minus, locUnknown)::!il;
-  il := Set(addr_out, arg_addr_minus, locUnknown)::!il;
+  let arg_addr_casted = mkCast arg_addr voidPtrType in
+  il := Set(addr_in, arg_addr_casted, locUnknown)::!il;
+  il := Set(addr_out, arg_addr_casted, locUnknown)::!il;
 
 
   (* arg_flag|TPC_SAFE_ARG; *)
@@ -146,12 +134,14 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   incr un_id;
 
 (*   let instrs = ref [] in *)
-  let uint32_t = (find_type f "uint32_t") in
+  let uint8_t = (find_type f "uint8_t") in
+  (*let uint32_t = (find_type f "uint32_t") in*)
   let args_num = List.length oargs in
   let args_num_i = integer args_num in
   let tpc_task_descriptor_pt = TPtr(find_type f "tpc_task_descriptor", []) in
   let tpc_task_argument_pt = TPtr(find_type f "tpc_task_argument", []) in
   let taskd = var (makeTempVar cur_fd tpc_task_descriptor_pt) in
+  let full_queue_res = var (makeTempVar cur_fd uint8_t) in
 
 (*  (* const int tpc_task_arguments_list[] = {2, 3, 5, 9}; *)
   let tpc_tal = find_global_Gvar f "tpc_task_arguments_list" in
@@ -172,14 +162,6 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     )
     | _ -> assert false;
   );*)
-
-  (* if(iam==0) *)
-  let iam =
-    try Lval (var (find_global_var f "iam"))
-    with Not_found ->
-      E.s (errorLoc loc "iam Not found");
-  in
-  let cond = BinOp(Eq, iam, zero, boolType) in
 
   (* task_desc = tpc_task_descriptor_alloc(args_num); *)
   let tpc_task_descriptor_alloc = find_function_sign f "tpc_task_descriptor_alloc" in
@@ -209,23 +191,10 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   let wr_arg = var (List.hd wrapper.sformals) in
   let il = ref [] in
   let i = ref 0 in
-  let c_start =
-    try Lval (var (find_global_var f "shm_start"))
-    with Not_found ->
-      E.s (errorLoc loc "shm_start Not found");
-  in
   let doArg = function
     | ((_, t, _), (_, arg_descr)) -> (
       let ar = var (makeTempVar wrapper t) in
-      if (isScalar arg_descr) then (
-        il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
-      ) else (
-        (* addresses are actually offsets *)
-        let addr = BinOp( PlusA,
-                          mkCast (Lval (mkFieldAccess wr_arg "addr_in")) uint32_t,
-                          mkCast c_start uint32_t, uint32_t) in
-        il := Set(ar, mkCast addr t, locUnknown)::!il;
-      );
+      il := Set(ar, mkCast (Lval (mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
       il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
       incr i;
       Lval ar
@@ -260,18 +229,42 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     )
   in
 
-  let reset_argsPtr = mkStmtOneInstr (set_argsPtr) in
-
-  (* task_desc->args = task_desc+32; *)
-  let stmts = stmts@[reset_argsPtr] in
-
-  let if_stmt = mkStmt (If(cond, mkBlock stmts, mkBlock [], locUnknown)) in
-
   (* tpc_call(taskd); *)
   let tpc_call_f = find_function_sign f "tpc_call" in
   let call = Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown) in
 
-  let stmts = [if_stmt; mkStmtOneInstr call] in
+  let rest = mkStmt (Instr [set_argsPtr; call]) in
+
+  (* task_desc->args = task_desc+32; *)
+  let stmts = stmts@[rest] in
+
+  (* if(isFull_Queue(task_Queues[thread_id])==0) *)
+  let isfull_queue =
+    let isfull_queue = find_function_sign f "isFull_Queue" in
+    let task_queues =
+      try var (find_global_var f "task_Queues")
+      with Not_found -> E.s (errorLoc loc "task_Queues Not found");
+    in
+    let thread_id =
+      try Lval (var (find_global_var f "thread_id"))
+      with Not_found -> E.s (errorLoc loc "thread_id Not found");
+    in
+    let arg = Lval (addOffsetLval (Index(thread_id, NoOffset)) task_queues) in
+    Call (Some full_queue_res, Lval (var isfull_queue), [arg], locUnknown)
+  in
+
+  let cond = BinOp(Eq, Lval full_queue_res, zero, boolType) in
+
+  let else_case =
+    let orig_args = List.map (fun f -> f.address) args in
+    [mkStmtOneInstr (Call (None, Lval (var func_vi), orig_args, locUnknown))]
+  in
+
+  let if_stmt =
+    mkStmt (If(cond, mkBlock stmts, mkBlock else_case, locUnknown))
+  in
+
+  let stmts = [mkStmtOneInstr isfull_queue; if_stmt] in
 
   incr func_id;
   (stmts, args_n)
@@ -320,20 +313,17 @@ class findTaskDeclVisitor (cgraph : Callgraph.callgraph) ppc_f pragma =
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
-          (* Support #pragma css start *)
-          | [AStr("start")]
-          (* Support #pragma css start(...) *)
-          | [ACons("start", [])] -> (
-            let ts = find_function_sign ppc_file "tpc_init" in
+          (* Support #pragma css sync*)
+          | [AStr("sync")] -> (
+            let ts = find_function_sign ppc_file "tpc_sync" in
             let instr = Call (None, Lval (var ts), [], locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
           )
+          (* Support #pragma css start(threads) *)
           | [ACons("start", exp::rest)] -> (
             let ts = find_function_sign ppc_file "tpc_init" in
-            let args =
-              attrParamToExp ppc_file loc exp::[attrParamToExp ppc_file loc (L.hd rest)]
-            in
+            let args = [attrParamToExp ppc_file loc exp] in
             let instr = Call (None, Lval (var ts), args, locUnknown) in
             let s' = {s with pragmas = List.tl s.pragmas} in
             ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)

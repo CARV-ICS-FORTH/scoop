@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include "config.h"
 
 // Bit-masks for supported argument flags and helping macros
 #define SCOOP_IN_ARG                      0x1
@@ -25,9 +26,6 @@
 #define SCOOP_IS_BYVALUEARG(x)            ((x) & SCOOP_BYVALUE_ARG)
 #define SCOOP_IS_REGIONARG(x)             ((x) & SCOOP_REGION_ARG)
 
-extern int iam;
-extern void *shm_start;
-
 // TPC Arguments
 #pragma pack(4)
 struct _tpc_task_argument {
@@ -46,9 +44,10 @@ struct _tpc_task_descriptor {
   void (*task)(tpc_task_argument *);    // Wrapper to the original function (no value returned)
   tpc_task_argument * args;
   uint32_t args_num;
-  uint32_t rfu;                         // RFU: Reserved for Future Use
-  void * extras;
-}; // 32-bytes on 64-bit arch
+  volatile uint32_t number_of_children; // Counter of children
+  volatile uint32_t status;             // Task status
+  struct _tpc_task_descriptor * parent; // Pointer to parent
+};
 typedef struct _tpc_task_descriptor tpc_task_descriptor;
 
 // Alloc/Free Task Descriptors
@@ -61,11 +60,12 @@ void tpc_task_descriptor_free(tpc_task_descriptor *);
 // and avoid malloc/free during run-time
 
 // The typical TPC API
-void tpc_init(int, char**);
+void tpc_init(uint32_t);
 void tpc_shutdown();
 void tpc_call(tpc_task_descriptor *);
-void tpc_wait_all();
-void tpc_wait_on(tpc_task_descriptor *);
+void tpc_sync();
+// void tpc_wait_all();
+// void tpc_wait_on(tpc_task_descriptor *);
 // #pragma css wait on(x,y,z)
 // equivalent to input
 
@@ -73,7 +73,10 @@ void* tpc_malloc(size_t);
 void tpc_free(void *);
 
 void wrapper_SCOOP__(tpc_task_argument *a ){
-	
+
 }
 
+extern __thread tpc_task_descriptor * parent;
+extern __thread tpc_task_descriptor * curr_task;
+#include "queue.h"
 #endif
