@@ -33,7 +33,8 @@
  *
  *)
 
-val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> unit
+val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> string
+     -> unit
 
 class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> string ->
   object
@@ -47,4 +48,3 @@ class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> string ->
     method vstmt : Cil.stmt -> Cil.stmt Cil.visitAction
     method getTasks : ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
   end
-

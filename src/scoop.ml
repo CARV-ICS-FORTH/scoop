@@ -206,7 +206,7 @@ let feature : featureDescr =
         ( if (!stats) then " -DSTATISTICS=1" else " ")^
         ( if (!blade) then " -DBLADE=1" else " ") in
       if (!arch = "adam" || !arch = "bddt") then ( (*FIXME*)
-        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)) (def);
+        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file (!tpcIncludePath) "/scoop/tpc_scoop.h" (def);
       ) else if !isCell then ( (* else cell/cellgod *)
         (* copy all code from file f to file_ppc *)
         let def = def^(
@@ -227,7 +227,7 @@ let feature : featureDescr =
         preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(def))
                                     !tpcIncludePath;
       ) else if ( !arch<>"myrmics" ) then (
-        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file ((!tpcIncludePath)^"/"^(!arch)^"_header.h") (def);
+        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file (!tpcIncludePath) ((!arch)^"_header.h") (def);
       );
 
       (* Declare some globals *)
