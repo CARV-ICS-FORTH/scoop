@@ -128,6 +128,17 @@ let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
   [mkStmt (Instr (L.rev !il))]
 )
 
+(* Adds a declaration of function f_new right AFTER the first occurence
+ * (declaration or definition) of the function named <f_old>. Also, the body of
+ * the function f_new is added at the end of the file.
+ *)
+let add_wrapper (file: Cil.file) (f_old: string) (f_new: fundec) : unit =
+  (*let v = new Lockutil.addFunVisitor f_old f_new in
+  visitCilFile v file;*)
+  let declaration = GVarDecl(f_new.svar, Cil.locUnknown) in
+  let definition  = GFun(f_new, Cil.locUnknown) in
+  file.globals <- declaration::(file.globals @ [definition])
+
 (* generates the code to issue a task *)
 let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp list)
     (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
@@ -176,7 +187,7 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
     with Not_found -> (
       let wrapper_t = find_function_fundec f "wrapper_SCOOP__" in
       let new_fd = copyFunction wrapper_t ("wrapper_SCOOP__" ^ func_vi.vname) in
-      Lockutil.add_after_s f func_vi.vname new_fd;
+      add_wrapper f func_vi.vname new_fd;
       new_fd
     )
   in
