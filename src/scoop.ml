@@ -58,7 +58,7 @@ let thread = ref false
 (** the prefix of the files to be produced by SCOOP. Defaults to "scoop_trans" *)
 let out_name = ref "scoop_trans"
 (** the runtime/architecture to target. Currently supporting
-    adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/PAPAC/XPPFX
+    adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX
     Defaults to unknown *)
 let arch = ref "unknown"
 (** the str following the pragma, default is css (#pragma css ...) *)
@@ -88,7 +88,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime\nadam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | PAPAC | XPPFX";
+      " SCOOP: Define the target runtime\nadam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -197,7 +197,7 @@ let feature : featureDescr =
         | "cell" -> new Scoop_cell.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
         | "cellgod" -> new Scoop_cellgod.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
         | "myrmics" -> new Scoop_myrmics.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "PAPAC" -> new Scoop_PAPAC.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "nesting" -> new Scoop_nesting.findTaskDeclVisitor callgraph !ppc_file !pragma_str
         | "XPPFX" -> new Scoop_XPPFX.findTaskDeclVisitor callgraph !ppc_file !pragma_str
         | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
       in
@@ -279,7 +279,7 @@ let feature : featureDescr =
            !arch = "adam" ||
            !arch = "myrmics" ||
            !arch = "cellgod" ||
-           !arch = "PAPAC" ||
+           !arch = "nesting" ||
            !arch = "XPPFX" ) then
         (Ptdepa.find_dependencies f !dis_sdam);
 
