@@ -237,6 +237,20 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
   (* task_desc->args_no = args_num; *)
   let taskd_args_no = mkFieldAccess taskd "args_num" in
   let instrs = Set(taskd_args_no, args_num_i, locUnknown)::instrs in
+
+  (* task_desc->number_of_children = 0; *)
+  let taskd_children = mkFieldAccess taskd "number_of_children" in
+  let instrs = Set(taskd_children, zero, locUnknown)::instrs in
+  (* task_desc->status = 0; *)
+  let taskd_status = mkFieldAccess taskd "status" in
+  let instrs = Set(taskd_status, zero, locUnknown)::instrs in
+  (* task_desc->parent = parent; *)
+  let parent_g =
+    try Lval(var (find_global_var f "parent"))
+    with Not_found -> E.s (errorLoc loc "parent Not found");
+  in
+  let taskd_parent = mkFieldAccess taskd "parent" in
+  let instrs = Set(taskd_parent, parent_g, locUnknown)::instrs in
   (* Leave uninitialized
      task_desc->rfu and task_desc->extras *)
 
@@ -327,15 +341,6 @@ class findTaskDeclVisitor (cgraph : Callgraph.callgraph) ppc_f pragma =
         (* Support #pragma css ... *)
         (Attr(pr_str, rest), loc) when pr_str = pragma_str -> (
           match rest with
-          (* Support #pragma css wait all *)
-          | [AStr("wait"); AStr("all")]
-          (* Support #pragma css barrier*)
-          | [AStr("barrier")] -> (
-            let twa = find_function_sign ppc_file "tpc_wait_all" in
-            let instr = Call (None, Lval (var twa), [], locUnknown) in
-            let s' = {s with pragmas = List.tl s.pragmas} in
-            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-          )
           (* Support #pragma css sync*)
           | [AStr("sync")] -> (
             let ts = find_function_sign ppc_file "tpc_sync" in
