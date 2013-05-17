@@ -205,7 +205,7 @@ let feature : featureDescr =
       let def = " "^(!cflags)^
         ( if (!stats) then " -DSTATISTICS=1" else " ")^
         ( if (!blade) then " -DBLADE=1" else " ") in
-      if (!arch = "adam" || !arch = "bddt") then ( (*FIXME*)
+      if (!arch = "adam" || !arch = "bddt") then (
         Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file (!tpcIncludePath) "/scoop/tpc_scoop.h" (def);
       ) else if !isCell then ( (* else cell/cellgod *)
         (* copy all code from file f to file_ppc *)

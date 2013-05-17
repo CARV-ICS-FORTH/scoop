@@ -170,8 +170,8 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
       (*  this->closure.arguments[this->closure.total_arguments].eal_in = arg_addr64;
           this->closure.arguments[this->closure.total_arguments].eal_out = arg_addr64;
           this->closure.arguments[this->closure.total_arguments].size = arg_size;*)
-      il := Set(eal_in, CastE(voidPtrType, CastE(uint64_t, arg)), locUnknown)::!il;
-      il := Set(eal_out, CastE(voidPtrType, CastE(uint64_t, arg)), locUnknown)::!il;
+      il := Set(eal_in, CastE(voidPtrType, arg), locUnknown)::!il;
+      il := Set(eal_out, CastE(voidPtrType, arg), locUnknown)::!il;
 (*       il := Set(size, SizeOf( getBType vi.vtype vi.vname ), locUnknown)::!il; *)
       il := Set(size, zero, locUnknown)::!il;
       (* this->closure.arguments[  this->closure.total_arguments ].flag = IN|TPC_START_ARG|TPC_SAFE_ARG; *)
@@ -202,9 +202,17 @@ let make_tpc_issue (is_hp: bool) (loc: location) (func_vi: varinfo) (oargs: exp 
       this->closure.arguments[this->closure.total_arguments].eal_out = arg_addr64;
       this->closure.arguments[this->closure.total_arguments].size = arg_size;
       this->closure.arguments[this->closure.total_arguments].flag = arg_flag;*)
-      il := Set(eal_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-      il := Set(eal_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
-      il := Set(size, arg_size, locUnknown)::!il;
+      (* if it is a scalar we need an extra cast to avoid warnings for 32bit types *)
+      (match arg with
+      | Lval(Var vi, NoOffset) when isScalar_v vi ->
+        il := Set(eal_in, CastE(voidPtrType, CastE(uint64_t, arg_addr)), locUnknown)::!il;
+        il := Set(eal_out, CastE(voidPtrType, CastE(uint64_t, arg_addr)), locUnknown)::!il;
+        il := Set(size, arg_size, locUnknown)::!il;
+      | _ ->
+        il := Set(eal_in, CastE(voidPtrType, arg_addr), locUnknown)::!il;
+        il := Set(eal_out, CastE(voidPtrType, arg_addr), locUnknown)::!il;
+        il := Set(size, arg_size, locUnknown)::!il;
+      );
     (*   il := Set(flag, integer (arg_type2int arg_type), locUnknown)::!il; *)
 
   (* TODO: take a look at it *)
