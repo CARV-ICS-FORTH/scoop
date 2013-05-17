@@ -18,7 +18,7 @@ and arg_descr = {
 	aid: int;
 	argname: string;
 	argloc: location;
-	iotype: string; 
+	iotype: string;
 	strided: bool;
 	arginfo: varinfo;
 	argsize: exp;
@@ -29,14 +29,14 @@ and arg_descr = {
 	mutable force_safe: bool;
 	mutable iotype_deduction: string;
 }
-(* the type that describes a task *) 
+(* the type that describes a task *)
 and task_descr = {
 	taskid: int;
 	taskname: string;
 	callsite: location;
 	scope: fundec;
 	t_inf: fdinfo;
-	t_gamma: env; 
+	t_gamma: env;
 	arguments: arg_descr list;
 	actuals: string list;
 }
@@ -62,19 +62,19 @@ val total_scalar_args: int ref
 val is_in_arg : string -> bool
 
 (** Constructors **)
-	
-(* constructor for task_descr struct *)	
+
+(* constructor for task_descr struct *)
 val make_task_descr : string  -> location -> fundec -> fdinfo -> env -> arg_descr list -> string list -> task_descr
 
 (*	constructor of the arg_descr struct *)
 val make_arg_descr : string -> location -> string  -> bool -> varinfo -> exp -> loop_descr option -> array_descr option -> arg_descr
 
-(* constructor of the loop_descr struct *)	
+(* constructor of the loop_descr struct *)
 val make_loop_descr : varinfo -> exp -> loop_descr
 
 (* constructor of the array_descr struct *)
 val make_array_descr : varinfo -> exp -> array_descr
-	
+
 (** SDAM API **)
 
 (* appends a task to the global list of tasks *)
@@ -88,8 +88,9 @@ val isSafeArg : string -> int -> string -> bool
 (* returns a string representation for a Cil.location *)
 val location_to_string : location -> string
 
-(* Prints list of tasks	*)
-val print_tasks : task_descr list -> unit	
+(* Counts the number of tasks their arguments and which of them are
+   scalar, safe. Additionally if !debug it prints them out *)
+val count_tasks_and_args : task_descr list -> unit
 
 (* Pretty print task *)
 val d_task : unit -> task_descr -> Pretty.doc

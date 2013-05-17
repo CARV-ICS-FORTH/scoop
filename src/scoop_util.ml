@@ -755,9 +755,10 @@ let getBType (t: typ) (name: string) : typ =
   | TNamed _
   | TComp _
   | TEnum _
+  | TArray (_, Some _, _)
   | TPtr (TVoid _, _)-> t
   | TPtr (t', _)-> t'
-  | TArray _ -> ignore(error "I can't guess the size of array \"%s\"\n" name); t
+  | TArray _ -> ignore(warn "I can't guess the size of array \"%s\"\n" name); t
   | TFun _ -> ignore(error "Found function as task argument \n"); t
   | TBuiltin_va_list _ -> ignore(error "Found variable args as task argument \n"); t
 
@@ -1230,4 +1231,3 @@ let rec scoop_process_args size_in_bytes ppc_file typ loc args : arg_descr list 
     { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
   | [] -> []
   | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" typ)
-

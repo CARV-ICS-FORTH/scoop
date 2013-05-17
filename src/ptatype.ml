@@ -949,7 +949,7 @@ and reannotate (t: tau)
   else begin
     match t.t with
       ITVoid None -> t
-  	| ITRegion _ -> make_tau (ITRegion(make_theta name false)) t.ts
+      | ITRegion _ -> make_tau (ITRegion(make_theta name false)) t.ts
     | ITVoid (Some ur) -> assert false
     | ITPtr(tref, _) -> begin
         (*if List.mem_assq !tref known
@@ -1036,9 +1036,9 @@ and annotate (t: typ)
     try (List.mem (typeSig t) !regiontypesigs)
     with Not_found -> false
   then (
-  	(* ignore(E.log "Found Region Type (%a )\n"  LN.d_label_name name); *)
-  	make_tau (ITRegion(make_theta name false)) STRegion
-  	(* void_tau *)
+      (* ignore(E.log "Found Region Type (%a )\n"  LN.d_label_name name); *)
+      make_tau (ITRegion(make_theta name false)) STRegion
+      (* void_tau *)
   )
   else
   let result = (
@@ -1657,7 +1657,7 @@ and get_cinfo_field (fi: fieldinfo) (ci: cinfo)
                     (name: LN.label_name)
                     : (rho * tau) =
   let compdata = U.deref ci in
-	assert (compdata.compinfo == fi.fcomp);
+    assert (compdata.compinfo == fi.fcomp);
   try StrHT.find compdata.cinfo_fields fi.fname
   with Not_found -> begin
     let storeloc = !Cil.currentLoc in
@@ -2060,8 +2060,8 @@ and type_exp (e: exp)
           ignore(error "StartOf operator does not return pointer");
           raise TypingBug
       end
-  |	Question(e1, e2, e3, _) ->
-  		let ((s1,u1), exp_env1, exp_phi1, exp_effect1) =
+  |    Question(e1, e2, e3, _) ->
+          let ((s1,u1), exp_env1, exp_phi1, exp_effect1) =
         type_exp e1 input_env input_phi input_effect in
       let ((s2,u2), exp_env2, exp_phi2, exp_effect2) =
         type_exp e2 exp_env1 exp_phi1 exp_effect1 in
@@ -2192,8 +2192,8 @@ and type_offcinit (c: cinfo)
 (*      | _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);*)
 (*end*)
 
-(*	parses recursively the arguments in an argument data annotation team and returns
-		a list with the corresponding argument descriptors
+(*    parses recursively the arguments in an argument data annotation team and returns
+        a list with the corresponding argument descriptors
 *)
 let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr list), (loop_d: loop_descr option)) arg =
   if not (is_dataflow_tag iotyp) then (
@@ -2228,8 +2228,8 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
         in
         (iotyp, loc, arg_d::args_l, loop_d)
       (* Brand new stride syntax... *)
-   	| AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
-    		let attrParamToExp' =
+       | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
+            let attrParamToExp' =
           attrParamToExp !program_file loc ~currFunction:!currentFunction
         in
         let tmp_size = attrParamToExp' bs_c in
@@ -2264,63 +2264,63 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
   )
 
 (* iterates an expression list and returns a list with the names of the actual
-	arguments.  Currently only variables can be arguments, other expressions are
-	result in error *)
+    arguments.  Currently only variables can be arguments, other expressions are
+    result in error *)
 let process_actuals (el: exp list) loc : string list =
-	let rec proc_exp = (fun args_l e ->
-		(if(!debug_SDAM) then ignore(E.log "parsing actual %a\n" d_exp e););
-		(* ignore(E.log "parsing actual %a\n" d_exp e);
-		ignore(E.log "actuals number:%d\n" (List.length args_l)); *)
-		match e with
-			Lval(Var(vi), _) -> vi.vname::args_l
-		|	CastE(_, e2) -> proc_exp args_l e2
-		| StartOf(Var(vi), _) -> (
-			ignore(E.error "SDAM:%a:Cannot evaluate startof expr\n" d_loc loc);
-			vi.vname::args_l
-		)
-		| AddrOf(Var(vi), _) -> (
-			ignore(E.error "SDAM:%a:Cannot evaluate addrof expr\n" d_loc loc);
-			vi.vname::args_l
-		)
-		| _ -> (
-			ignore(E.error "SDAM:%a:Cannot evaluate expression as pragma task argument\n" d_loc loc);
-			raise Ignore_pragma
-		)
-	) in
-	List.rev (List.fold_left proc_exp [] el)
+    let rec proc_exp = (fun args_l e ->
+        (if(!debug_SDAM) then ignore(E.log "parsing actual %a\n" d_exp e););
+        (* ignore(E.log "parsing actual %a\n" d_exp e);
+        ignore(E.log "actuals number:%d\n" (List.length args_l)); *)
+        match e with
+            Lval(Var(vi), _) -> vi.vname::args_l
+        |    CastE(_, e2) -> proc_exp args_l e2
+        | StartOf(Var(vi), _) -> (
+            (* ignore(E.error "SDAM:%a:Cannot evaluate startof expr\n" d_loc loc); *)
+            vi.vname::args_l
+        )
+        | AddrOf(Var(vi), _) -> (
+            ignore(E.error "SDAM:%a:Cannot evaluate addrof expr\n" d_loc loc);
+            vi.vname::args_l
+        )
+        | _ -> (
+            ignore(E.error "SDAM:%a:Cannot evaluate expression as pragma task argument\n" d_loc loc);
+            raise Ignore_pragma
+        )
+    ) in
+    List.rev (List.fold_left proc_exp [] el)
 
-(*	parses recursively the arguments of the pragma task, and returns
-		a list with the corresponding argument descriptors
+(*    parses recursively the arguments of the pragma task, and returns
+        a list with the corresponding argument descriptors
 *)
 let css_task_process (loc, loop_d) args =
-	let rec proc_attrs args_l args =
-		match args with
-			[] -> args_l
-		|	(AStr("highpriority"))::rest -> proc_attrs args_l rest
-		| AStr("region")::region_attr
-		| AStr("notransfer")::region_attr -> (
-			match region_attr with
+    let rec proc_attrs args_l args =
+        match args with
+            [] -> args_l
+        |    (AStr("highpriority"))::rest -> proc_attrs args_l rest
+        | AStr("region")::region_attr
+        | AStr("notransfer")::region_attr -> (
+            match region_attr with
       | AStr(region_name)::region_type -> (
-				match region_type with
+                match region_type with
         | ACons(iotyp, args')::rest ->
-        	let var_i = find_scoped_var loc !currentFunction !program_file region_name in
-        	let tmp_size = SizeOfE (Lval (var var_i)) in
-       	 	let array_d = LP.getArrayDescr var_i loc !currSid in
-        	let arg_d =
+            let var_i = find_scoped_var loc !currentFunction !program_file region_name in
+            let tmp_size = SizeOfE (Lval (var var_i)) in
+                let array_d = LP.getArrayDescr var_i loc !currSid in
+            let arg_d =
             Sdam.make_arg_descr region_name loc iotyp false var_i tmp_size loop_d array_d
           in
-					(* ignore(E.log "adding argument %s\n" arg_d.argname); *)
-					proc_attrs (arg_d::args_l) rest
-				| _ -> (
-					ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
-					raise Ignore_pragma
-				)
-			)
+                    (* ignore(E.log "adding argument %s\n" arg_d.argname); *)
+                    proc_attrs (arg_d::args_l) rest
+                | _ -> (
+                    ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
+                    raise Ignore_pragma
+                )
+            )
       (* support region in/out/inout(a,b,c) *)
       | ACons(iotyp, args)::rest ->
         let process_reg = function
           | ACons(varname, []) ->
-        	  let var_i = find_scoped_var loc !currentFunction !program_file varname in
+              let var_i = find_scoped_var loc !currentFunction !program_file varname in
             let tmp_size = SizeOfE (Lval (var var_i)) in
             let array_d = LP.getArrayDescr var_i loc !currSid in
             Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
@@ -2329,67 +2329,67 @@ let css_task_process (loc, loop_d) args =
             raise Ignore_pragma
         in
         proc_attrs ((List.map process_reg args)@args_l) rest
-			|	_ -> (
-				ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
-				raise Ignore_pragma
-			)
-		)
-		| ACons(iotyp, args')::rest -> (
+            |    _ -> (
+                ignore(E.error "SDAM:%a:Region syntax error in #pragma css task\n" d_loc loc);
+                raise Ignore_pragma
+            )
+        )
+        | ACons(iotyp, args')::rest -> (
       let (_, _, args_l', _) =
         List.fold_left css_arg_process (iotyp, loc, args_l, loop_d) args'
       in
-			proc_attrs args_l' rest
-		)
-		| _::rest -> (
-			ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
-			raise Ignore_pragma
-		)
-	in proc_attrs [] args
+            proc_attrs args_l' rest
+        )
+        | _::rest -> (
+            ignore(E.error "SDAM:%a:Syntax error in #pragma css task\n" d_loc loc);
+            raise Ignore_pragma
+        )
+    in proc_attrs [] args
 
 (** parses instruction task to collect task and arguments
-		@param il the instruction coupled with current task pragma
-		@param args the actual arguments attribute from the pragma annotation
-		@param loc the location of the pragma
-		@param loop_d the current, innermost loop_d, if any
-		@raise Ingore_pragma when pragma fails to be parsed
-		@return a new task descriptor
+        @param il the instruction coupled with current task pragma
+        @param args the actual arguments attribute from the pragma annotation
+        @param loc the location of the pragma
+        @param loop_d the current, innermost loop_d, if any
+        @raise Ingore_pragma when pragma fails to be parsed
+        @return a new task descriptor
 *)
 let handle_css_task il env args loc loop_d : task_descr =  begin
-	match il with
-  	Call(_, Lval((Var(vi), _)), acts, loc) -> (
-(*		let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in *)
-			let args_l = css_task_process (loc, loop_d) args in
-(* 		LP.process_call_actuals acts loc !currSid task_d loop_d; *)
-			try (
-				let actuals = process_actuals acts loc in
-		    let (tau, _) = env_lookup vi.vname env in
-				let fd = (
-					match tau.t with
-							ITAbs tau_ref -> (
-								match !tau_ref.t with
-								ITFun fd -> fd
-							| _ -> 	(
-									ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
-									raise Ignore_pragma
-								)
-							)
-						| _ -> (
-								ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
-								raise Ignore_pragma
-							)
-				) in
-				let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in
-				Sdam.addTask task_d;
-				task_d
-			) with Not_found -> (
-					ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
-					raise Ignore_pragma
-				)
-		)
+    match il with
+      Call(_, Lval((Var(vi), _)), acts, loc) -> (
+(*        let (_, args_l, _) = List.fold_left css_task_process (loc, [], loop_d) args in *)
+            let args_l = css_task_process (loc, loop_d) args in
+(*         LP.process_call_actuals acts loc !currSid task_d loop_d; *)
+            try (
+                let actuals = process_actuals acts loc in
+            let (tau, _) = env_lookup vi.vname env in
+                let fd = (
+                    match tau.t with
+                            ITAbs tau_ref -> (
+                                match !tau_ref.t with
+                                ITFun fd -> fd
+                            | _ ->     (
+                                    ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
+                                    raise Ignore_pragma
+                                )
+                            )
+                        | _ -> (
+                                ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
+                                raise Ignore_pragma
+                            )
+                ) in
+                let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in
+                Sdam.addTask task_d;
+                task_d
+            ) with Not_found -> (
+                    ignore(E.error "SDAM:%a:Pragma task has not been declared as a C function, ignoring pragma\n" d_loc loc);
+                    raise Ignore_pragma
+                )
+        )
   | _ -> (
-			ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ignoring pragma" d_loc loc);
-			raise Ignore_pragma
-		)
+            ignore(E.error "SDAM:%a:Pragma task should be coupled with a function call, ignoring pragma" d_loc loc);
+            raise Ignore_pragma
+        )
 end
 
 (*****************************************************************************)
@@ -2771,12 +2771,12 @@ let handle_free (el: exp list)
     raise TypingBug
 
 let handle_new_region (_: exp list)
-               			  (lvo: lval option)
-                			(_: (tau*uniq) list)
-                			(input_env: env)
-                			(input_phi: phi)
-                			(input_effect: effect)
-                			: gamma =
+                             (lvo: lval option)
+                            (_: (tau*uniq) list)
+                            (input_env: env)
+                            (input_phi: phi)
+                            (input_effect: effect)
+                            : gamma =
   let new_region_theta = make_theta (LN.Const "new_region") true in (*make it concrete*)
   match lvo with
     None ->
@@ -2797,12 +2797,12 @@ let handle_new_region (_: exp list)
       (lv_env, lv_phi, lv_effect)
 
 let handle_deleteregion (el: exp list)
-                				(_: lval option)
-                				(args: (tau*uniq) list)
-                				(input_env: env)
-                				(input_phi: phi)
-                				(input_effect: effect)
-                				: gamma =
+                                (_: lval option)
+                                (args: (tau*uniq) list)
+                                (input_env: env)
+                                (input_phi: phi)
+                                (input_effect: effect)
+                                : gamma =
   match args with
     ({t=(ITRegion th)},u)::_ ->
       write_theta th input_phi input_effect u;
@@ -2812,12 +2812,12 @@ let handle_deleteregion (el: exp list)
     raise TypingBug
 
 let handle_new_subregion (_: exp list)
-               			  	 (lvo: lval option)
-                				 (args: (tau*uniq) list)
-                				 (input_env: env)
-                				 (input_phi: phi)
-                				 (input_effect: effect)
-                				 : gamma =
+                                  (lvo: lval option)
+                                 (args: (tau*uniq) list)
+                                 (input_env: env)
+                                 (input_phi: phi)
+                                 (input_effect: effect)
+                                 : gamma =
   (* let new_subregion_theta = make_theta (LN.Const "new_subregion") true in (*make it concrete*) *)
   let (parent_region_t, _) = List.hd args in
   match lvo with
@@ -2840,12 +2840,12 @@ let handle_new_subregion (_: exp list)
       (lv_env, lv_phi, lv_effect)
 
 let handle_ralloc (_: exp list)
-               			   (lvo: lval option)
-                			 (args: (tau*uniq) list)
-                			 (input_env: env)
-                			 (input_phi: phi)
-                			 (input_effect: effect)
-                			 : gamma =
+                              (lvo: lval option)
+                             (args: (tau*uniq) list)
+                             (input_env: env)
+                             (input_phi: phi)
+                             (input_effect: effect)
+                             : gamma =
   let (region_t, _) = List.hd args in
   let alloc_rho = make_rho (LN.Const "alloc") true in
   match lvo with
@@ -2890,8 +2890,8 @@ let get_special (k: Conf.handler) : special_function_t =
   | Conf.End_unpack -> handle_end_unpack
   | Conf.New_Region -> handle_new_region
   | Conf.Delete_Region -> handle_deleteregion
- 	| Conf.New_Subregion -> handle_new_subregion
-	| Conf.Ralloc -> handle_ralloc
+     | Conf.New_Subregion -> handle_new_subregion
+    | Conf.Ralloc -> handle_ralloc
 
 (*****************************************************************************)
 let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
@@ -2930,7 +2930,7 @@ let rec type_instr (input_env, input_phi, input_effect) instr : gamma =
       write_rho r lval_phi lval_effect u;
       (lval_env, lval_phi, lval_effect)
   | Call(lvo, e, el, loc) -> begin
-  		(* ignore(E.log "* with enviroment:\n%a\n" d_env input_env); *)
+          (* ignore(E.log "* with enviroment:\n%a\n" d_env input_env); *)
       currentLoc := loc;
       let (args, arg_env, arg_phi, arg_effect) =
         type_exp_list el input_env input_phi input_effect in
@@ -3079,7 +3079,7 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
         if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
         ((env, phi, eff), (kind, loop_d))
     )
-    |	AStr("task")::args -> (
+    |    AStr("task")::args -> (
       match kind with
       | Instr(taskcall::_) -> (* task pragmas must be coupled with function calls *)
         if !debug_SDAM then ignore(E.log "SDAM: Task found.\n");
@@ -3100,9 +3100,9 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
       ignore(warnLoc loc "SDAM:Invalid syntax!\n");
       ((env, phi, eff), (kind, loop_d))
   )
-	| (_, loc) ->
-		if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
-		((env, phi, eff), (kind, loop_d))
+    | (_, loc) ->
+        if !debug_SDAM then ignore(E.warn "SDAM:%a:Ignoring pragma!\n" d_loc loc);
+        ((env, phi, eff), (kind, loop_d))
 
 (*****************************************************************************)
 
@@ -3175,26 +3175,26 @@ and type_stmt (((env, phi, eff): gamma), (loop_d: loop_descr option)) stmt : gam
       join_gamma g1 g2
   | Loop(b, loc, Some(_), Some(_)) ->
       currentLoc := loc;
-			if !debug_SDAM then ignore(E.log "Loop found, analyzing bounds\n");
-(* 			let loop_i = LP.get_loop_index b.bstmts in
-			let loop_d = (
-				if(isSone loop_i) then (
-					let (i_inf, i_exp) = getSome loop_i in
-					Sdam.make_loop_descr i_inf i_exp
-				)
-				else
-					Sdam.make_loop_descr None None
-			) in *)
-(*			let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff),(stmt.skind, loop_d)) stmt.pragmas in *)
-			(* FIXME: check whether to use stmt or b.stmts *)
-(*			let loopstart_phi = make_phi "LoopStart" (CF.PhiLoopStart (Sdam.new_loop_d (LP.get_loop_index b.bstmts))) in*)
-			let begin_phi = make_phi "beginloop" CF.PhiVar in
-			CF.phi_flows phi begin_phi;
-(*			CF.starting_phis := loopstart_phi::!CF.starting_phis;*)
+            if !debug_SDAM then ignore(E.log "Loop found, analyzing bounds\n");
+(*             let loop_i = LP.get_loop_index b.bstmts in
+            let loop_d = (
+                if(isSone loop_i) then (
+                    let (i_inf, i_exp) = getSome loop_i in
+                    Sdam.make_loop_descr i_inf i_exp
+                )
+                else
+                    Sdam.make_loop_descr None None
+            ) in *)
+(*            let ((env', phi', eff'), _) = type_pragma_list ((env, phi, eff),(stmt.skind, loop_d)) stmt.pragmas in *)
+            (* FIXME: check whether to use stmt or b.stmts *)
+(*            let loopstart_phi = make_phi "LoopStart" (CF.PhiLoopStart (Sdam.new_loop_d (LP.get_loop_index b.bstmts))) in*)
+            let begin_phi = make_phi "beginloop" CF.PhiVar in
+            CF.phi_flows phi begin_phi;
+(*            CF.starting_phis := loopstart_phi::!CF.starting_phis;*)
 (*      CF.phi_flows begin_phi loopstart_phi;*)
 (*      let (_, smth) = loop_d in*)
 (*      if(isSome smth) then ignore(E.log "put something there\n");*)
-			let loop_d' = LP.getLoopIndex b.bstmts in
+            let loop_d' = LP.getLoopIndex b.bstmts in
       let ((env2,p2,ef2), _) = type_stmt_list ((env, begin_phi, eff), loop_d') b.bstmts in
       CF.phi_flows p2 begin_phi;
       effect_flows eff ef2;
@@ -3339,7 +3339,7 @@ let addfun (fd: fundec) : unit = begin
       let final_env =
         env_add_var locals_env fd.svar.vname (fun_abs_type, const_rho)
       in
-			(* TODO: anchor1 *)
+            (* TODO: anchor1 *)
 
       (* using this Gamma, type the function body *)
       let ((_, phi_stmt, eff_stmt), _) =
@@ -3777,7 +3777,7 @@ end
 let handle_undef_function (name: string) : unit =
   assert (Strmap.mem name (!global_env).var_map);
   (*if not (Hashtbl.mem Cil.gccBuiltins name) then*)
-    ignore(E.log "  %s\n" name);
+  if !debug then ignore(E.log "  %s\n" name);
   let (t,_) = env_lookup name !global_env in
   match t.t with
     ITAbs(tref) -> begin
@@ -3874,7 +3874,7 @@ let generate_constraints (f: file) : unit = begin
 
   let useundef = (Strset.inter !undef_functions !used_functions) in
   if not (Strset.is_empty useundef) then
-    ignore(E.log "functions declared and used but not defined:\n");
+    if !debug then ignore(E.log "functions declared and used but not defined:\n");
   Strset.iter handle_undef_function useundef;
   (*clear_globals();*)
 end
