@@ -12,7 +12,7 @@
 
 \begin{document}
 \title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
-\date{last update: 28/03/12}
+\date{last update: 18/05/13}
 \maketitle
 
 \section{License}
@@ -58,6 +58,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
     \verb!  #pragma css finish!\\
     \verb!  #pragma css malloc!\\
     \verb!  #pragma css free!\\
+    \verb!  #pragma css sync!\\
     \verb!  #pragma css wait all!\\
     \verb!  #pragma css wait on(list of variables)! //Not implemented yet\\
     \verb!  #pragma css task [in(<input parameters>)]!\\
@@ -66,11 +67,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
     \verb!                   [highpriority] (highpriority is simply ignored)!\\[1em]
     Parameter notation:\\
 
-      Non stride: \ \verb!<parameter>[\[parameter size\]]!\\
-      
+      Non stride: \ \verb!<parameter>[\[number of elements (for arrays)\]]!
+      \footnote{XPPFX and nesting require the size in bytes and not in elements}\\
+
       Stride: \ \ \ \ \ \ \ \verb!<parameter>\[Block Rows|Block Columns\]\[[Array Rows|]Array Columns\]!\\
         \hspace{2cm}Array Rows is optional and is totally ignored\\
-      
+
       Stride (Legacy): \ \ \ \ \ \ \ \verb!<parameter>\[stride\]\[ els | elsz \]!\\
         \hspace{2cm}where stride is the step (original row length)\\
         \hspace{2cm}els is the block's number of rows\\
@@ -79,9 +81,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
       The parameter size/stride/els/elsz must be an expression, thus
       we don't allow function calls. Also there is no support for the
       conditional operator (? :)\\
-      
+
     Example:
-      \verb!#pragma css task in(a, b[4*sizeof(b_type)]) out(c[16])!
+      \verb!#pragma css task in(a, b[4]) out(c[16])!
 
 
 \section{Dependencies}
@@ -115,14 +117,14 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
 
 \section{Run}
 
-  \verb!  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/scc_nik/XPPFX> [options] <file> [file2 ...]!
+  \verb!  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX> [options] <file> [file2 ...]!
 
 \subsection{Options (Needs update)}
 
   \begin{tabbing}
   \ \ \=\verb!--runtime!\hspace{9em} \=
   Defines the target runtime/architecture\\
-                                    \>\>adam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | scc\_nik | XPPFX\\[1ex]
+                                    \>\>adam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX\\[1ex]
   \>\verb!--cflags!                   \>Defines the flags you want to pass to gcc\\[1ex]
   \>\verb!--tpcIncludePath!           \>Defines the include path for the tpc runtime\\[1ex]
   \>\verb!--debugSCOOP!               \>Print debugging information\\[1ex]
@@ -150,9 +152,12 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
       probably have wrong argument at a call tagged with \verb!#pragma css task!
   \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
   \item Putting \verb!#pragma!s directly above a declaration of a variable (pragmas are only supported above statements)
-  \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task} 
+  \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task}
   usually means that the tool is renaming a variable due to previous declaration
-  try renaming it manually (e.g. segment2) (This should be fixed by now)
+  try renaming it manually (e.g. segment2) (This should be fixed by
+  now)
+  \item Using \verb!tpc_wait_all! instead of \verb!#pragma css
+    barrier! results in broken SDAM
 \end{itemize}
 
 \end{document}

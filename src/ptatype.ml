@@ -109,68 +109,68 @@ let options = [
   "SDAM: Print debugging information during sdam-typechecking phace (constraint//phi generation).";
 
   "--debug-typing",
-    Arg.Set(debug),
-    " Print progress information during the typechecking phase (constraint generation)";
+  Arg.Set(debug),
+  "SDAM: Print progress information during the typechecking phase (constraint generation)";
 
   "--do-typing-stats",
-    Arg.Set(do_typing_stats),
-    " Print statistics on void*/lazy field results and fork/non-fork functions";
+  Arg.Set(do_typing_stats),
+  "SDAM: Print statistics on void*/lazy field results and fork/non-fork functions";
 
   "--do-starting-forks",
-    Arg.Set(do_starting_forks),
-    " Consider thread creation points to be independent";
+  Arg.Set(do_starting_forks),
+  "SDAM: Consider thread creation points to be independent";
 
   "--no-void",
-    Arg.Set(do_void_conflate),
-    " Conflate at void* casts";
+  Arg.Set(do_void_conflate),
+  "SDAM: Conflate at void* casts";
 
   "--single-void",
-    Arg.Set(do_void_single),
-    " Conflate at void* casts for more than 1 types";
+  Arg.Set(do_void_single),
+  "SDAM: Conflate at void* casts for more than 1 types";
 
   "--debug-void",
-    Arg.Set(debug_void),
-    " Print debugging status information about void* and struct-field computation";
+  Arg.Set(debug_void),
+  "SDAM: Print debugging status information about void* and struct-field computation";
 
   "--no-uniqueness",
-    Arg.Clear(do_uniq),
-    " Don't use uniqueness analysis";
+  Arg.Clear(do_uniq),
+  "SDAM: Don't use uniqueness analysis";
 
   "--no-existentials",
-    Arg.Unit(fun () -> do_existentials := false; do_compact_structs := true),
-    " Don't use existential types";
+  Arg.Unit(fun () -> do_existentials := false; do_compact_structs := true),
+  "SDAM: Don't use existential types";
 
   "--no-ignore-casts",
-    Arg.Clear(do_ignore_casts),
-    " Create subtyping constraints for each cast, rather than ignoring them";
+  Arg.Clear(do_ignore_casts),
+  "SDAM: Create subtyping constraints for each cast, rather than ignoring them";
 
   "--no-use-one-effect",
-    Arg.Clear(do_one_effect),
-    " Don't use only one effect variable for the whole body of non-forking functions";
+  Arg.Clear(do_one_effect),
+  "SDAM: Don't use only one effect variable for the whole body of non-forking functions";
 
   "--debug-one-effect",
-    Arg.Set(debug_one_effect),
-    " Print details about forking/non-forking functions";
+  Arg.Set(debug_one_effect),
+  "SDAM: Print details about forking/non-forking functions";
 
   "--context-insensitive",
-    Arg.Clear(do_context_sensitive),
-    " Don't treat function calls context sensitively.";
+  Arg.Clear(do_context_sensitive),
+  "SDAM: Don't treat function calls context sensitively.";
 
   "--field-insensitive",
-    Arg.Clear(do_field_sensitive),
-    " Field-insensitive analysis: all fields of a struct are aliased.";
+  Arg.Clear(do_field_sensitive),
+  "SDAM: Field-insensitive analysis: all fields of a struct are aliased.";
 
   "--no-asm",
-    Arg.Clear(do_asm),
-    " Ignore asm blocks.";
+  Arg.Clear(do_asm),
+  "SDAM: Ignore asm blocks.";
 
   "--contextual",
-    Arg.Set(do_contextual),
-    " Use the function call rule from the contextual-effects paper.";
+  Arg.Set(do_contextual),
+  "SDAM: Use the function call rule from the contextual-effects paper.";
 (*
   "--compact-structs",
-     Arg.Set(do_compact_structs),
-     "Allow struct pointers in structs to be unfolded once";
+  Arg.Set(do_compact_structs),
+  "SDAM: Allow struct pointers in structs to be unfolded once";
 *)
 ]
 
@@ -2198,16 +2198,15 @@ and type_offcinit (c: cinfo)
 let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr list), (loop_d: loop_descr option)) arg =
   if not (is_dataflow_tag iotyp) then (
     match arg with
-      (* handle strided... *)
-      AIndex(AIndex(ACons(varname, []), _), ABinOp( BOr, _, _))
-    | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, _)), _)
-    | AIndex(ACons(varname, []), _)
+    (* handle safe... *)
     | ACons(varname, []) ->
       (* we need to find the argument in the current arg_l to mark it as safe *)
       List.iter
         (fun a ->
-          if(varname == a.argname) then
-            a.safe <- true; a.force_safe <- true;
+          if(varname == a.argname) then (
+            a.safe <- true;
+            a.force_safe <- true;
+          )
         ) args_l;
       (iotyp, loc, args_l, loop_d)
     | _ ->
@@ -2215,52 +2214,57 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
       raise Ignore_pragma
   ) else (
     match arg with
-      (* handle strided... *)
-      AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) ->
-        let attrParamToExp' =
-          attrParamToExp !program_file loc ~currFunction:!currentFunction
-        in
-        let tmp_size = attrParamToExp' varsize in
-        let var_i = find_scoped_var loc !currentFunction !program_file varname in
-        let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d =
-          Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
-        in
-        (iotyp, loc, arg_d::args_l, loop_d)
-      (* Brand new stride syntax... *)
-       | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
-            let attrParamToExp' =
-          attrParamToExp !program_file loc ~currFunction:!currentFunction
-        in
-        let tmp_size = attrParamToExp' bs_c in
-        let var_i = find_scoped_var loc !currentFunction !program_file varname in
-        let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d =
-          Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
-        in
-        (iotyp, loc, arg_d::args_l, loop_d)
+    (* handle strided... *)
+    | AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) ->
+      let attrParamToExp' =
+        attrParamToExp !program_file loc ~currFunction:!currentFunction
+      in
+      let tmp_size = attrParamToExp' varsize in
+      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let array_d = LP.getArrayDescr var_i loc !currSid in
+      let arg_d =
+        Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
+      in
+      (iotyp, loc, arg_d::args_l, loop_d)
+    (* Brand new stride syntax... *)
+    | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
+      let attrParamToExp' =
+        attrParamToExp !program_file loc ~currFunction:!currentFunction
+      in
+      let tmp_size = attrParamToExp' bs_c in
+      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let array_d = LP.getArrayDescr var_i loc !currSid in
+      let arg_d =
+        Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
+      in
+      (iotyp, loc, arg_d::args_l, loop_d)
+    (* variable with its size *)
     | AIndex(ACons(varname, []), varsize) ->
-        let tmp_size =
-          attrParamToExp !program_file loc ~currFunction:!currentFunction varsize
-        in
-        let var_i = find_scoped_var loc !currentFunction !program_file varname in
-        let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d =
-          Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
-        in
-        (iotyp, loc, arg_d::args_l, loop_d)
+      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let tmp_size =
+        let size = SizeOf( getBType var_i.vtype varname ) in
+        let n = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
+          (* argument size = n * sizeof(type) *)
+        BinOp(Mult, n, size, intType)
+      in
+      let array_d = LP.getArrayDescr var_i loc !currSid in
+      let arg_d =
+        Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
+      in
+      (iotyp, loc, arg_d::args_l, loop_d)
+    (* support optional sizes example int_a would have size of sizeof(int_a) *)
     | ACons(varname, []) ->
-        let var_i = find_scoped_var loc !currentFunction !program_file varname in
-        let tmp_size = SizeOfE (Lval (var var_i)) in
-        let array_d = LP.getArrayDescr var_i loc !currSid in
-        let arg_d =
-          Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
-        in
-        (iotyp, loc, arg_d::args_l, loop_d)
+      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let tmp_size = SizeOf( getBType var_i.vtype varname ) in
+      let array_d = LP.getArrayDescr var_i loc !currSid in
+      let arg_d =
+        Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
+      in
+      (iotyp, loc, arg_d::args_l, loop_d)
     | _ -> (
-        ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
-        raise Ignore_pragma
-      )
+      ignore(E.error "SDAM:%a:Syntax error in #pragma css task %s(...)" d_loc loc iotyp);
+      raise Ignore_pragma
+    )
   )
 
 (* iterates an expression list and returns a list with the names of the actual

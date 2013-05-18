@@ -639,13 +639,13 @@ let arg_type2string (arg_t: arg_type) : string =
     | NTRegion ( flow, _) -> (flow2str flow)
 
 (** Checks if tag is data annotation.
-		@param typ the dataflow annotation
-		@return true if it is dataflow annotation
+    @param typ the dataflow annotation
+    @return true if it is dataflow annotation
  *)
 let is_dataflow_tag (typ: string): bool =
-	match typ with
-			"safe" -> false
-		| _ -> true
+  match typ with
+  | "safe" -> false
+  | _ -> true
 
 (** Maps the arg_t to ints as defined by the TPC headers
     @return the corrensponding int *)

@@ -213,14 +213,14 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
         taskScope2 := task2.scope;
         (* do not check with self  if task is not in a loop *)
         if (not (BS.isInLoop task1) && task1.taskid == task2.taskid) then (
-          ignore(E.log "not in loop\n");
+          if !debug then ignore(E.log "not in loop\n");
           arg.safe <- true;
         )
         else (
           (if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
             let res = not (alias arg arg') || LP.array_bounds_safe arg in
             if(arg.force_safe && not res) then (
-              ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
+              ignore(E.log "Warning:Argument \"%s\" has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
               raise Done
             );
             arg.safe <- res;
@@ -228,7 +228,7 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
            else (
              let res = not (alias arg arg') in
              if(arg.force_safe && not res) then (
-               ignore(E.log "Warning:Argument %s has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
+               ignore(E.log "Warning:Argument \"%s\" has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
                raise Done
              );
              arg.safe <- res;
@@ -268,8 +268,8 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
     if !debug then ignore(E.log "checking Task:%a\n" d_task task);
     let tasks = getTasks (BS.getTaskSet task) tasks_l in
     (* 0. if sdam is disabled then mark only scalars as safe, do not run the analysis *)
-    List.iter (fun task -> if !debug then ignore(E.log "TaskSet:%a\n" d_task task);
-    ) tasks;
+    if !debug then
+      List.iter (fun task -> ignore(E.log "TaskSet:%a\n" d_task task); ) tasks;
     (* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
     if (not (BS.isInLoop task)) then (
       if !debug then ignore(E.log "Not self dependent\n");
@@ -368,7 +368,7 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
       ) task.arguments
     ) !tasks_l;
     count_tasks_and_args (List.rev !tasks_l);
-    ignore(E.log "SCOOP: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
+    ignore(E.log "SCOOP: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments(incl. scalars)=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
   )
   else (
     ignore(E.log "SDAM is enabled\n");
@@ -416,6 +416,6 @@ let find_dependencies (f: file) (disable_sdam: bool) : unit = begin
       Dotpretty.close_file ();
     );
     count_tasks_and_args (List.rev !tasks_l);
-    ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
+    ignore(E.log "SDAM: Total tasks=%d, total arguments=%d, total scalar arguments=%d, total safe arguments(incl. scalars)=%d\n" !total_tasks !total_args !total_scalar_args !total_safe_args);
   )
 end
