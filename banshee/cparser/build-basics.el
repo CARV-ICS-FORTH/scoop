@@ -1,29 +1,29 @@
 ;    This file is part of the RC compiler.
 ;    Copyright (C) 2000-2001 The Regents of the University of California.
-; 
+;
 ; RC is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
 ; the Free Software Foundation; either version 2, or (at your option)
 ; any later version.
-; 
+;
 ; RC is distributed in the hope that it will be useful,
 ; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ; GNU General Public License for more details.
-; 
+;
 ; You should have received a copy of the GNU General Public License
 ; along with RC; see the file COPYING.  If not, write to
 ; the Free Software Foundation, 59 Temple Place - Suite 330,
 ; Boston, MA 02111-1307, USA.
 
-(defmacro deffield (field-name c-type attributes)
-  `(deffield* ',field-name ',c-type ',attributes))
+(defmacro banshee-deffield (field-name c-type attributes)
+  `(banshee-deffield* ',field-name ',c-type ',attributes))
 
-(defmacro deftype (type-name super-type fields documentation)
-  `(deftype* ',type-name ',super-type ',fields ',documentation))
+(defmacro banshee-deftype (type-name super-type fields documentation)
+  `(banshee-deftype* ',type-name ',super-type ',fields ',documentation))
 
-(defmacro defnode (node-name type-name documentation)
-  `(defnode* ',node-name ',type-name ',documentation))
+(defmacro banshee-defnode (node-name type-name documentation)
+  `(banshee-defnode* ',node-name ',type-name ',documentation))
 
 
 
@@ -31,19 +31,19 @@
 (setq types nil)
 (setq nodes nil)
 
-(defun deffield* (field-name c-type attributes)
+(defun banshee-deffield* (field-name c-type attributes)
   (setq attributes (attributes-ok field-name attributes))
   (if (assoc field-name fields)
       (message (format "Field %s already defined" field-name))
     (setq fields (cons (list field-name c-type attributes) fields))))
 
-(defun deftype* (type-name super-type fields documentation)
+(defun banshee-deftype* (type-name super-type fields documentation)
     (if (or (assoc type-name types) (assoc type-name nodes))
       (message (format "Name %s already used for a type or node" type-name))
     (setq types (cons (list type-name super-type fields documentation) types))))
 
 
-(defun defnode* (node-name type-name documentation)
+(defun banshee-defnode* (node-name type-name documentation)
     (if (or (assoc node-name types) (assoc node-name nodes))
       (message (format "Name %s already used for a type or node" node-name))
     (setq nodes (cons (list node-name type-name documentation) nodes))))
@@ -52,7 +52,7 @@
 (setq legal-attributes '(init tree nodump noprint default dump-special print-special format))
 
 (defun attributes-ok (field-name attrs)
-  (mapcar '(lambda (attr)
+  (mapcar #'(lambda (attr)
 	     (let* ((realattr (if (listp attr) attr (list attr)))
 		    (aname (car realattr)))
 	       (if (not (member aname legal-attributes))
@@ -67,10 +67,10 @@
   (check-nodes))
 
 (defun check-types ()
-  (mapcar #'check-type types))
+  (mapcar #'banshee-check-type types))
 
-(defun check-type (type)
-  (mapcar '(lambda (field-name)
+(defun banshee-check-type (type)
+  (mapcar #'(lambda (field-name)
 	     (if (not (assoc field-name fields))
 		 (message (format "Unknown field %s in %s" field-name (car type)))))
 	  (type-fields type))
@@ -136,4 +136,3 @@
   (insert "/* Automatically generated file, do not edit. See nodetypes.def */\n\n")
   (insert "/* Copyright (c) 2000-200 The Regents of the University of California. */\n")
   (insert "/* See the copyright notice in nodetypes.def for distribution restrictions */\n"))
-
