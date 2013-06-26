@@ -75,22 +75,19 @@ all:
 
 doc: pdfdoc htmldoc
 
-pdfdoc: $(DOCDIR)/in/scoopman.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
-	-rm -rf $(DOCDIR)/scoop
-	-mkdir -p $(DOCDIR)/scoop
-	cd doc/in; echo "\def\scoopversion{1.5.0}" > scoop.version.tex
-	cd $(DOCDIR)/in; pdflatex scoopman.tex; pdflatex scoopman.tex
-	cd $(DOCDIR)/in; mv scoopman.pdf ../scoop/SCOOP.pdf
-	ocamldoc -o $(DOCDIR)/scoop-api.tex.tmp -v -stars\
+pdfdoc: $(DOCDIR)/src/manual.tex $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
+	@cd doc/src; echo "\def\scoopversion{1.5.1}" > scoop.version.tex
+	@cd $(DOCDIR)/src; pdflatex manual.tex; pdflatex manual.tex
+	@cd $(DOCDIR)/src; mv manual.pdf ../manual.pdf
+	@ocamldoc -o $(DOCDIR)/scoop-api.tex.tmp -v -stars\
              -latex \
              -t "SCOOP Documentation" \
 	     -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
-	sed -e 's/\\usepackage\[T1\]{fontenc}/\\setlength{\\pdfpagewidth}{\\paperwidth} \\setlength{\\pdfpageheight}{\\paperheight}/' $(DOCDIR)/scoop-api.tex.tmp >$(DOCDIR)/scoop-api.tex
-	rm $(DOCDIR)/scoop-api.tex.tmp
+	@sed -e 's/\\usepackage\[T1\]{fontenc}/\\setlength{\\pdfpagewidth}{\\paperwidth} \\setlength{\\pdfpageheight}{\\paperheight}/' $(DOCDIR)/scoop-api.tex.tmp >$(DOCDIR)/scoop-api.tex
+	@rm $(DOCDIR)/scoop-api.tex.tmp
 
-	cd $(DOCDIR) ; TEXINPUTS="$$TEXINPUTS:/usr/local/lib/ocaml/ocamldoc:/usr/lib/ocaml/ocamldoc" pdflatex scoop-api.tex
-	cd $(DOCDIR) ; mv scoop-api.pdf scoop/SCOOP-API.pdf
-	-rm -f $(DOCDIR)/* $(DOCDIR)/in/*.aux $(DOCDIR)/in/*.log $(DOCDIR)/in/scoop.version.tex
+	@cd $(DOCDIR); TEXINPUTS="$$TEXINPUTS:/usr/local/lib/ocaml/ocamldoc:/usr/lib/ocaml/ocamldoc" pdflatex scoop-api.tex
+	@cd $(DOCDIR); rm -f *.aux *.log src/*.aux src/*.log src/scoop.version.tex
 
 htmldoc: $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 	-rm -rf $(DOCDIR)/html/
