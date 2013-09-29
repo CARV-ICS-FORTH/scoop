@@ -1,4 +1,4 @@
-# -*- Mode: makefile -*- 
+# -*- Mode: makefile -*-
 
 # Makefile for the cil wrapper
 # @do_not_edit@ Makefile.in
@@ -6,13 +6,13 @@
 # author: George Necula
 
 #
-# If you want to add extra CIL features, you do not always need to change 
-# this file. Just invoke 
+# If you want to add extra CIL features, you do not always need to change
+# this file. Just invoke
 #        ./configure EXTRASRCDIRS=/home/foodir EXTRAFEATURES="foo bar"
 # This will add two features that must be defined in foo.ml and bar.ml
-# 
+#
 
-# Debugging. Set ECHO= to debug this Makefile 
+# Debugging. Set ECHO= to debug this Makefile
 .PHONY: setup quickbuild doc distrib machdep cilversion
 ECHO = @
 
@@ -24,7 +24,7 @@ include Makefile.features
 
 # look out for outdated Makefile; if it's out of date, this will automatically
 # re-run ./config.status, then re-exec make with the same arguments
-Makefile: config.status Makefile.in 
+Makefile: config.status Makefile.in
 	./$<
 
 config.status: configure
@@ -97,16 +97,17 @@ CILLY_LIBRARY_MODULES = pretty inthash errormsg alpha trace stats util clist \
               patch frontc check mergecil \
               dataflow dominators bitmap ssa ciltools \
               usedef logcalls logwrites rmtmps \
-	      callgraph epicenter heapify \
+              callgraph epicenter heapify \
               setp uref olf ptranal \
               canonicalize heap oneret partial simplemem simplify \
-	      dataslicing sfi expcompare\
+              dataslicing sfi expcompare\
               cfg liveness reachingdefs deadcodeelim availexps \
               availexpslv predabst\
               testcil \
- 	      $(LOCKSMITH_MODULES) \
-	      $(CILLY_FEATURES) \
-	      ciloptions feature_config
+              $(LOCKSMITH_MODULES) \
+              $(SCOOP_MODULES) \
+              $(CILLY_FEATURES) \
+              ciloptions feature_config
 # ww: we don't want "main" in an external cil library (cil.cma),
 # otherwise every program that links against that library will get
 # main's argument checking and whatnot ...
@@ -150,21 +151,21 @@ quickbuild: cilversion machdep cilly lib/Cilly.pm
 # Setup also makes the native code versions
 
 setup: cilversion machdep
-	$(MAKE) cilly NATIVECAML= 
+	$(MAKE) cilly NATIVECAML=
 	$(MAKE) cilly NATIVECAML=1
 	$(MAKE) cillib NATIVECAML=
 	$(MAKE) cillib NATIVECAML=1
 
 # Create the machine dependency module
 # If the cl command cannot be run then the MSVC part will be identical to GCC
-.PHONY : machdep 
-machdep: $(OBJDIR)/machdep.ml 
+.PHONY : machdep
+machdep: $(OBJDIR)/machdep.ml
 $(OBJDIR)/machdep.ml : src/machdep-ml.c configure.in Makefile.in
 	rm -f $@
 	mkdir -p $(OBJDIR)
 	echo "(* This module was generated automatically by code in Makefile and $(<F) *)" >$@
 # Now generate the type definition
-	echo "type mach = {" >> $@ 
+	echo "type mach = {" >> $@
 	echo "  version_major: int;     (* Major version number *)"    >> $@
 	echo "  version_minor: int;     (* Minor version number *)"    >> $@
 	echo "  version: string;        (* gcc version string *)"      >> $@
@@ -181,7 +182,7 @@ $(OBJDIR)/machdep.ml : src/machdep-ml.c configure.in Makefile.in
 	echo "  sizeof_void: int;       (* Size of \"void\" *)"        >> $@
 	echo "  sizeof_fun: int;        (* Size of function *)"        >> $@
 	echo "  size_t: string;         (* Type of \"sizeof(T)\" *)"   >> $@
-	echo "  wchar_t: string;        (* Type of \"wchar_t\" *)"     >> $@ 
+	echo "  wchar_t: string;        (* Type of \"wchar_t\" *)"     >> $@
 	echo "  alignof_short: int;     (* Alignment of \"short\" *)"  >> $@
 	echo "  alignof_int: int;       (* Alignment of \"int\" *)"    >> $@
 	echo "  alignof_bool: int;      (* Alignment of \"_Bool\" *)"    >> $@
@@ -200,12 +201,12 @@ $(OBJDIR)/machdep.ml : src/machdep-ml.c configure.in Makefile.in
 	echo "  little_endian: bool; (* whether the machine is little endian *)">>$@
 	echo "  __thread_is_keyword: bool; (* whether __thread is a keyword *)">>$@
 	echo "  __builtin_va_list: bool; (* whether __builtin_va_list is builtin (gccism) *)">>$@
-	echo "}" >> $@ 	
+	echo "}" >> $@
 	if $(MACHDEPCC) $< -o $(OBJDIR)/machdep-ml.exe ;then \
 	    echo "machdep-ml.exe created succesfully." \
 	;else \
             rm -f $@; exit 1 \
-        ;fi 
+        ;fi
 	echo "let gcc = {" >>$@
 	$(EMUL) $(OBJDIR)/machdep-ml.exe >>$@
 	echo "}"          >>$@
@@ -246,33 +247,33 @@ cillib: $(OBJDIR)/cil.$(CMXA) lib/Cilly.pm
 $(OBJDIR)/feature_config.ml: config.status
 	rm -f $(OBJDIR)/feature_config.*
 	echo "(* This module was generated automatically by code in Makefile.in *)" >$@
-# The Cilly feature options. A list of Cil.featureDescr 
-	echo "open Cil"   >>$@ 
+# The Cilly feature options. A list of Cil.featureDescr
+	echo "open Cil"   >>$@
 	echo "let features : featureDescr list = [" >> $@
 ifdef USE_BLOCKINGGRAPH
-	echo "   Blockinggraph.feature;" >> $@  
+	echo "   Blockinggraph.feature;" >> $@
 endif
 ifdef USE_RAND
-	echo "   Rand.feature;" >> $@  
+	echo "   Rand.feature;" >> $@
 endif
 ifdef USE_ARITHABS
 	echo "   Arithabs.feature;" >>$@
 endif
 ifdef USE_ZRAPP
-	echo "   Zrapp.feature;" >> $@  
+	echo "   Zrapp.feature;" >> $@
 endif
 ifdef USE_LLVM
-	echo "   Llvm.feature;" >> $@  
+	echo "   Llvm.feature;" >> $@
 endif
 # Now the extra features, with the first letter capitalized
-	echo " (* EXTRAFEATURES: *)" >> $@  
+	echo " (* EXTRAFEATURES: *)" >> $@
 	echo \
           $(foreach f,@EXTRAFEATURES@, \
              "\n   "`echo $f | cut -c 1 | tr "[a-z]" "[A-Z]"``echo $f | cut -c 2-`".feature;") \
 	| perl -pe 's/\\n/\n/g' >> $@
-	echo "]"   >>$@ 
+	echo "]"   >>$@
 
-OCAML_CIL_LIB_MODULES := $(CILLY_LIBRARY_MODULES) 
+OCAML_CIL_LIB_MODULES := $(CILLY_LIBRARY_MODULES)
 
 # Build an OCAML library (CMA / CMXA) that exports our Cil stuff
 $(OBJDIR)/cil.$(CMXA): $(OCAML_CIL_LIB_MODULES:%=$(OBJDIR)/%.$(CMO))
@@ -386,10 +387,10 @@ else
   endif
 endif
 
-test/%: 
+test/%:
 	bin/cilly $(CONLY) test/small1/$*.c $(OBJOUT)test/small1/$*.o
 
-testrun/%: 
+testrun/%:
 	bin/cilly test/small1/$*.c $(OBJOUT)test/small1/$*
 	test/small1/$*
 

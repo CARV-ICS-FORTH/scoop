@@ -1,56 +1,84 @@
-\documentclass[a4paper]{article}
+% It doesn’t do anything, per se, it just warns when you accidentally
+% use deprecated LaTeX constructs from l2tabu
+\RequirePackage[l2tabu, orthodox]{nag}
 
-\setlength{\pdfpagewidth}{\paperwidth}
-\setlength{\pdfpageheight}{\paperheight}
+%% THis is to resolve error 131 in adobe reader
+%\pdfobjcompresslevel=1
 
-\usepackage{fullpage}
+%\pdfminorversion=4
+% Check https://en.wikibooks.org/wiki/LaTeX/Document_Structure for
+% more info
+\documentclass[
+a4paper,
+12pt,
+]{article}
 
+\input{preamble.tex}
 
 % scoopversion.tex is generated automatically to define \scoopversion
 \include{scoop.version}
 
 
 \begin{document}
-\title{SCOOP: Source COmpilation Optimizations for Parallelism \scoopversion}
-\date{last update: 18/05/13}
-\maketitle
 
-\section{License}
+\begin{titlepage}
+\begin{center}
 
-\begin{tabbing}
-Copyright (c) 2010-2012,\\
-\ \ \=Dimitris Hassapis\ \ \ \ \=hassapis@ics.forth.gr\\
-\>Foivos Zakkak        \>zakkak@ics.forth.gr\\
-\>Polyvios Pratikakis  \>polyvios@ics.forth.gr\\
-All rights reserved.
-\end{tabbing}
+  \vspace*{5cm}
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:\\
+  \LARGE \textbf{SCOOP v\scoopversion\\}
+  Manual\\[0.5cm]
+  \large \today\\ (Not fully up to date)
 
-1. Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.\\
+  \vfill
 
-2. Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.\\
+  \large Author: \href{mailto:zakkak@ics.forth.gr}{\textit{Foivos S. Zakkak}}\\[1cm]
 
-3. The names of the contributors may not be used to endorse or promote
-products derived from this software without specific prior written
-permission.\\
+  Foundation for Research and Technology - Hellas (FORTH)\\
+  Institute of Computer Science\\
+  N. Plastira 100\\
+  Vassilika Vouton, GR-700 13 Heraklion, Crete, Greece\\[0.5cm]
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
-IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
-OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
+\end{center}
+
+\end{titlepage}
+
+\pagenumbering{Roman}
+\pagestyle{plain}
+
+\section*{License}
+
+\begin{verbatim}
+Copyright (c) 2010-13,
+                       Foivos   Zakkak     <zakkak@ics.forth.gr>
+                       Dimitris Chassapis  <polyvios@ics.forth.gr>
+                       Polyvios Pratikakis <polyvios@ics.forth.gr>
+
+
+                       FORTH-ICS / CARV
+                       (Foundation for Research & Technology -- Hellas,
+                        Institute of Computer Science,
+                        Computer Architecture & VLSI Systems Laboratory)
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+\end{verbatim}
+
+\newpage
+\tableofcontents{}
+\newpage
+\pagenumbering{arabic}
+\pagestyle{headings}
 
 \section{Annotation Syntax}
 
@@ -86,7 +114,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\\
       \verb!#pragma css task in(a, b[4]) out(c[16])!
 
 
-\section{Dependencies}
+\section{Installing}
+
+This section describes how to install SCOOP on your system.  We
+suppose that you have checked out/cloned SCOOP under \verb!/opt/scoop!
+directory.  However the same instructions should apply for any
+alternative path, simply replacing \verb!/opt/scoop! with the desired
+alternative path for the rest of this section.
+
+\subsection{Dependencies}
+
+In order to build SCOOP you will need to install the following
+packages:
 
 \begin{itemize}
   \setlength{\itemsep}{1pt}
@@ -112,13 +151,44 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
   (e.g. \verb!export PATH=$PATH:/opt/cell/toolchain/bin!)\\
 \end{tabbing}
 
-\section{Install}
+\subsection{Compile}
+To compile SCOOP you have to run \verb!configure! and then \verb!make!.
+\begin{bash}
+  ./configure && make
+\end{bash}
 
-  \verb!  ./configure && make!
+\subsection{Install}
+You can install SCOOP running
+\begin{bash}
+  sudo make install
+\end{bash}
+this will create a copy of the scoop executable in
+\verb!/usr/local/bin!.
 
-\section{Run}
+Alternatively you can append \verb!/opt/scoop! to the \verb!PATH!
+variable.\\
+i.e.
+\begin{bash}
+  echo "export PATH=$PATH:/opt/scoop" >> $HOME/.bashrc
+\end{bash}
 
-  \verb!  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX> [options] <file> [file2 ...]!
+\subsection{Uninstall}
+
+You can uninstall SCOOP running
+\begin{bash}
+  sudo make uninstall
+\end{bash}
+this will erase the copy of the scoop executable from
+\verb!/usr/local/bin!.
+
+If you chose the alternative method of adding \verb!/opt/scoop! to
+your \verb!PATH! variable, simply remove the added line from your \verb!.bashrc!
+
+\section{Using}
+
+\begin{bash}
+  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX> [options] <file> [file2 ...]
+\end{bash}
 
 \subsection{Options (Needs update)}
 
@@ -144,21 +214,25 @@ including ppu\_intrinsics.h,\\ altivec.h etc in your include path
   \>\verb!--disable-sdam!             \>Disable the static dependence analysis module
   \end{tabbing}
 
-\section{Common Errors/Known Bugs}
+\section{Common Errors/Limitations/Known Bugs}
 
 \begin{itemize}
-  \item Adding a semicolon at the end of \verb!#pragma!s
-  \item Putting \verb!#pragma css barrier! at the end of a block (fix, add a semicolon right below of it)
-  \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}} you
-      probably have wrong argument at a call tagged with \verb!#pragma css task!
-  \item Using \verb!#define!s in pragmas (preprocessor doesn't process them)
-  \item Putting \verb!#pragma!s directly above a declaration of a variable (pragmas are only supported above statements)
-  \item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css task}
-  usually means that the tool is renaming a variable due to previous declaration
-  try renaming it manually (e.g. segment2) (This should be fixed by
-  now)
-  \item Using \verb!tpc_wait_all! instead of \verb!#pragma css
-    barrier! results in broken SDAM
+\item Adding a semicolon at the end of \verb!#pragma!s
+\item Putting \verb!#pragma css barrier! at the end of a block (fix,
+  add a semicolon right below of it)
+\item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}}
+  you probably have wrong argument at a call tagged with
+  \verb!#pragma css task!
+\item Using \verb!#define!s in pragmas (preprocessor doesn't process
+  them)
+\item Putting \verb!#pragma!s directly above a declaration of a
+  variable (pragmas are only supported above statements)
+\item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css
+    task} usually means that the tool is renaming a variable due to
+  previous declaration try renaming it manually (e.g. segment2) (This
+  should be fixed by now)
+\item Using \verb!tpc_wait_all! instead of \verb!#pragma css barrier!
+  results in broken SDAM
 \end{itemize}
 
 \end{document}

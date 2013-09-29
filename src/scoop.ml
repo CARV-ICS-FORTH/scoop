@@ -1,38 +1,27 @@
-(*
- *
- * Copyright (c) 2010,
- *  Foivos Zakkak        <zakkak@ics.forth.gr>
- *  Polyvios Pratikakis <polyvios@ics.forth.gr>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- * 1. Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution.
- *
- * 3. The names of the contributors may not be used to endorse or promote
- * products derived from this software without specific prior written
- * permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
- * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
- * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *)
+(****************************************************************************)
+(* Copyright (c) 2010-13,                                                   *)
+(*                        Foivos    Zakkak          <zakkak@ics.forth.gr>   *)
+(*                        Polyvios  Pratikakis      <polyvios@ics.forth.gr> *)
+(*                                                                          *)
+(*                        FORTH-ICS / CARV                                  *)
+(*                        (Foundation for Research & Technology -- Hellas,  *)
+(*                         Institute of Computer Science,                   *)
+(*                         Computer Architecture & VLSI Systems Laboratory) *)
+(*                                                                          *)
+(*                                                                          *)
+(*                                                                          *)
+(* Licensed under the Apache License, Version 2.0 (the "License");          *)
+(* you may not use this file except in compliance with the License.         *)
+(* You may obtain a copy of the License at                                  *)
+(*                                                                          *)
+(*     http://www.apache.org/licenses/LICENSE-2.0                           *)
+(*                                                                          *)
+(* Unless required by applicable law or agreed to in writing, software      *)
+(* distributed under the License is distributed on an "AS IS" BASIS,        *)
+(* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. *)
+(* See the License for the specific language governing permissions and      *)
+(* limitations under the License.                                           *)
+(****************************************************************************)
 
 (** The main module of SCOOP *)
 
@@ -55,7 +44,8 @@ let queue_size = ref "0"
 let debug = ref false
 (** flag to support multithreading or not *)
 let thread = ref false
-(** the prefix of the files to be produced by SCOOP. Defaults to "scoop_trans" *)
+(** the prefix of the files to be produced by SCOOP. Defaults to
+    "scoop_trans" *)
 let out_name = ref "scoop_trans"
 (** the runtime/architecture to target. Currently supporting
     adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX
@@ -180,7 +170,8 @@ let feature : featureDescr =
         arch := "cellgod";
       );
 
-      (* if we are on heterogeneous architecture create two copies of the initial file *)
+      (* if we are on heterogeneous architecture create two copies of
+         the initial file *)
       if ( !isCell ) then
         spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
 
@@ -192,21 +183,32 @@ let feature : featureDescr =
       (* find tpc_decl pragmas *)
       let fspuVisitor =
         match !arch with
-        | "adam" -> new Scoop_adam.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "bddt" -> new Scoop_bddt.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "cell" -> new Scoop_cell.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
-        | "cellgod" -> new Scoop_cellgod.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
-        | "myrmics" -> new Scoop_myrmics.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "nesting" -> new Scoop_nesting.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "XPPFX" -> new Scoop_XPPFX.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "adam" ->
+           new Scoop_adam.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "bddt" ->
+           new Scoop_bddt.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "cell" ->
+           new Scoop_cell.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+        | "cellgod" ->
+           new Scoop_cellgod.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+        | "myrmics" ->
+           new Scoop_myrmics.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "nesting" ->
+           new Scoop_nesting.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+        | "XPPFX" ->
+           new Scoop_XPPFX.findTaskDeclVisitor callgraph !ppc_file !pragma_str
         | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
       in
 
       let def = " "^(!cflags)^
         ( if (!stats) then " -DSTATISTICS=1" else " ")^
-        ( if (!blade) then " -DBLADE=1" else " ") in
+        ( if (!blade) then " -DBLADE=1" else " ")
+      in
       if (!arch = "adam" || !arch = "bddt") then (
-        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file (!tpcIncludePath) "/scoop/tpc_scoop.h" (def);
+        preprocessAndMergeWithHeader_x86 !ppc_file
+                                         (!tpcIncludePath)
+                                         "/scoop/tpc_scoop.h"
+                                         (def);
       ) else if !isCell then ( (* else cell/cellgod *)
         (* copy all code from file f to file_ppc *)
         let def = def^(
@@ -216,18 +218,24 @@ let feature : featureDescr =
             (" -DMAX_QUEUE_ENTRIES="^(!queue_size))
         ) in
 
-        (* Defined in scoop_util *)
-        preprocessAndMergeWithHeader_cell !ppc_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DPPU=1"^(def))
-                                    !tpcIncludePath;
+        preprocessAndMergeWithHeader_cell !ppc_file
+                                          ((!tpcIncludePath)^"/scoop/tpc_scoop.h")
+                                          (" -DPPU=1"^(def))
+                                          !tpcIncludePath;
 
         (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
           plus the needed headers *)
         let new_types_l = List.filter is_typedef (!ppc_file).globals in
         (!spu_file).globals <- new_types_l;
-        preprocessAndMergeWithHeader_cell !spu_file ((!tpcIncludePath)^"/scoop/tpc_scoop.h") (" -DSPU=1"^(def))
-                                    !tpcIncludePath;
+        preprocessAndMergeWithHeader_cell !spu_file
+                                          ((!tpcIncludePath)^"/scoop/tpc_scoop.h")
+                                          (" -DSPU=1"^(def))
+                                          !tpcIncludePath;
       ) else if ( !arch<>"myrmics" ) then (
-        Scoop_adam.preprocessAndMergeWithHeader_x86 !ppc_file (!tpcIncludePath) ((!arch)^"_header.h") (def);
+        preprocessAndMergeWithHeader_x86 !ppc_file
+                                         (!tpcIncludePath)
+                                         ((!arch)^"_header.h")
+                                         (def);
       );
 
       (* Declare some globals *)
@@ -242,7 +250,9 @@ let feature : featureDescr =
             uint64_t _tmptime; *)
         "adam" -> (
           let makeGlobalVar = makeGlobalVar None in
-          let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
+          let task_element_pt =
+            TPtr((find_type !ppc_file "Task_element"), [])
+          in
           makeGlobalVar "this_SCOOP__" task_element_pt;
           let uint32_t = (find_type !ppc_file "uint32_t") in
           let uint64_t = (find_type !ppc_file "uint64_t") in
@@ -257,7 +267,9 @@ let feature : featureDescr =
             uint64_t _tmptime; *)
         | "bddt" -> (
           let makeGlobalVar = makeGlobalVar None in
-          let task_element_pt = TPtr((find_type !ppc_file "Task_element"), []) in
+          let task_element_pt =
+            TPtr((find_type !ppc_file "Task_element"), [])
+          in
           makeGlobalVar "this_SCOOP__" task_element_pt;
           let uint32_t = (find_type !ppc_file "uint32_t") in
           let uint64_t = (find_type !ppc_file "uint64_t") in
@@ -268,7 +280,9 @@ let feature : featureDescr =
         )
         (* const int tpc_task_arguments_list[]; *)
         | "XPPFX" -> (
-          makeGlobalVar (Some (SingleInit(zero))) "tpc_task_arguments_list" (TArray(TInt(IInt, [Attr("const", [])]), None, []));
+          makeGlobalVar (Some (SingleInit(zero)))
+                        "tpc_task_arguments_list"
+                        (TArray(TInt(IInt, [Attr("const", [])]), None, []));
         )
         | _ -> ()
       );
@@ -298,19 +312,24 @@ let feature : featureDescr =
       (* tasks  (new_tpc * old_original * args) *)
       let (_, tasks) = List.split (L.rev fspuVisitor#getTasks) in
       if (!arch = "cellgod") then (
-        (!ppc_file).globals <- (make_null_task_table tasks)::((!ppc_file).globals);
-        (!spu_file).globals <- (!spu_file).globals@[(make_task_table "Task_table" tasks)]
+        (!ppc_file).globals <-
+          (make_null_task_table tasks)::((!ppc_file).globals);
+        (!spu_file).globals <-
+          (!spu_file).globals@[(make_task_table "Task_table" tasks)]
       ) else if ( !arch = "adam" || !arch = "bddt" ) then (
-        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
+        (!ppc_file).globals <-
+          ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
       ) else if ( !arch = "myrmics" ) then (
         let main = find_function_sign !ppc_file !myrmics_main in
         let tasks = (dummyFunDec, main, [])::tasks in
-        (!ppc_file).globals <- ((!ppc_file).globals)@[(make_task_table (!myrmics_main^"_task_table") tasks)]
+        (!ppc_file).globals <-
+          ((!ppc_file).globals)@[(make_task_table (!myrmics_main^"_task_table") tasks)]
       );
 
       (* execute_task is redundant in x86*)
       if !isCell then
-        (!spu_file).globals <- (!spu_file).globals@[Scoop_make_exec.make_exec_func !arch !spu_file tasks];
+        (!spu_file).globals <-
+          (!spu_file).globals@[Scoop_make_exec.make_exec_func !arch !spu_file tasks];
 
       (* eliminate dead code *)
 (*        Cfg.computeFileCFG !ppc_file;

@@ -1,3 +1,0 @@
-#!/bin/bash
-
-ROOT/cil/bin/cilly --dolockpick -lpthread $*

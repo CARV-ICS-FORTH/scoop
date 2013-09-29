@@ -1,3 +1,27 @@
+(****************************************************************************)
+(* Copyright (c) 2010-13,                                                   *)
+(*                        Dimitris  Chassapis       <hassapis@ics.forth.gr> *)
+(*                                                                          *)
+(*                        FORTH-ICS / CARV                                  *)
+(*                        (Foundation for Research & Technology -- Hellas,  *)
+(*                         Institute of Computer Science,                   *)
+(*                         Computer Architecture & VLSI Systems Laboratory) *)
+(*                                                                          *)
+(*                                                                          *)
+(*                                                                          *)
+(* Licensed under the Apache License, Version 2.0 (the "License");          *)
+(* you may not use this file except in compliance with the License.         *)
+(* You may obtain a copy of the License at                                  *)
+(*                                                                          *)
+(*     http://www.apache.org/licenses/LICENSE-2.0                           *)
+(*                                                                          *)
+(* Unless required by applicable law or agreed to in writing, software      *)
+(* distributed under the License is distributed on an "AS IS" BASIS,        *)
+(* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. *)
+(* See the License for the specific language governing permissions and      *)
+(* limitations under the License.                                           *)
+(****************************************************************************)
+
 open Cil
 open Printf
 open Pretty
@@ -130,7 +154,7 @@ and voiddata = {
 and cinfo = compdata U.uref
 and vinfo = voiddata U.uref
 
-type uniq = 
+type uniq =
     UnqVar      (* a variable that is unique (both lval and storage) *)
   | UnqStorage  (* storage pointed to be a unique pointer *)
   | NotUnq      (* non-unique storage *)
@@ -215,9 +239,9 @@ type labelsets = (rhoSet * thetaSet * effectSet * phiSet)
 
 let string_of_cinfo (c: cinfo) =
   (U.deref c).compinfo.cname ^
-  (if !debug_void then 
+  (if !debug_void then
     "#" ^ string_of_int (U.deref c).cinfo_id
-  else "") 
+  else "")
 
 let rec d_sig () (ts: tau_sig) : doc =
   match ts with
@@ -234,7 +258,7 @@ let rec d_sig () (ts: tau_sig) : doc =
   | STBuiltin_va_list -> text "..."
   | STAbs ts1 -> text "forall(" ++ d_sig () ts1 ++ text ")"
   | STExists (ts1) -> text "exists(" ++ d_sig () ts1 ++ text ")"
-  | STRegion -> text "region" 
+  | STRegion -> text "region"
 
 let rec d_siglist (): tau_sig list -> doc = function
     [] -> nil
@@ -256,7 +280,7 @@ let rec d_short_tau () (t: tau) : doc =
   | ITBuiltin_va_list _ -> text "va-list"
   | ITAbs tref -> text "forall " ++ d_short_tau () !tref
   | ITExists ei -> text "exists " ++ d_short_tau () ei.exist_tau
-  | ITRegion _ -> text "region" 
+  | ITRegion _ -> text "region"
 
 let field_set_to_fieldlist (f: field_set) =
     let l = StrHT.fold (fun fld v a -> (fld,v)::a) f [] in
@@ -362,4 +386,3 @@ let d_env () (e: env) : doc =
        unalign ++ text "\n\n"
 
 (*****************************************************************************)
-

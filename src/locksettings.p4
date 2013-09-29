@@ -1,11 +1,36 @@
+(****************************************************************************)
+(* Copyright (c) 2010-13,                                                   *)
+(*                        Dimitris  Chassapis       <hassapis@ics.forth.gr> *)
+(*                        Polyvios  Pratikakis      <polyvios@ics.forth.gr> *)
+(*                                                                          *)
+(*                        FORTH-ICS / CARV                                  *)
+(*                        (Foundation for Research & Technology -- Hellas,  *)
+(*                         Institute of Computer Science,                   *)
+(*                         Computer Architecture & VLSI Systems Laboratory) *)
+(*                                                                          *)
+(*                                                                          *)
+(*                                                                          *)
+(* Licensed under the Apache License, Version 2.0 (the "License");          *)
+(* you may not use this file except in compliance with the License.         *)
+(* You may obtain a copy of the License at                                  *)
+(*                                                                          *)
+(*     http://www.apache.org/licenses/LICENSE-2.0                           *)
+(*                                                                          *)
+(* Unless required by applicable law or agreed to in writing, software      *)
+(* distributed under the License is distributed on an "AS IS" BASIS,        *)
+(* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. *)
+(* See the License for the specific language governing permissions and      *)
+(* limitations under the License.                                           *)
+(****************************************************************************)
+
 (*
  *
- * Copyright (c) 2004-2007, 
+ * Copyright (c) 2004-2007,
  *  Polyvios Pratikakis <polyvios@cs.umd.edu>
  *  Michael Hicks       <mwh@cs.umd.edu>
  *  Jeff Foster         <jfoster@cs.umd.edu>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -60,7 +85,7 @@ type handler =
   | Ralloc
 
 let lexer = Genlex.make_lexer [
-  "Locktype"; 
+  "Locktype";
   "Free";
   "Alloc";
   "Newlock";
@@ -194,7 +219,7 @@ let parse_entry = parser
   | [< 'Kwd "New_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Region x
   | [< 'Kwd "New_Subregion"; 'Ident x; 'Kwd ";" >] -> add_to_sf New_Subregion x
   | [< 'Kwd "Ralloc"; 'Ident x; 'Kwd ";" >] -> add_to_sf Ralloc x
-  | [< 'Kwd "Delete_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf Delete_Region x  
+  | [< 'Kwd "Delete_Region"; 'Ident x; 'Kwd ";" >] -> add_to_sf Delete_Region x
   | [< 'Kwd ";" >] -> ()
   | [< >] -> ()
 
@@ -218,4 +243,3 @@ let options = [
      ),
      " Load a separate settings file instead of defaults.";
 ]
-

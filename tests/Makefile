@@ -1,4 +1,28 @@
-ECHO=@
+############################################################################
+# Copyright (c) 2010-13,                                                   #
+#                        Foivos    Zakkak          <zakkak@ics.forth.gr>   #
+#                                                                          #
+#                        FORTH-ICS / CARV                                  #
+#                        (Foundation for Research & Technology -- Hellas,  #
+#                         Institute of Computer Science,                   #
+#                         Computer Architecture & VLSI Systems Laboratory) #
+#                                                                          #
+#                                                                          #
+#                                                                          #
+# Licensed under the Apache License, Version 2.0 (the "License");          #
+# you may not use this file except in compliance with the License.         #
+# You may obtain a copy of the License at                                  #
+#                                                                          #
+#     http://www.apache.org/licenses/LICENSE-2.0                           #
+#                                                                          #
+# Unless required by applicable law or agreed to in writing, software      #
+# distributed under the License is distributed on an "AS IS" BASIS,        #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. #
+# See the License for the specific language governing permissions and      #
+# limitations under the License.                                           #
+############################################################################
+
+AT=@
 
 TESTS = \
   simple01.c \
@@ -6,35 +30,35 @@ TESTS = \
 # $(wildcard *.c)
 
 # Why are we doing bytecode?  We run the real thing with native, that's what should be here!
-#CILLY=../../cil/bin/cilly --bytecode --save-graph --list-shared --list-guardedby -lpthread
-SCOOP=../../s2s --save-graph
+#CILLY=../cil/bin/cilly --bytecode --save-graph --list-shared --list-guardedby -lpthread
+SCOOP=../scoop --save-graph
 OPTS=
 
 all: init runall
 
 runall: runintro $(TESTS:%.c=out/%.out)
-	$(ECHO) echo "</table></html>" >> out/report.html
+	$(AT)echo "</table></html>" >> out/report.html
 
 runintro:
-	$(ECHO) echo "running all tests"
+	$(AT)echo "running all tests"
 
 init:
-	$(ECHO)$(RM) -r out
-	$(ECHO)mkdir out
-	$(ECHO) echo "<html><table border=1pt>" > out/report.html
-	$(ECHO)test -f core && $(RM) -f core || true
+	$(AT)$(RM) -rf out
+	$(AT)mkdir -p out
+	$(AT)echo "<html><table border=1pt>" > out/report.html
+	$(AT)$(RM) -f core
 
 cleanok:
-	$(ECHO)$(RM) ok/*.out
+	$(AT)$(RM) ok/*.out
 
 clean:
-	$(ECHO)$(RM) core a.out graph*.dot cf-graph.dot su?.dot *graph.ps a.out graph.txt *~
-	$(ECHO)$(RM) out/* diffs/*
+	$(AT)$(RM) -f core a.out graph*.dot cf-graph.dot su?.dot *graph.ps a.out graph.txt *~
+	$(AT)$(RM) -f out/* diffs/*
 
 out/%.out: %.c
-	$(ECHO) echo -n $<
-	$(ECHO) echo -n "<tr> <td> $< <td> " >> out/report.html
-	$(ECHO)$(CILLY) --save-profile-data=out/$(basename $<).txt $(OPTS) $< 2>&1 | \
+	$(AT)echo -n $<
+	$(AT)echo -n "<tr> <td> $< <td> " >> out/report.html
+	$(AT)$(SCOOP) --save-profile-data=out/$(basename $<).txt $(OPTS) $< 2>&1 | \
 		awk -f filter.awk | \
 		sed -e 's/#[0-9]*\\n//g' > $@; \
 	if test -f core || test 0 -ne `ls core.* 2>/dev/null|wc -l`; \
@@ -43,7 +67,7 @@ out/%.out: %.c
 		echo " core dump" >> out/report.html; \
 		$(RM) core core.*; false; \
 	fi
-	$(ECHO) \
+	$(AT) \
 	if test -f ok/$(basename $<).dot;\
 	then \
 		cat graph.dot | sed -e 's/#[0-9]*\\n//g' > out/$(basename $<).dot; \

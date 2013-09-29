@@ -22,16 +22,42 @@
 # limitations under the License.                                           #
 ############################################################################
 
-INCLUDE = ../../headers
-SCOOP   = ../../scoop
-FLAGS   =
-SRCS    = $(wildcard *.c)
+AT          ?= @
+OBJDIR      := ../cil/obj/$(ARCHOS)
+ODOC_FILES   = ../src/scoop*.ml
 
-all: $(SRCS:%.c=%_trans.c)
+.PHONY: html pdf
 
-%_trans.c: %.c
-	@$(SCOOP) --runtime=myrmics --out-name=$*_trans --tpcIncludePath=${INCLUDE}\
-	          -I${INCLUDE} $^ $(EXTRAOPTS)
+manual.pdf: src/manual.tex
+	$(AT)cd src; echo "\def\scoopversion{1.5.5}" > scoop.version.tex
+	$(AT)cd src; pdflatex manual.tex; pdflatex manual.tex
+	$(AT)cd src; mv manual.pdf ../manual.pdf
+	$(AT)cd src; rm -f *.aux *.log scoop.version.tex
+
+
+html scoop_api.tex: $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
+
+html:
+	$(AT)mkdir -p html
+	$(AT)rm -f ocamldoc.sty
+	$(AT)ocamldoc -d html/ -v -stars -html -t "SCOOP Documentation" \
+	              -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
+
+scoop_api.tex:
+	$(AT)ocamldoc -o src/scoop_api.tex -v -stars -latex \
+	              -t "SCOOP Documentation" \
+	              -I $(OBJDIR) -hide Pervasives,Scoop_alter $(ODOC_FILES)
+	$(AT)sed -i \
+	         -e 's/\\usepackage\[T1\]{fontenc}/\\setlength{\\pdfpagewidth}{\\paperwidth} \\setlength{\\pdfpageheight}{\\paperheight}/' \
+	         src/scoop_api.tex
+
+scoop_api.pdf: scoop_api.tex
+	$(AT)cd src; \
+	  TEXINPUTS="$$TEXINPUTS:/usr/local/lib/ocaml/ocamldoc:/usr/lib/ocaml/ocamldoc"\
+	  latexmk scoop_api.tex
 
 clean:
-	@$(RM) -f *.o *_trans.c
+	$(AT)cd src; rm -rf *.aux *.log scoop_api.tex *.toc *.bcf *.out *.run.xml auto
+
+distclean:
+	$(AT)rm -rf scoop_api.pdf html
