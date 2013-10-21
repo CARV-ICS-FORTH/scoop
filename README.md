@@ -1,4 +1,4 @@
 scoop
 =====
 
-A source-to-source compiler for task parallelism optimizations.
+A compiler and static analysis of task parallel C programs.
