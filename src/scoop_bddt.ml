@@ -315,13 +315,14 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
                                    (oargs: exp list) (args: SU.arg_descr list)
                    : (stmt list * (int * SU.arg_descr) list) =
       incr un_id;
-      (*   let args = List.sort sort_args args in *)
-
-      let this = var (SU.find_global_var new_file "this_SCOOP__") in
-      (* this->closure.funcid = (uint8_t)funcid; *)
-      let this_closure = SU.mkFieldAccess this "closure" in
       let stmts = ref [] in
       let instrs = ref [] in
+      (*   let args = List.sort sort_args args in *)
+
+      (* Task_element *this; *)
+      let this = var (SU.find_global_var new_file "this_SCOOP__") in
+      (* this->closure *)
+      let this_closure = SU.mkFieldAccess this "closure" in
 
       (* G_ppe_stats.stat_tpc_per_spe[0] += 1; *)
       let gps = var (SU.find_global_var new_file "G_ppe_stats") in
@@ -342,15 +343,15 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
       let wbody = [mkStmt (Instr ins)] in
       stmts := mkWhile (BinOp(Eq, Lval this, CastE(voidPtrType, zero), SU.boolType)) wbody;
       stmts := mkStmt (Instr (List.rev !instrs))::!stmts;
-      (* this->notAvailable = 1; *)
-      instrs := [Set (SU.mkFieldAccess this "notAvailable", one, locUnknown) ];
+      (* this->isAvailable = 0; *)
+      instrs := [Set (SU.mkFieldAccess this "isAvailable", zero, locUnknown) ];
       (* TIMER_START(1); *)
       let tmptime1 = var (SU.find_global_var new_file "_tmptime1_SCOOP__") in
       let rdtsc = SU.find_function_sign new_file "rdtsc" in
       instrs := Call (Some tmptime1, Lval (var rdtsc), [], locUnknown)::!instrs;
       (* this->closure.funcid = (uint8_t)funcid; *)
       instrs := Set (SU.mkFieldAccess this_closure "funcid",
-                     CastE(SU.find_type new_file "uint8_t", integer !func_id), locUnknown)::!instrs;
+                     CastE(SU.find_type new_file "uint32_t", integer !func_id), locUnknown)::!instrs;
       (* this->closure.total_arguments = 0 *)
       let total_arguments = SU.mkFieldAccess this_closure "total_arguments" in
       instrs := Set (total_arguments, zero, locUnknown)::!instrs;
@@ -383,17 +384,17 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
       let tpr_acquire_spinlock = SU.find_function_sign new_file "tpr_acquire_spinlock" in
       instrs := Call (None, Lval (var tpr_acquire_spinlock), [spinlock], locUnknown)::!instrs;
       (* this->input_dependencies_counter -= this->backup_input_dependencies_counter; *)
-      let backup_input_dependencies_counter =
-        SU.mkFieldAccess this "backup_input_dependencies_counter" in
-      let input_dependencies_counter =
-        SU.mkFieldAccess this "input_dependencies_counter" in
-      let sub = BinOp(MinusA, Lval input_dependencies_counter ,
-                      Lval backup_input_dependencies_counter, intType) in
-      instrs := Set (input_dependencies_counter, sub, locUnknown)::!instrs;
-      (* this->backup_input_dependencies_counter = 0; *)
-      instrs := Set (backup_input_dependencies_counter, zero, locUnknown)::!instrs;
-      (* this->notAvailable = 0; *)
-      instrs := Set (SU.mkFieldAccess this "notAvailable", zero, locUnknown)::!instrs;
+      (* let backup_input_dependencies_counter =
+       *   SU.mkFieldAccess this "backup_input_dependencies_counter" in
+       * let input_dependencies_counter =
+       *   SU.mkFieldAccess this "input_dependencies_counter" in
+       * let sub = BinOp(MinusA, Lval input_dependencies_counter ,
+       *                 Lval backup_input_dependencies_counter, intType) in
+       * instrs := Set (input_dependencies_counter, sub, locUnknown)::!instrs;
+       * (\* this->backup_input_dependencies_counter = 0; *\)
+       * instrs := Set (backup_input_dependencies_counter, zero, locUnknown)::!instrs; *)
+      (* this->isAvailable = 1; *)
+      instrs := Set (SU.mkFieldAccess this "isAvailable", one, locUnknown)::!instrs;
       (* tpr_release_spinlock(&(this->spinlock)); *)
       let tpr_release_spinlock = SU.find_function_sign new_file "tpr_release_spinlock" in
       instrs := Call (None, Lval (var tpr_release_spinlock), [spinlock], locUnknown)::!instrs;
