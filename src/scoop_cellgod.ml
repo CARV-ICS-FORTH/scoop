@@ -94,12 +94,12 @@ let make_case execfun (task: varinfo) (task_info: varinfo)
 class codegen (cgraph : Callgraph.callgraph) file pragma includePath filename isblade =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
 
-  val! scoop_barrier       = "tpc_wait_all"
-  val! scoop_start         = "tpc_init"
-  val! scoop_finish        = "tpc_shutdown"
-  val! scoop_malloc        = "tpc_malloc"
-  val! scoop_free          = "tpc_free"
-  val! runtime             = "cellgod"
+  val scoop_barrier       = "tpc_wait_all"
+  val scoop_start         = "tpc_init"
+  val scoop_finish        = "tpc_shutdown"
+  val scoop_malloc        = "tpc_malloc"
+  val scoop_free          = "tpc_free"
+  val runtime             = "cellgod"
   (** The file for the SPE *)
   val spu_file      =
     let out_name = String.sub filename 0 ((String.length filename) -2) in

@@ -54,12 +54,12 @@ let add_wrapper (file: Cil.file) (f_old: string) (f_new: fundec) : unit =
 
 class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
-  val! scoop_barrier       = "tpc_sync"
-  val! scoop_start         = "tpc_init"
-  val! scoop_finish        = "tpc_shutdown"
-  val! scoop_malloc        = "tpc_malloc"
-  val! scoop_free          = "tpc_free"
-  val! runtime             = "nesting"
+  val scoop_barrier       = "tpc_sync"
+  val scoop_start         = "tpc_init"
+  val scoop_finish        = "tpc_shutdown"
+  val scoop_malloc        = "tpc_malloc"
+  val scoop_free          = "tpc_free"
+  val runtime             = "nesting"
 
   method declareGlobals : unit = ();
 

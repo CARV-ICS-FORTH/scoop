@@ -52,8 +52,8 @@ let mkSet table i arg =
 class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
 
-  val! scoop_wait_on = "_sys_wait_on"
-  val! runtime       = "myrmics"
+  val scoop_wait_on = "_sys_wait_on"
+  val runtime       = "myrmics"
 
   method makeTaskTable : unit =
     (* tasks  (new_tpc * old_original * args) *)

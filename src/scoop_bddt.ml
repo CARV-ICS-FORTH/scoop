@@ -64,12 +64,12 @@ let doRegions (loc: location) (this: lval) (f: file) (args: SU.arg_descr list)
 
 class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
-  val! scoop_barrier       = "tpc_wait_all"
-  val! scoop_start         = "tpc_init"
-  val! scoop_finish        = "tpc_shutdown"
-  val! scoop_malloc        = "tpc_malloc"
-  val! scoop_free          = "tpc_free"
-  val! runtime             = "bddt"
+  val scoop_barrier       = "tpc_wait_all"
+  val scoop_start         = "tpc_init"
+  val scoop_finish        = "tpc_shutdown"
+  val scoop_malloc        = "tpc_malloc"
+  val scoop_free          = "tpc_free"
+  val runtime             = "bddt"
 
     method declareGlobals : unit =
       (* Task_element *this;
