@@ -258,6 +258,8 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
             make_func_call exps scoop_wait_on
           (* Support #pragma ... wait all *)
           | [AStr("wait"); AStr("all")]
+          (* Support #pragma ... sync*)
+          | [AStr("sync")]
           (* Support #pragma ... barrier*)
           | [AStr("barrier")] ->
             make_func_call [] scoop_barrier
@@ -302,7 +304,7 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 
               (* check whether all argument annotations correlate to an actual argument *)
               let check arg =
-                if ( not (L.exists (fun e -> ((SU.getNameOfExp e)=arg.SU.aname)) oargs) )then (
+                if ( not ((SU.isRegion arg) || L.exists (fun e -> ((SU.getNameOfExp e)=arg.SU.aname)) oargs) )then (
                   let args_err = ref "(" in
                   List.iter (fun e -> args_err := ((!args_err)^" "^(SU.getNameOfExp e)^",") ) oargs;
                   args_err := ((!args_err)^")");

@@ -163,10 +163,10 @@ let feature : featureDescr =
                !includePath !out_name false
         | "myrmics" ->
            new Scoop_myrmics.codegen callgraph !gen_file !pragma_str !includePath
-        (* | "nesting" -> *)
-        (*    new Scoop_nesting.findTaskDeclVisitor callgraph !gen_file !pragma_str *)
-        (* | "XPPFX" -> *)
-        (*    new Scoop_XPPFX.findTaskDeclVisitor callgraph !gen_file !pragma_str *)
+        | "nesting" ->
+           new Scoop_nesting.codegen callgraph !gen_file !pragma_str !includePath
+        | "XPPFX" ->
+           new Scoop_XPPFX.codegen callgraph !gen_file !pragma_str !includePath
         | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
       in
 
@@ -175,21 +175,6 @@ let feature : featureDescr =
 
       (* Declare some globals *)
       codeGenerator#declareGlobals;
-
-      (* let globals = ref [] in *)
-      (* let makeGlobalVar ini n t = *)
-      (*   globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals; *)
-      (* in *)
-      (* (match !arch with *)
-      (*   (\* const int tpc_task_arguments_list[]; *\) *)
-      (*   | "XPPFX" -> ( *)
-      (*     makeGlobalVar (Some (SingleInit(zero))) *)
-      (*                   "tpc_task_arguments_list" *)
-      (*                   (TArray(TInt(IInt, [Attr("const", [])]), None, [])); *)
-      (*   ) *)
-      (*   | _ -> () *)
-      (* ); *)
-      (* SU.add_at_top !gen_file !globals; *)
 
       (* SDAM *)
       codeGenerator#parseFile !dis_sdam;
