@@ -27,6 +27,8 @@ open Scoop_util
 module L = List
 module E = Errormsg
 
+let options = []
+
 (* keeps the current funcid for the new tpc_function *)
 let func_id = ref 0
 
@@ -35,12 +37,6 @@ let querie_no = ref 0
 
 (* a unique id for the tpc_function_* *)
 let un_id = ref 0
-
-let makeGlobalVar n t f=
-  let v = makeGlobalVar n t in
-  let glob = GVar(v, {init = None;}, locUnknown) in
-  add_at_top f [glob];
-  v
 
 let doArgument (taskd_args: lval) (f : file) (orig_tname: string) (tid: int)
  (loc: location) (arg: (int * arg_descr) ) : stmt list = (

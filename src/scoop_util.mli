@@ -89,7 +89,6 @@ val boolType : Cil.typ
 val currentFunction : Cil.fundec ref
 val stats : bool ref
 val unaligned_args : bool ref
-val blocking : bool ref
 
 
 (******************************************************************************)
@@ -223,7 +222,13 @@ val arg_type2integer : arg_type -> Cil.exp
 (* recursively copies a function definition and all it's callees
    from the ppc_file to the spu_file *)
 val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file
--> unit
+                         -> unit
+
+(******************************************************************************)
+(*                         Function call generator                            *)
+(******************************************************************************)
+val make_func_call : Cil.file -> Cil.location -> Cil.stmt -> Cil.attrparam list
+                     -> string -> Cil.stmt Cil.visitAction
 
 (******************************************************************************)
 (*                         AttrParam to Expression                            *)
@@ -232,7 +237,7 @@ val deep_copy_function : string -> Callgraph.callgraph -> Cil.file -> Cil.file
 (* Convert an attribute into an expression, if possible. Otherwise raise
  * NotAnExpression *)
 val attrParamToExp : Cil.file -> Cil.location -> ?currFunction:Cil.fundec ->
-    Cil.attrparam -> Cil.exp
+                     Cil.attrparam -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
@@ -298,6 +303,8 @@ val make_task_table : string ->
 (* Defines the Task_table for the ppu file *)
 val make_null_task_table :
     (Cil.fundec * Cil.varinfo * (int * arg_descr) list) list -> Cil.global
+
+val makeGlobalVar : string -> Cil.init option -> Cil.typ -> Cil.file -> Cil.varinfo
 
 (******************************************************************************)
 (*                                 MISC                                       *)

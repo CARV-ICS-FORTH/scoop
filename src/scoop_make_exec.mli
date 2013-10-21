@@ -23,6 +23,8 @@
 (* limitations under the License.                                           *)
 (****************************************************************************)
 
-val make_exec_func : string -> Cil.file ->
+val make_exec_func : Cil.file ->
     (Cil.fundec * Cil.varinfo * (int * Scoop_util.arg_descr) list) list ->
+    (Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
+     ((int * Scoop_util.arg_descr) list) -> Cil.stmt) ->
     Cil.global

@@ -22,19 +22,13 @@
 (* limitations under the License.                                           *)
 (****************************************************************************)
 
+val options : (string * Arg.spec * string) list
+
 val make_case : Cil.fundec -> Cil.varinfo -> Cil.varinfo -> Cil.varinfo ->
     ((int * Scoop_util.arg_descr) list) -> Cil.stmt
 
-class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> Cil.file ->
-  string -> object
-    inherit Cil.nopCilVisitor
-    val mutable spu_tasks :
-      ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
-    val callgraph : Callgraph.callgraph
-    val ppc_file : Cil.file
-    val spu_file : Cil.file
-    val pragma_str : string
-    (* visits all stmts and checks for pragma directives *)
-    method vstmt : Cil.stmt -> Cil.stmt Cil.visitAction
-    method getTasks : ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
+class codegen : Callgraph.callgraph -> Cil.file -> string -> string -> string
+                -> bool ->
+  object
+    inherit Scoop_codegen.codegen
   end

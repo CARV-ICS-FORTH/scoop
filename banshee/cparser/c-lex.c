@@ -1,5 +1,5 @@
 /* This file was modified in 2000-2001 by David Gay for the RC compiler.
-   The changes are 
+   The changes are
    Copyright (c) 2000-2001 The Regents of the University of California.
 
    This file is distributed under the terms of the GNU General Public License
@@ -40,7 +40,7 @@ Boston, MA 02111-1307, USA.  */
 /* On FreeBSD, alloca is defined in stdlib, on most other platforms,
    (cygwin, linux) it is in alloca.h */
 #ifndef __FreeBSD__
-#include <alloca.h> 
+#include <alloca.h>
 #endif
 //#define alloca(size)   __builtin_alloca (size)
 
@@ -74,6 +74,9 @@ location dummy_location;
 static size_t int_type_size;
 
 /* Cause the `yydebug' variable to be defined.  */
+#ifdef YYDEBUG
+#undef YYDEBUG
+#endif
 #define YYDEBUG 1
 
 #if USE_CPPLIB
@@ -158,6 +161,151 @@ finish_parse ()
   cpp_finish (&parse_in);
 }
 #endif
+
+struct resword { char *name; short token; enum rid rid; };
+__inline
+static unsigned int
+hash (str, len)
+     register const char *str;
+     register unsigned int len;
+{
+  static unsigned char asso_values[] =
+    {
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 2, 94, 9, 6, 15,
+      26, 1, 13, 31, 1, 2, 94, 7, 37, 31,
+      21, 25, 42, 94, 20, 1, 11, 33, 46, 1,
+      25, 94, 9, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94, 94, 94, 94, 94,
+      94, 94, 94, 94, 94, 94
+    };
+  register int hval = len;
+  switch (hval)
+    {
+      default:
+        hval += asso_values[(unsigned char)str[2]];
+      case 2:
+      case 1:
+        hval += asso_values[(unsigned char)str[0]];
+        break;
+    }
+  return hval + asso_values[(unsigned char)str[len - 1]];
+}
+static struct resword wordlist[] =
+  {
+    {""}, {""}, {""}, {""}, {""}, {""}, {""},
+    {"else", 274, RID_UNUSED},
+    {""},
+    {"while", 275, RID_UNUSED},
+    {"switch", 278, RID_UNUSED},
+    {""}, {""},
+    {"__inline", 261, RID_INLINE},
+    {"__imag__", 292, RID_UNUSED},
+    {"__signed__", 262, RID_SIGNED},
+    {"__inline__", 261, RID_INLINE},
+    {"if", 273, RID_UNUSED},
+    {"__extension__", 289, RID_UNUSED},
+    {"break", 281, RID_UNUSED},
+    {"__asm__", 285, RID_UNUSED},
+    {"case", 279, RID_UNUSED},
+    {"assert_type", 294, RID_UNUSED},
+    {"__attribute", 288, RID_UNUSED},
+    {"__alignof__", 287, RID_UNUSED},
+    {"__typeof__", 286, RID_UNUSED},
+    {"__attribute__", 288, RID_UNUSED},
+    {"int", 262, RID_INT},
+    {"__const__", 263, const_qualifier},
+    {"sizeof", 269, RID_UNUSED},
+    {"__complex__", 262, RID_COMPLEX},
+    {"static", 261, RID_STATIC},
+    {"__real__", 291, RID_UNUSED},
+    {"__alignof", 287, RID_UNUSED},
+    {"__typeof", 286, RID_UNUSED},
+    {"__const", 263, const_qualifier},
+    {"change_type", 295, RID_UNUSED},
+    {"__signed", 262, RID_SIGNED},
+    {"struct", 271, RID_UNUSED},
+    {"extern", 261, RID_EXTERN},
+    {"restrict", 263, restrict_qualifier},
+    {"__imag", 292, RID_UNUSED},
+    {"short", 262, RID_SHORT},
+    {"__restrict", 263, restrict_qualifier},
+    {"confine", 296, RID_UNUSED},
+    {"continue", 282, RID_UNUSED},
+    {"inline", 261, RID_INLINE},
+    {"__asm", 285, RID_UNUSED},
+    {"char", 262, RID_CHAR},
+    {"auto", 261, RID_AUTO},
+    {"__label__", 290, RID_UNUSED},
+    {"__complex", 262, RID_COMPLEX},
+    {"const", 263, const_qualifier},
+    {"do", 276, RID_UNUSED},
+    {"float", 262, RID_FLOAT},
+    {"__builtin_va_arg", 293, RID_UNUSED},
+    {"for", 277, RID_UNUSED},
+    {"default", 280, RID_UNUSED},
+    {"return", 283, RID_UNUSED},
+    {"__volatile", 263, volatile_qualifier},
+    {""},
+    {"union", 272, RID_UNUSED},
+    {"__volatile__", 263, volatile_qualifier},
+    {""},
+    {"signed", 262, RID_SIGNED},
+    {"__real", 291, RID_UNUSED},
+    {"double", 262, RID_DOUBLE},
+    {""},
+    {"unsigned", 262, RID_UNSIGNED},
+    {"enum", 270, RID_UNUSED},
+    {""},
+    {"goto", 284, RID_UNUSED},
+    {"typeof", 286, RID_UNUSED},
+    {"typedef", 261, RID_TYPEDEF},
+    {"asm", 285, RID_UNUSED},
+    {""}, {""}, {""},
+    {"void", 262, RID_VOID},
+    {"register", 261, RID_REGISTER},
+    {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""}, {""},
+    {""}, {""}, {""},
+    {"volatile", 263, volatile_qualifier},
+    {"long", 262, RID_LONG}
+  };
+__inline
+struct resword *
+is_reserved_word (str, len)
+     register const char *str;
+     register unsigned int len;
+{
+  if (len <= 16 && len >= 2)
+    {
+      register int key = hash (str, len);
+      if (key <= 93 && key >= 0)
+        {
+          register const char *s = wordlist[key].name;
+          if (*str == *s && !__extension__ ({ size_t __s1_len, __s2_len; (__builtin_constant_p (str + 1) && __builtin_constant_p (s + 1) && (__s1_len = strlen (str + 1), __s2_len = strlen (s + 1), (!((size_t)(const void *)((str + 1) + 1) - (size_t)(const void *)(str + 1) == 1) || __s1_len >= 4) && (!((size_t)(const void *)((s + 1) + 1) - (size_t)(const void *)(s + 1) == 1) || __s2_len >= 4)) ? memcmp ((__const char *) (str + 1), (__const char *) (s + 1), (__s1_len < __s2_len ? __s1_len : __s2_len) + 1) : (__builtin_constant_p (str + 1) && ((size_t)(const void *)((str + 1) + 1) - (size_t)(const void *)(str + 1) == 1) && (__s1_len = strlen (str + 1), __s1_len < 4) ? (__builtin_constant_p (s + 1) && ((size_t)(const void *)((s + 1) + 1) - (size_t)(const void *)(s + 1) == 1) ? (__extension__ ({ register int __result = (((__const unsigned char *) (__const char *) (str + 1))[0] - ((__const unsigned char *) (__const char *)(s + 1))[0]); if (__s1_len > 0 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[1] - ((__const unsigned char *) (__const char *) (s + 1))[1]); if (__s1_len > 1 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[2] - ((__const unsigned char *) (__const char *) (s + 1))[2]); if (__s1_len > 2 && __result == 0) __result = (((__const unsigned char *) (__const char *) (str + 1))[3] - ((__const unsigned char *) (__const char *) (s + 1))[3]); } } __result; })) : (__extension__ ({ __const unsigned char *__s2 = (__const unsigned char *) (__const char *) (s + 1); register int __result = (((__const unsigned char *) (__const char *) (str + 1))[0] - __s2[0]); if (__s1_len > 0 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[1] - __s2[1]); if (__s1_len > 1 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[2] - __s2[2]); if (__s1_len > 2 && __result == 0) __result = (((__const unsigned char *) (__const char *) (str + 1))[3] - __s2[3]); } } __result; }))) : (__builtin_constant_p (s + 1) && ((size_t)(const void *)((s + 1) + 1) - (size_t)(const void *)(s + 1) == 1) && (__s2_len = strlen (s + 1), __s2_len < 4) ? (__builtin_constant_p (str + 1) && ((size_t)(const void *)((str + 1) + 1) - (size_t)(const void *)(str + 1) == 1) ? (__extension__ ({ register int __result = (((__const unsigned char *) (__const char *) (str + 1))[0] - ((__const unsigned char *) (__const char *)(s + 1))[0]); if (__s2_len > 0 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[1] - ((__const unsigned char *) (__const char *) (s + 1))[1]); if (__s2_len > 1 && __result == 0) { __result = (((__const unsigned char *) (__const char *) (str + 1))[2] - ((__const unsigned char *) (__const char *) (s + 1))[2]); if (__s2_len > 2 && __result == 0) __result = (((__const unsigned char *) (__const char *) (str + 1))[3] - ((__const unsigned char *) (__const char *) (s + 1))[3]); } } __result; })) : (__extension__ ({ __const unsigned char *__s1 = (__const unsigned char *) (__const char *) (str + 1); register int __result = __s1[0] - ((__const unsigned char *) (__const char *) (s + 1))[0]; if (__s2_len > 0 && __result == 0) { __result = (__s1[1] - ((__const unsigned char *) (__const char *) (s + 1))[1]); if (__s2_len > 1 && __result == 0) { __result = (__s1[2] - ((__const unsigned char *) (__const char *) (s + 1))[2]); if (__s2_len > 2 && __result == 0) __result = (__s1[3] - ((__const unsigned char *) (__const char *) (s + 1))[3]); } } __result; }))) : strcmp (str + 1, s + 1)))); }))
+            return &wordlist[key];
+        }
+    }
+  return 0;
+}
 
 void
 init_lex ()
@@ -732,7 +880,7 @@ linenum:
 		  struct file_stack *p = input_file_stack;
 		  if (indent_level != p->indent_level)
 		    {
-		      warning_with_file_and_line 
+		      warning_with_file_and_line
 			(p->name, old_lineno,
 			 "This file contains more `%c's than `%c's.",
 			 indent_level > p->indent_level ? '{' : '}',
@@ -991,7 +1139,7 @@ static int read_char(char *context, char terminating_char,
 	{
 	  warning ("Ignoring invalid multibyte character");
 	  /* Note: gcc just takes the character following the
-	     invalid multibyte-char-sequence as being the next 
+	     invalid multibyte-char-sequence as being the next
 	     character. This is obviously incorrect. */
 	  TUNGETC (c);
 	  goto tryagain;
@@ -1565,7 +1713,7 @@ yylex ()
 	    else
 	      {
 		int i;
-		
+
 		for (i = 0; i < count; i++)
 		  *p++ = cbuf[i];
 	      }
@@ -1581,7 +1729,7 @@ yylex ()
 	break;
       }
 
-    case '@': 
+    case '@':
       value = '*';
       break;
 
@@ -1684,14 +1832,14 @@ yylex ()
 	    }
 	TUNGETC (c1);
 
-	if (c == '<') 
+	if (c == '<')
 	  {
 	    value = ARITHCOMPARE;
 	    yylval.u.itoken.i = kind_lt;
 	  }
 	else if (c == '>')
 	  {
-	    value = ARITHCOMPARE;	
+	    value = ARITHCOMPARE;
 	    yylval.u.itoken.i = kind_gt;
 	  }
 	else

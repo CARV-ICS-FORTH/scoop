@@ -90,14 +90,14 @@ SCOOP_MODULES =         \
   loopa                 \
   ptatype               \
   ptdepa                \
+  scoop_codegen         \
+  scoop_make_exec       \
   scoop_cell            \
   scoop_cellgod         \
-  scoop_adam            \
   scoop_bddt            \
   scoop_XPPFX           \
   scoop_nesting         \
-  scoop_myrmics         \
-  scoop_make_exec
+  scoop_myrmics
 
 LOCKSMITH_CMODULES = bansheeifc
 CP4S              += locksettings.p4

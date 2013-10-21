@@ -33,7 +33,6 @@ open Scoop_util
 
 (** Make the execute_func function that branches on the task id and
     calls the actual task function on the spe
-    @param arch the runtime/architecture to target
     @param f the file where the execute_func is going to be placed
     @param tasks the tasks to be handled by the execute_task
            {e tasks} include:
@@ -44,8 +43,9 @@ open Scoop_util
 
     @returns the execute_task as a [Cil.global]
  *)
-let make_exec_func (arch: string) (f: file)
-  (tasks: (fundec * varinfo * (int * Scoop_util.arg_descr) list) list) : global = (
+let make_exec_func (f: file)
+                   (tasks: (fundec * varinfo * (int * Scoop_util.arg_descr) list) list)
+                   make_casef : global = (
   (* make the function *)
   let exec_func = emptyFunction "execute_task" in
   exec_func.svar.vtype <- TFun(intType, Some [], false,[]);
@@ -62,12 +62,6 @@ let make_exec_func (arch: string) (f: file)
       let func_id = integer !id in
       incr id;
       let c = Case (func_id, locUnknown) in
-      let make_casef = (
-        if (arch = "cell") then
-          Scoop_cell.make_case
-        else
-          Scoop_cellgod.make_case
-      ) in
       let body = make_casef exec_func task task_info ex_task fargs in
       (* add the arguments' declarations *)
       body.labels <- [c];

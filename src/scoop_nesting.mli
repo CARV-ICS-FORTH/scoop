@@ -22,6 +22,8 @@
 (* limitations under the License.                                           *)
 (****************************************************************************)
 
+val options : (string * Arg.spec * string) list
+
 class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> string ->
   object
     inherit Cil.nopCilVisitor

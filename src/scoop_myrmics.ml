@@ -27,294 +27,292 @@
     @author Foivos Zakkak, zakkak\@ics.forth.gr *)
 
 open Cil
-open Scoop_util
-module L = List
-module E = Errormsg
+module SU = Scoop_util
+module L  = List
+module E  = Errormsg
 
-(* keeps the current funcid for the new tpc_function *)
-let func_id = ref 0
+(** the main function in the file, default is main *)
+let myrmics_main = ref "main"
 
-(* XXX: this is for sdam *)
-let querie_no = ref 0
+let options = [
+  "--myrmics-main-function",
+  Arg.String(fun s -> myrmics_main := s),
+  " SCOOP: Specify the name of the main function for the myrmics runtime (default: main)";
+]
 
-(* a unique id for the tpc_function_* *)
-let un_id = ref 0
-
-let makeGlobalVar n t f=
-  let v = makeGlobalVar n t in
-  let glob = GVar(v, {init = None;}, locUnknown) in
-  add_at_top f [glob];
-  v
-
-(** generates a Set that does table[i]=arg
- * @param table the array we want to change
- * @param i the array's index
- * @param arg the argument we want to place in table[i]
- * @return the Set instr generated
- *)
 let mkSet table i arg =
   let t = (
     match typeOfLval table with
       TArray(t', _, _) -> t'
-      | t' -> t'
+    | t' -> t'
   ) in
   let curr = addOffsetLval (Index(integer i, NoOffset)) table in
   Set( curr, CastE(t, arg), locUnknown)
 
-(** passes the arguments to the arrays in the correct order
- * @param targs the arguments' table
- * @param ttyps the types' table
- * @param orig_tname the original function's name
- * @param tid an id marking the query (needed by SDAM)
- * @param arg the argument we want to place
- * @return the generated Set instrs
- *)
-let doArgument targs ttyps (orig_tname: string) (tid: int)
- (arg: (int * arg_descr) ) : instr list = (
-  let (i_m, arg_desc) = arg in
-  let arg_addr = arg_desc.address in
-  let arg_type = arg_desc.atype in
-  let arg_name = arg_desc.aname in
+class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
+object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
 
-  let arg_type_tmp = arg_type2int arg_type in
-  let arg_type_tmp =
-    (* TPC_BYVALUE_ARG; *)
-    if (isScalar arg_desc) then (
-      0x9
-    (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-    (* arg_flag|TPC_SAFE_ARG; *)
-    ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
-      arg_type_tmp lor 0x8
-    ) else (
-      arg_type_tmp
-    )
-  in
-  let arg_type_tmp =
-    (* arg_flag|TPC_REGION_ARG; *)
-    if (isRegion arg_desc) then (
-      arg_type_tmp lor 0x10
-    ) else if (isNTRegion arg_desc) then (
-      arg_type_tmp lor 0x14
-    ) else
-      arg_type_tmp
-  in
+  val! scoop_wait_on = "_sys_wait_on"
+  val! runtime       = "myrmics"
 
-  [mkSet targs i_m arg_addr; mkSet ttyps i_m (integer arg_type_tmp)]
-)
+  method makeTaskTable : unit =
+    (* tasks  (new_tpc * old_original * args) *)
+    let (_, tasks) = List.split (L.rev found_tasks) in
+    let main = SU.find_function_sign new_file !myrmics_main in
+    let tasks = (dummyFunDec, main, [])::tasks in
+    new_file.globals <-
+      (new_file.globals)@[(SU.make_task_table (!myrmics_main^"_task_table") tasks)]
 
-(** Creates two arrays, one containing the arguments' addresses and another
- * containing the arguments' types the invokes _sys_spawn with those as args
- * @param is_hp whether this call is high priority
- * @param loc the current file location
- * @param func_vi the varinfo of the original function
- * @param oargs the original arguments
- * @param args the arguments from the pragma directive
- * @param f the file we are modifying
- * @param cur_fd the current function's fundec
- * @return the stmts that will replace the call paired with a list of numbered
- * argument descriptors
- *)
-let make_tpc_issue (loc: location) (func_vi: varinfo) (oargs: exp list)
-    (args: arg_descr list) (f: file) (cur_fd: fundec) : (stmt list * (int * arg_descr) list) = (
-  incr un_id;
+  method private make_wait_on (loc : location) (exps: attrparam list) (s: stmt)
+         : stmt visitAction =
+    let two = SU.find_function_sign new_file scoop_wait_on in
+    let num_args = L.length exps in
+    let scoop2179_args =
+      try
+        let args = SU.__find_local_var !SU.currentFunction "scoop2179_wo_args" in
+        (* Check if the array is large enough for this wait on *)
+        ( match args.vtype with
+            TArray(_, Some(Const(CInt64(size, _, _))), _) ->
+            if (L.length exps) > (i64_to_int size) then
+              args.vtype <- TArray(voidPtrType, Some(integer num_args), []);
+            | _ -> assert false;
+        );
+        args
+      with Not_found ->
+        makeLocalVar !SU.currentFunction "scoop2179_wo_args" (TArray(voidPtrType, Some(integer num_args), []))
+    in
+    let args = L.rev_map (SU.attrParamToExp new_file loc) exps in
+    let i = ref num_args in
+    let mkSet = mkSet (var scoop2179_args) in
+    let init_args = L.rev_map (fun a -> decr i; mkSet !i a) args in
+    let filename = Const(CStr(loc.file)) in
+    let instr = Call (None, Lval (var two), [filename; integer loc.line; Lval (var scoop2179_args); integer num_args], locUnknown) in
+    let s' = {s with pragmas = List.tl s.pragmas} in
+    ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
 
-  let args_num = List.length oargs in
-  let args_num_i = integer args_num in
+  method declareGlobals : unit = ();
 
-  let scoop2179_args =
-    try __find_local_var cur_fd "scoop2179_s_args"
-    with Not_found ->
-      makeLocalVar cur_fd "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), []))
-  in
-  (* Check if the array is large enough for this spawn *)
-  ( match scoop2179_args.vtype with
-    TArray(t, Some(Const(CInt64(size, _, _))), _) ->
-      if args_num > (i64_to_int size) then
-        scoop2179_args.vtype <- TArray(t, Some(args_num_i), []);
-    | _ -> assert false;
-  );
-  let scoop2179_typs =
-    try __find_local_var cur_fd "scoop2179_t_args"
-    with Not_found ->
-      makeLocalVar cur_fd "scoop2179_t_args" (TArray(uintType, Some(args_num_i), []))
-  in
-  (* Check if the array is large enough for this spawn *)
-  ( match scoop2179_typs.vtype with
-    TArray(t, Some(Const(CInt64(size, _, _))), _) ->
-      if args_num > (i64_to_int size) then
-        scoop2179_typs.vtype <- TArray(t, Some(args_num_i), []);
-    | _ -> assert false;
-  );
-  let scoop2179_args = var scoop2179_args in
-  let scoop2179_typs = var scoop2179_typs in
+  method preprocessAndMergeWithHeader flags : unit = ();
 
-  let args_n, instrs =
-    (* if we have arguments *)
-    if (oargs <> []) then (
-      let args_n = number_args args oargs in
+  (** Creates two arrays, one containing the arguments' addresses and another
+   * containing the arguments' types the invokes _sys_spawn with those as args
+   * @param loc the current file location
+   * @param func_vi the varinfo of the original function
+   * @param oargs the original arguments
+   * @param args the arguments from the pragma directive
+   * @param f the file we are modifying
+   * @return the stmts that will replace the call paired with a list of numbered
+   * argument descriptors
+   *)
+  method private make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
+                                 (args: SU.arg_descr list) (f: file)
+                 : (stmt list * (int * SU.arg_descr) list) =
+    incr un_id;
 
-(*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("A= "^(string_of_int i)^" "^name) ) args_n); *)
+    let args_num = List.length oargs in
+    let args_num_i = integer args_num in
 
-      let args_n = List.sort sort_args_n args_n in
-(*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
-      incr querie_no;
-      let doArgument = doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
-      let mapped = L.flatten (List.map doArgument args_n) in
-      (args_n, mapped)
-    ) else ([], [])
-  in
+    (* Try to find locally an array with the argument descriptors *)
+    let scoop2179_args =
+      try
+        let args = SU.__find_local_var !SU.currentFunction "scoop2179_s_args" in
+        (* Check if the array is large enough for this spawn *)
+        ( match args.vtype with
+          | TArray(t, Some(Const(CInt64(size, _, _))), _) ->
+            if args_num > (i64_to_int size) then
+              args.vtype <- TArray(t, Some(args_num_i), []);
+          | _ -> assert false;
+        );
+        var args
+      with Not_found ->
+        var (makeLocalVar !SU.currentFunction "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), [])))
+    in
 
-  (* tpc_call(taskd); *)
-  let tpc_call_f = find_function_sign f "_sys_spawn" in
+    let scoop2179_typs =
+      try
+        let typs = SU.__find_local_var !SU.currentFunction "scoop2179_t_args" in
+        (* Check if the array is large enough for this spawn *)
+        ( match typs.vtype with
+            TArray(t, Some(Const(CInt64(size, _, _))), _) ->
+            if args_num > (i64_to_int size) then
+              typs.vtype <- TArray(t, Some(args_num_i), []);
+            | _ -> assert false;
+        );
+        var typs
+      with Not_found ->
+        var (makeLocalVar !SU.currentFunction "scoop2179_t_args" (TArray(uintType, Some(args_num_i), [])))
+    in
 
-  let filename = mkString loc.file in
-  (* the funcid is +1 in order to sip the main function which is pushed in the task table at the end *)
-  let call_args = [filename; integer loc.line; integer (!func_id+1); Lval scoop2179_args; Lval scoop2179_typs; args_num_i] in
-  let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
+    let args_n, instrs =
+      (* if we have arguments *)
+      if (oargs <> []) then (
+        let args_n = SU.number_args args oargs in
 
-  incr func_id;
-  ([mkStmt (Instr(L.rev instrs))], args_n)
-)
+        (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("A= "^(string_of_int i)^" "^name) ) args_n); *)
 
-let make_wait_on (cur_fd: fundec) (f : file) (loc : location) (exps: attrparam list) (s: stmt): stmt visitAction =
-  let two = find_function_sign f "_sys_wait_on" in
-  let num_args = L.length exps in
-  let scoop2179_args =
-    try __find_local_var cur_fd "scoop2179_wo_args"
-    with Not_found ->
-      makeLocalVar cur_fd "scoop2179_wo_args" (TArray(voidPtrType, Some(integer num_args), []))
-  in
-  (* Check if the array is large enough for this wait on *)
-  ( match scoop2179_args.vtype with
-    TArray(_, Some(Const(CInt64(size, _, _))), _) ->
-      if (L.length exps) > (i64_to_int size) then
-        scoop2179_args.vtype <- TArray(voidPtrType, Some(integer num_args), []);
-    | _ -> assert false;
-  );
-  let args = L.rev_map (attrParamToExp f loc) exps in
-  let i = ref num_args in
-  let mkSet = mkSet (var scoop2179_args) in
-  let init_args = L.rev_map (fun a -> decr i; mkSet !i a) args in
-  let filename = Const(CStr(loc.file)) in
-  let instr = Call (None, Lval (var two), [filename; integer loc.line; Lval (var scoop2179_args); integer num_args], locUnknown) in
-  let s' = {s with pragmas = List.tl s.pragmas} in
-  ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
+        let args_n = List.sort SU.sort_args_n args_n in
+        (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
+        incr querie_no;
+        let doArgument = self#doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
+        let mapped = L.flatten (List.map doArgument args_n) in
+        (args_n, mapped)
+      ) else ([], [])
+    in
 
-(** parses the #pragma css task arguments *)
-let rec scoop_process ppc_file loc pragma =
-  let scoop_process = scoop_process ppc_file loc in
-  match pragma with
+    (* spawn(taskd); *)
+    let tpc_call_f = SU.find_function_sign f "spawn" in
+
+    let filename = mkString loc.file in
+    (* the funcid is +1 in order to skip the main function which is pushed in the task table at the end *)
+    let call_args = [filename;
+                     integer loc.line;
+                     integer (!func_id+1);
+                     Lval scoop2179_args;
+                     Lval scoop2179_typs;
+                     args_num_i] in
+    let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
+
+    incr func_id;
+    ([mkStmt (Instr(L.rev instrs))], args_n)
+
+  (** passes the arguments to the arrays in the correct order
+   * @param targs the arguments' table
+   * @param ttyps the types' table
+   * @param orig_tname the original function's name
+   * @param tid an id marking the query (needed by SDAM)
+   * @param arg the argument we want to place
+   * @return the generated Set instrs
+   *)
+  method private doArgument targs ttyps (orig_tname: string) (tid: int)
+                 (arg: (int * SU.arg_descr) ) : instr list =
+    let (i_m, arg_desc) = arg in
+    let arg_addr = arg_desc.SU.address in
+    let arg_type = arg_desc.SU.atype in
+    let arg_name = arg_desc.SU.aname in
+
+    let arg_type_tmp = SU.arg_type2int arg_type in
+    let arg_type_tmp =
+      (* TPC_BYVALUE_ARG; *)
+      if (SU.isScalar arg_desc) then (
+        0x9
+      (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
+      (* arg_flag|TPC_SAFE_ARG; *)
+      ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
+        arg_type_tmp lor 0x8
+      ) else (
+        arg_type_tmp
+      )
+    in
+    let arg_type_tmp =
+      (* arg_flag|TPC_REGION_ARG; *)
+      if (SU.isRegion arg_desc) then (
+        arg_type_tmp lor 0x10
+      ) else if (SU.isNTRegion arg_desc) then (
+        arg_type_tmp lor 0x14
+      ) else
+        arg_type_tmp
+    in
+
+    [mkSet targs i_m arg_addr; mkSet ttyps i_m (integer arg_type_tmp)]
+
+  (** parses the #pragma ... task arguments *)
+  method private process_task_pragma loc pragma_args =
+    let process_task_pragma = self#process_task_pragma loc in
+    match pragma_args with
     | ACons("safe", args)::rest ->
       (* ignore safe tags, it's a hint for the analysis, let it handle it *)
-      scoop_process rest
+      process_task_pragma rest
     (* support notransfer in/out/inout(a,b,c) etc. *)
     | AStr("notransfer")::(ACons(arg_typ, args)::rest) ->
-      let arg_f = str2arg_flow arg_typ loc in
+      let arg_f = SU.str2arg_flow arg_typ loc in
       let process_regs = function
         | ACons(varname, []) ->
-          let vi = find_scoped_var loc !currentFunction ppc_file varname in
+          let vi = SU.find_scoped_var loc !SU.currentFunction file varname in
           let tmp_addr = Lval(var vi) in
-          let tmp_t = NTRegion(arg_f, [varname]) in
-          { aname=varname; address=tmp_addr; atype=tmp_t;}
+          let tmp_t = SU.NTRegion(arg_f, [varname]) in
+          { SU.aname=varname; SU.address=tmp_addr; SU.atype=tmp_t;}
         | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" arg_typ);
       in
-      let lst = scoop_process rest in
+      let lst = process_task_pragma rest in
       (L.map process_regs args)@lst
     (* support region in/out/inout(a,b,c) *)
     | AStr("region")::(ACons(arg_typ, args)::rest) ->
-      let arg_f = str2arg_flow arg_typ loc in
+      let arg_f = SU.str2arg_flow arg_typ loc in
       let process_regs = function
         | ACons(varname, []) ->
-          let vi = find_scoped_var loc !currentFunction ppc_file varname in
+          let vi = SU.find_scoped_var loc !SU.currentFunction file varname in
           let tmp_addr = Lval(var vi) in
-          let tmp_t = Region(arg_f, [varname]) in
-          { aname=varname; address=tmp_addr; atype=tmp_t;}
+          let tmp_t = SU.Region(arg_f, [varname]) in
+          { SU.aname=varname; SU.address=tmp_addr; SU.atype=tmp_t;}
         | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task %s(...)\n" arg_typ);
       in
-      let lst = scoop_process rest in
+      let lst = process_task_pragma rest in
       (L.map process_regs args)@lst
     | (ACons(arg_typ, args)::rest) ->
-      let lst = scoop_process rest in
-      (scoop_process_args false ppc_file arg_typ loc args)@lst
+      let lst = process_task_pragma rest in
+      (SU.scoop_process_args false file arg_typ loc args)@lst
     | [] -> []
     | _ -> E.s (errorLoc loc "Syntax error in #pragma ... task\n");
 
-(** populates the global list of tasks [tasks] *)
-class findTaskDeclVisitor (cgraph : Callgraph.callgraph) ppc_f pragma =
-  object
-  inherit nopCilVisitor
-  val mutable spu_tasks = []
-  val callgraph = cgraph
-  val ppc_file = ppc_f
-  val pragma_str = pragma
-  (* visits all stmts and checks for pragma directives *)
   method vstmt (s: stmt) : stmt visitAction =
     let debug = ref false in
     let prags = s.pragmas in
     if (prags <> []) then (
       match (List.hd prags) with
-        (* Support #pragma css ... *)
-        (Attr(pr_str, rest), loc) when pr_str = pragma_str -> (
-          match rest with
-          (* Support #pragma css wait on(...) *)
-          | [AStr("wait"); ACons("on", exps)] -> (
-              make_wait_on !currentFunction ppc_file loc exps s
-          )
-          (* Support #pragma css wait all *)
-          | [AStr("wait"); AStr("all")]
-          (* Support #pragma css barrier*)
-          | [AStr("barrier")] -> (
-            let twa = find_function_sign ppc_file "tpc_wait_all" in
-            let instr = Call (None, Lval (var twa), [], locUnknown) in
-            let s' = {s with pragmas = List.tl s.pragmas} in
-            ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
-          )
-          (* Support #pragma css task... *)
-          | AStr("task")::rest -> (
-            match s.skind with
-            Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
-              let funname = vi.vname in
-              let args = scoop_process ppc_file loc rest in
-              dbg_print debug ("Found task \""^funname^"\"");
+      (* Support #pragma ... ... *)
+      | (Attr(pr_str, rest), loc) when pr_str = pragma_str -> (
+        match rest with
+        (* Support #pragma ... wait on(...) *)
+        | [AStr("wait"); ACons("on", exps)] ->
+          self#make_wait_on loc exps s
+        (* Support #pragma ... task... *)
+        | AStr("task")::rest -> (
+          match s.skind with
+          | Instr(Call(_, Lval((Var(vi), _)), oargs, loc)::restInst) -> (
+            let funname = vi.vname in
+            (* process the pragma ... task*)
+            let args    = self#process_task_pragma loc rest in
+            SU.dbg_print debug ("Found task \""^funname^"\"");
 
-              (* check whether all argument annotations correlate to an actual argument *)
-              let check arg =
-                if ( not ((isRegion arg) || (L.exists (fun e -> ((getNameOfExp e)=arg.aname)) oargs)) )then (
-                  let args_err = ref "(" in
-                  List.iter (fun e -> args_err := ((!args_err)^" "^(getNameOfExp e)^",") ) oargs;
-                  args_err := ((!args_err)^")");
-                  E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.aname !args_err);
-                ) in
-              L.iter check args;
+            (* check whether all argument annotations correlate to an actual argument *)
+            let check arg =
+              if ( not ((SU.isRegion arg) || (L.exists (fun e -> ((SU.getNameOfExp e)=arg.SU.aname)) oargs)) )then (
+                let args_err = ref "(" in
+                List.iter (fun e -> args_err := ((!args_err)^" "^(SU.getNameOfExp e)^",") ) oargs;
+                args_err := ((!args_err)^")");
+                E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.SU.aname !args_err);
+              ) in
+            L.iter check args;
 
-              let rest_f2 var_i =
-                let (stmts, args) =
-                  make_tpc_issue loc var_i oargs args ppc_file !currentFunction
-                in
-                spu_tasks <- (funname, (dummyFunDec, var_i, args))::spu_tasks;
-                ChangeTo(mkStmt (Block(mkBlock stmts)) )
+            (* create the spawn function *)
+            let rest_f2 var_i =
+              let (stmts, args) =
+                self#make_task_spawn loc var_i oargs args new_file
               in
-              (* try to find the function definition *)
-              try
-                (* checking for the function definition *)
-                let task = find_function_fundec_g ppc_file.globals funname in
-                rest_f2 task.svar
-              (* else try to find the function signature/prototype *)
-              with Not_found -> (
-                let task = find_function_sign ppc_file funname in
-                rest_f2 task
-              )
-
+              found_tasks <- (funname, (dummyFunDec, var_i, args))::found_tasks;
+              ChangeTo(mkStmt (Block(mkBlock stmts)) )
+            in
+            (* try to find the function definition *)
+            try
+              (* checking for the function definition *)
+              let task = SU.find_function_fundec_g new_file.globals funname in
+              rest_f2 task.svar
+            (* else try to find the function signature/prototype *)
+            with Not_found -> (
+              let task = SU.find_function_sign new_file funname in
+              rest_f2 task
             )
-            | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
-            | _ -> dbg_print debug "Ignoring pragma"; DoChildren
+
           )
-          (* warn about ignored #pragma css ... directives *)
-          | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
+          | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
+          | _ -> SU.dbg_print debug "Ignoring pragma"; DoChildren
         )
-        | (_, loc) -> dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
+        (* warn about ignored #pragma ... ... directives *)
+        | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
+      )
+      | (_, loc) -> SU.dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
     ) else
       DoChildren
 
-  method getTasks = spu_tasks
+  method getTasks = found_tasks
 end

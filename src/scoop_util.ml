@@ -109,8 +109,6 @@ let currentFunction = ref dummyFunDec
 let stats = ref true
 (** keeps whether we want unaligned arguments or not *)
 let unaligned_args = ref false
-(** keeps whether we want blocking of arguments or not *)
-let blocking = ref true
 
 
 (******************************************************************************)
@@ -838,141 +836,6 @@ let get_loop_successor (s: stmt) : exp =
 
 
 (******************************************************************************)
-(*                          Constructors                                      *)
-(******************************************************************************)
-
-(** takes an lvalue and a fieldname and returns lvalue.fieldname *)
-let mkFieldAccess lv fieldname =
-  let lvt = Cil.typeOfLval lv in
-  (* get the type *)
-  let (lvtf, isptr) = match lvt with
-    | TPtr(ty, _) -> (ty, true)
-    | _ -> (lvt, false)
-  in
-  let ci = getCompinfo (unrollType lvtf) in
-  let field = getCompField ci fieldname in
-  addOffsetLval (Field (field, NoOffset)) (
-    if isptr then (mkMem (Lval lv) NoOffset) else (lv)
-  )
-
-(** Defines the Task_table array for the spu file
-    @param tasks the tasks to put in the task table
-    @return the Task_table array as a Cil.global
- *)
-let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
-  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
-  let type' = TArray (etype, None, []) in
-  let vi = makeGlobalVar name type' in
-  let n = L.length tasks in
-  let init' =
-      let rec loopElems acc i =
-        if i < 0 then acc
-        else (
-          let (_, task_vi, _) = L.nth tasks i in
-          loopElems ( (Index(integer i, NoOffset), SingleInit(Lval (Var(task_vi), NoOffset))) :: acc) (i - 1)
-        )
-      in
-      CompoundInit(etype, loopElems [] (n - 1))
-  in
-  let ii = {init = Some init'} in
-  GVar(vi, ii, locUnknown)
-)
-
-(** Defines the Task_table for the ppu file. Simply filled with NULL
-    @param tasks the tasks are just used to get the number of NULLS to put in the Task_table
-    @return the Task_table array as a Cil.global
-*)
-let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
-  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
-  let type' = TArray (etype, None, []) in
-  let vi = makeGlobalVar "Task_table" type' in
-  let n = L.length tasks in
-  let init' =
-      let rec loopElems acc i =
-        if i < 0 then acc
-        else loopElems ((Index(integer i, NoOffset), makeZeroInit etype) :: acc) (i - 1)
-      in
-      CompoundInit(etype, loopElems [] (n - 1))
-  in
-  let ii = {init = Some init'} in
-  GVar(vi, ii, locUnknown)
-)
-
-
-(******************************************************************************)
-(*                         AttrParam to Expression                            *)
-(******************************************************************************)
-
-(* Type signatures. Two types are identical iff they have identical
- * signatures *)
-let rec unrollSigtype (f:file) (ts: typsig) : typ =
-  let unrollSigtype' = unrollSigtype f in
-  match ts with
-    TSArray (ts, Some i, attrs) -> TArray( unrollSigtype' ts, Some(kinteger64 IInt i), attrs )
-  | TSArray (ts, None, attrs) -> TArray( unrollSigtype' ts, None, attrs )
-  | TSPtr (ts, attrs) -> TPtr( unrollSigtype' ts, attrs )
-  | TSComp (_, n, _ ) -> find_tcomp f n
-  | TSFun (_, _, _, _) -> TVoid([]) (* Not sure about this :D *)
-  | TSEnum (n, attrs) -> TEnum(find_enum f n, attrs)
-  | TSBase (t) -> t
-
-(** exception returning the attribute that failed to convert into an expression *)
-exception NotAnExpression of attrparam
-(** Converts an attribute into an expression.
-  @param  a the attrparam to convert
-  @param  currentFunction the function we are currently processing
-  @param  ppc_file  the ppc file
-  @raise NotAnExpression when it fails
-  @return the converted Cil.attrparam as a Cil.exp
- *)
-let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp=
-  assert (currFunction.svar.vname <> "@dummy");
-  let rec subAttr2Exp (a: attrparam) : exp= (
-    match a with
-        AInt(i) -> integer i                    (** An integer constant *)
-      | AStr(s) -> Const(CStr s)                (** A string constant *)
-      | ACons(name, []) ->                    (** An id *)
-          Lval (Var (find_scoped_var loc currFunction ppc_file name) , NoOffset)
-      (* We don't support function calls as argument size *)
-      | ACons(name, args) ->                 (** A function call *)
-          E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as argument size in #pragma css task..." name)
-      | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
-      | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
-      | ASizeOfS(ts) -> SizeOf (unrollSigtype ppc_file ts)
-      | AAlignOf(t) -> AlignOf t
-      | AAlignOfE(a) -> AlignOfE (subAttr2Exp a)
-      | AAlignOfS(ts) -> AlignOf (unrollSigtype ppc_file ts)
-      | AUnOp(op, a) -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
-      | ABinOp(op, a, b) -> BinOp(op, subAttr2Exp a,
-                                    subAttr2Exp b, intType) (* same as above *)
-      | ADot(a, s) -> begin                    (** a.foo **)
-        let predot = subAttr2Exp a in
-        match predot with Lval(v) ->
-            Lval (mkFieldAccess v s)
-          | _ -> raise (NotAnExpression a)
-      end
-      | AStar(a) -> Lval(mkMem (subAttr2Exp a) NoOffset) (** * a *)
-      | AAddrOf(a) -> begin                                 (** & a **)
-        let ar = subAttr2Exp a in
-        match ar with Lval(v) ->
-            mkAddrOf v
-          | _ -> raise (NotAnExpression a)
-      end
-      | AIndex(a, i) -> begin                               (** a1[a2] *)
-        let arr = subAttr2Exp a in
-        match arr with Lval(v) ->
-            Lval(addOffsetLval (Index(subAttr2Exp i, NoOffset)) v)
-          | _ -> raise (NotAnExpression a)
-      end
-      (* not supported *)
-  (*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
-      | AQuestion (at1, at2, at3) ->
-          E.s (errorLoc loc "\"cond ? if : else\"  is not supported in #pragma css task...")
-  ) in
-  subAttr2Exp a
-
-
-(******************************************************************************)
 (*                             FILE handling                                  *)
 (******************************************************************************)
 
@@ -1157,6 +1020,171 @@ class add_at_first_decl (gl_new: global list) : cilVisitor = object (self)
 let add_at_top (f: file) (globals: global list) : unit =
   let v = new add_at_first_decl globals in
   visitCilFile v f
+
+(******************************************************************************)
+(*                          Constructors                                      *)
+(******************************************************************************)
+
+(** takes an lvalue and a fieldname and returns lvalue.fieldname *)
+let mkFieldAccess lv fieldname =
+  let lvt = Cil.typeOfLval lv in
+  (* get the type *)
+  let (lvtf, isptr) = match lvt with
+    | TPtr(ty, _) -> (ty, true)
+    | _ -> (lvt, false)
+  in
+  let ci = getCompinfo (unrollType lvtf) in
+  let field = getCompField ci fieldname in
+  addOffsetLval (Field (field, NoOffset)) (
+    if isptr then (mkMem (Lval lv) NoOffset) else (lv)
+  )
+
+(** Defines the Task_table array for the spu file
+    @param tasks the tasks to put in the task table
+    @return the Task_table array as a Cil.global
+ *)
+let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
+  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
+  let type' = TArray (etype, None, []) in
+  let vi = makeGlobalVar name type' in
+  let n = L.length tasks in
+  let init' =
+      let rec loopElems acc i =
+        if i < 0 then acc
+        else (
+          let (_, task_vi, _) = L.nth tasks i in
+          loopElems ( (Index(integer i, NoOffset), SingleInit(Lval (Var(task_vi), NoOffset))) :: acc) (i - 1)
+        )
+      in
+      CompoundInit(etype, loopElems [] (n - 1))
+  in
+  let ii = {init = Some init'} in
+  GVar(vi, ii, locUnknown)
+)
+
+(** Defines the Task_table for the ppu file. Simply filled with NULL
+    @param tasks the tasks are just used to get the number of NULLS to put in the Task_table
+    @return the Task_table array as a Cil.global
+*)
+let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
+  let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
+  let type' = TArray (etype, None, []) in
+  let vi = makeGlobalVar "Task_table" type' in
+  let n = L.length tasks in
+  let init' =
+      let rec loopElems acc i =
+        if i < 0 then acc
+        else loopElems ((Index(integer i, NoOffset), makeZeroInit etype) :: acc) (i - 1)
+      in
+      CompoundInit(etype, loopElems [] (n - 1))
+  in
+  let ii = {init = Some init'} in
+  GVar(vi, ii, locUnknown)
+)
+
+(** Defines a global variable with name name and type typ in file file
+    @param name    The name of the new variable
+    @param initial The initializer of the global variable
+    @param typ     The type of the new variable
+    @param file    The file in which the new variable will be defined
+    @return the new variable as a Cil.varinfo
+*)
+let makeGlobalVar name initial typ file=
+  let v = makeGlobalVar name typ in
+  let glob = GVar(v, {init = initial;}, locUnknown) in
+  add_at_top file [glob];
+  v
+
+
+(******************************************************************************)
+(*                         AttrParam to Expression                            *)
+(******************************************************************************)
+
+(* Type signatures. Two types are identical iff they have identical
+ * signatures *)
+let rec unrollSigtype (f:file) (ts: typsig) : typ =
+  let unrollSigtype' = unrollSigtype f in
+  match ts with
+    TSArray (ts, Some i, attrs) -> TArray( unrollSigtype' ts, Some(kinteger64 IInt i), attrs )
+  | TSArray (ts, None, attrs) -> TArray( unrollSigtype' ts, None, attrs )
+  | TSPtr (ts, attrs) -> TPtr( unrollSigtype' ts, attrs )
+  | TSComp (_, n, _ ) -> find_tcomp f n
+  | TSFun (_, _, _, _) -> TVoid([]) (* Not sure about this :D *)
+  | TSEnum (n, attrs) -> TEnum(find_enum f n, attrs)
+  | TSBase (t) -> t
+
+(** exception returning the attribute that failed to convert into an expression *)
+exception NotAnExpression of attrparam
+(** Converts an attribute into an expression.
+  @param  a the attrparam to convert
+  @param  currentFunction the function we are currently processing
+  @param  ppc_file  the ppc file
+  @raise NotAnExpression when it fails
+  @return the converted Cil.attrparam as a Cil.exp
+ *)
+let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp=
+  assert (currFunction.svar.vname <> "@dummy");
+  let rec subAttr2Exp (a: attrparam) : exp= (
+    match a with
+        AInt(i) -> integer i                    (** An integer constant *)
+      | AStr(s) -> Const(CStr s)                (** A string constant *)
+      | ACons(name, []) ->                    (** An id *)
+          Lval (Var (find_scoped_var loc currFunction ppc_file name) , NoOffset)
+      (* We don't support function calls as argument size *)
+      | ACons(name, args) ->                 (** A function call *)
+          E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as argument size in #pragma css task..." name)
+      | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
+      | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
+      | ASizeOfS(ts) -> SizeOf (unrollSigtype ppc_file ts)
+      | AAlignOf(t) -> AlignOf t
+      | AAlignOfE(a) -> AlignOfE (subAttr2Exp a)
+      | AAlignOfS(ts) -> AlignOf (unrollSigtype ppc_file ts)
+      | AUnOp(op, a) -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
+      | ABinOp(op, a, b) -> BinOp(op, subAttr2Exp a,
+                                    subAttr2Exp b, intType) (* same as above *)
+      | ADot(a, s) -> begin                    (** a.foo **)
+        let predot = subAttr2Exp a in
+        match predot with Lval(v) ->
+            Lval (mkFieldAccess v s)
+          | _ -> raise (NotAnExpression a)
+      end
+      | AStar(a) -> Lval(mkMem (subAttr2Exp a) NoOffset) (** * a *)
+      | AAddrOf(a) -> begin                                 (** & a **)
+        let ar = subAttr2Exp a in
+        match ar with Lval(v) ->
+            mkAddrOf v
+          | _ -> raise (NotAnExpression a)
+      end
+      | AIndex(a, i) -> begin                               (** a1[a2] *)
+        let arr = subAttr2Exp a in
+        match arr with Lval(v) ->
+            Lval(addOffsetLval (Index(subAttr2Exp i, NoOffset)) v)
+          | _ -> raise (NotAnExpression a)
+      end
+      (* not supported *)
+  (*    | AQuestion of attrparam * attrparam * attrparam (** a1 ? a2 : a3 **)*)
+      | AQuestion (at1, at2, at3) ->
+          E.s (errorLoc loc "\"cond ? if : else\"  is not supported in #pragma css task...")
+  ) in
+  subAttr2Exp a
+
+
+(******************************************************************************)
+(*                         Function call generator                            *)
+(******************************************************************************)
+let make_func_call (f: file) (loc : location) (s: stmt) (exps: attrparam list)
+                   (func: string): stmt visitAction =
+  (* find wait_on functions declaration *)
+  let func = find_function_sign f func in
+  (* prepare the arguments *)
+  let args = L.map (attrParamToExp f loc) exps in
+  (* create the call *)
+  let instr = Call (None, Lval (var func), args, locUnknown) in
+  (* pop out the processed pragma *)
+  let s' = {s with pragmas = List.tl s.pragmas} in
+  (* push the generated code *)
+  ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
+
 
 (******************************************************************************)
 (*                             Argument processor                             *)

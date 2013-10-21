@@ -22,6 +22,8 @@
 (* limitations under the License.                                           *)
 (****************************************************************************)
 
+val options : (string * Arg.spec * string) list
+
 val make_wait_on : Cil.fundec -> Cil.file -> Cil.location ->
     Cil.attrparam list -> Cil.stmt -> Cil.stmt Cil.visitAction
 

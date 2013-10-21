@@ -27,68 +27,58 @@
 
 open Pretty
 open Cil
-open Lockutil
-open Scoop_util
-module E = Errormsg
-module H = Hashtbl
-module S = Str
-module L = List
-module T = Trace
-module CG = Callgraph
+module LU    = Lockutil
+module SU    = Scoop_util
+module E     = Errormsg
+module H     = Hashtbl
+module S     = Str
+module L     = List
+module T     = Trace
+module CG    = Callgraph
 module Lprof = Lockprofile
 
 (* defining globals *)
-(** holds the TPC's SPEs queue size *)
-let queue_size = ref "0"
 (** flag for more prints by SCOOP *)
 let debug = ref false
-(** flag to support multithreading or not *)
-let thread = ref false
 (** the prefix of the files to be produced by SCOOP. Defaults to
     "scoop_trans" *)
 let out_name = ref "scoop_trans"
 (** the runtime/architecture to target. Currently supporting
-    adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX
+    bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX
     Defaults to unknown *)
 let arch = ref "unknown"
 (** the str following the pragma, default is css (#pragma css ...) *)
-let pragma_str = ref "css"
-(** the main function in the file, default is main *)
-let myrmics_main = ref "main"
+let pragma_str = ref "notset"
 (** the path where the runtime headers are located *)
-let tpcIncludePath = ref ""
+let includePath = ref ""
 (** flags to pass to the gcc when merging files *)
 let cflags = ref ""
-(** holds the previous visited statement *)
-let prevstmt = ref dummyStmt
 (** flag for disabling SDAM *)
 let dis_sdam = ref false
-(** flag for CellBlade *)
-let blade = ref false
-(** flag for cell runtimes *)
-let isCell = ref false
-
-(** The new spu file to create *)
-let spu_file = ref dummyFile
-(** The new ppu file to create *)
-let ppc_file = ref dummyFile
+(** The new file to create *)
+let gen_file = ref dummyFile
 
 (** the options supported by scoop *)
 let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime\nadam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX";
+      " SCOOP: Define the target runtime\nbddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
       " SCOOP: Define the flags you want to pass to gcc.";
 
+    (* FIXME: remove it at some later release *)
     "--tpcIncludePath",
-      Arg.String(fun s -> tpcIncludePath := s),
-      " SCOOP: Define the include path for the tpc runtime.";
+      Arg.String(fun s -> includePath := s),
+      " SCOOP: Define the include path for the tpc runtime. (DEPRECATED)";
 
-    "--debugSCOOP",
+    "--include-path",
+      Arg.String(fun s -> includePath := s),
+      " SCOOP: Define the path containing the runtime header files.";
+
+    "--debug-SCOOP",
       Arg.Set(debug),
       " SCOOP: Print debugging information.";
 
@@ -98,36 +88,19 @@ let options =
 
     "--pragma",
       Arg.String(fun s -> pragma_str := s),
-      " SCOOP: Specify the string constant following the pragma e.g. (default: css) will recognise #pragma css ... (myrmics' default is myrmics)";
-
-    "--queue-size",
-      Arg.String(fun s -> queue_size := s),
-      " SCOOP: Specify the queue size for Cell. Defined in the Makefile as MAX_QUEUE_ENTRIES";
+      " SCOOP: Specify the string constant following the pragma e.g. (default: runtime name) myrmics will recognise #pragma myrmics ... ";
 
     "--without-stats",
-      Arg.Clear(stats),
+      Arg.Clear(SU.stats),
       " SCOOP: Disable code generation for statistics, for use without -DSTATISTICS";
-
-    "--myrmics-main-function",
-      Arg.String(fun s -> myrmics_main := s),
-      " SCOOP: Specify the name of the main function for the myrmics runtime (default: main)";
-
 
 (*    "--with-unaligned-arguments",
       Arg.Set(unaligned_args),
       " SCOOP: Allow unalligned arguments in x86, for use with -DUNALIGNED_ARGUMENTS_ALLOWED";*)
 
-(*    "--without-blocking",
-      Arg.Clear(blocking),
-      " SCOOP: Enable blocking arguments in x86. for use with -DBLOCKING";*)
-
-    "--threaded",
-      Arg.Set(thread),
-      " SCOOP: Generate thread safe code for Cell, for use with -DTPC_MULTITHREADED";
-
     "--disable-sdam",
       Arg.Set(dis_sdam),
-      " SCOOP: Disable the static dependence analysis module";
+      " SCOOP: Disable the static dependence analysis module (SDAM)";
   ]
 
 let feature : featureDescr =
@@ -146,201 +119,92 @@ let feature : featureDescr =
     @ Lprof.options
     @ Ptatype.options
     @ Ptdepa.options
+    @ Scoop_bddt.options
+    @ Scoop_cell.options
+    @ Scoop_cellgod.options
+    @ Scoop_myrmics.options
+    @ Scoop_nesting.options
+    @ Scoop_XPPFX.options
     ;
     fd_doit =
     (function (f: file) ->
 
       if (!arch = "unknown") then (
         E.s (error "No architecture specified. Exiting!")
-      ) else if (!arch = "cell" && !queue_size = "0") then (
-        E.s (error "No queue_size specified. Exiting!")
       );
 
-      isCell := Str.string_match (Str.regexp "^cell") !arch 0;
+      if (!pragma_str="notset") then
+        pragma_str := !arch;
 
-      pragma_str := if (!arch="myrmics") then !arch else !pragma_str;
       (* Inform SDAM about the different pragma we are using *)
       Ptatype.pragma_str := !pragma_str;
 
-      if(!arch = "cellBlade") then (
-        blade := true;
-        arch := "cell";
-      ) else if(!arch = "cellgodBlade") then (
-        blade := true;
-        arch := "cellgod";
-      );
-
-      (* if we are on heterogeneous architecture create two copies of
-         the initial file *)
-      if ( !isCell ) then
-        spu_file := { dummyFile with fileName = (!out_name^"_func.c");};
-
-      ppc_file := { f with fileName = (!out_name^".c");};
+      gen_file := { f with fileName = (!out_name^".c");};
 
       (* create a call graph *)
       let callgraph = CG.computeGraph f in
 
       (* find tpc_decl pragmas *)
-      let fspuVisitor =
+      let codeGenerator =
         match !arch with
-        | "adam" ->
-           new Scoop_adam.findTaskDeclVisitor callgraph !ppc_file !pragma_str
         | "bddt" ->
-           new Scoop_bddt.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+           new Scoop_bddt.codegen callgraph !gen_file !pragma_str !includePath
         | "cell" ->
-           new Scoop_cell.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+           new Scoop_cell.codegen callgraph !gen_file !pragma_str !includePath
+               !out_name false
+        | "cellBlade" ->
+           new Scoop_cell.codegen callgraph !gen_file !pragma_str !includePath
+               !out_name true
         | "cellgod" ->
-           new Scoop_cellgod.findTaskDeclVisitor callgraph !ppc_file !spu_file !pragma_str
+           new Scoop_cellgod.codegen callgraph !gen_file !pragma_str
+               !includePath !out_name false
+        | "cellgodBlade" ->
+           new Scoop_cellgod.codegen callgraph !gen_file !pragma_str
+               !includePath !out_name false
         | "myrmics" ->
-           new Scoop_myrmics.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "nesting" ->
-           new Scoop_nesting.findTaskDeclVisitor callgraph !ppc_file !pragma_str
-        | "XPPFX" ->
-           new Scoop_XPPFX.findTaskDeclVisitor callgraph !ppc_file !pragma_str
+           new Scoop_myrmics.codegen callgraph !gen_file !pragma_str !includePath
+        (* | "nesting" -> *)
+        (*    new Scoop_nesting.findTaskDeclVisitor callgraph !gen_file !pragma_str *)
+        (* | "XPPFX" -> *)
+        (*    new Scoop_XPPFX.findTaskDeclVisitor callgraph !gen_file !pragma_str *)
         | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
       in
 
-      let def = " "^(!cflags)^
-        ( if (!stats) then " -DSTATISTICS=1" else " ")^
-        ( if (!blade) then " -DBLADE=1" else " ")
-      in
-      if (!arch = "adam" || !arch = "bddt") then (
-        preprocessAndMergeWithHeader_x86 !ppc_file
-                                         (!tpcIncludePath)
-                                         "/scoop/tpc_scoop.h"
-                                         (def);
-      ) else if !isCell then ( (* else cell/cellgod *)
-        (* copy all code from file f to file_ppc *)
-        let def = def^(
-          if (!arch = "cellgod") then
-            (" -DADAM=1")
-          else
-            (" -DMAX_QUEUE_ENTRIES="^(!queue_size))
-        ) in
-
-        preprocessAndMergeWithHeader_cell !ppc_file
-                                          ((!tpcIncludePath)^"/scoop/tpc_scoop.h")
-                                          (" -DPPU=1"^(def))
-                                          !tpcIncludePath;
-
-        (* copy all typedefs and enums/structs/unions from ppc_file to spu_file
-          plus the needed headers *)
-        let new_types_l = List.filter is_typedef (!ppc_file).globals in
-        (!spu_file).globals <- new_types_l;
-        preprocessAndMergeWithHeader_cell !spu_file
-                                          ((!tpcIncludePath)^"/scoop/tpc_scoop.h")
-                                          (" -DSPU=1"^(def))
-                                          !tpcIncludePath;
-      ) else if ( !arch<>"myrmics" ) then (
-        preprocessAndMergeWithHeader_x86 !ppc_file
-                                         (!tpcIncludePath)
-                                         ((!arch)^"_header.h")
-                                         (def);
-      );
+      (* Include the runtime's header file  *)
+      codeGenerator#preprocessAndMergeWithHeader !cflags;
 
       (* Declare some globals *)
-      let globals = ref [] in
-      let makeGlobalVar ini n t =
-        globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals;
-      in
-      (match !arch with
-        (* Task_element *this;
-            uint32_t block_index_start
-            uint64_t e_addr;
-            uint64_t _tmptime; *)
-        "adam" -> (
-          let makeGlobalVar = makeGlobalVar None in
-          let task_element_pt =
-            TPtr((find_type !ppc_file "Task_element"), [])
-          in
-          makeGlobalVar "this_SCOOP__" task_element_pt;
-          let uint32_t = (find_type !ppc_file "uint32_t") in
-          let uint64_t = (find_type !ppc_file "uint64_t") in
-          makeGlobalVar "block_index_start_SCOOP__" uint32_t;
-          makeGlobalVar "e_addr_SCOOP__" uint64_t;
-          makeGlobalVar "_tmptime1_SCOOP__" uint64_t;
-          makeGlobalVar "_tmptime2_SCOOP__" uint64_t;
-        )
-        (* Task_element *this;
-            uint32_t block_index_start
-            uint64_t e_addr;
-            uint64_t _tmptime; *)
-        | "bddt" -> (
-          let makeGlobalVar = makeGlobalVar None in
-          let task_element_pt =
-            TPtr((find_type !ppc_file "Task_element"), [])
-          in
-          makeGlobalVar "this_SCOOP__" task_element_pt;
-          let uint32_t = (find_type !ppc_file "uint32_t") in
-          let uint64_t = (find_type !ppc_file "uint64_t") in
-          makeGlobalVar "block_index_start_SCOOP__" uint32_t;
-          makeGlobalVar "e_addr_SCOOP__" uint64_t;
-          makeGlobalVar "_tmptime1_SCOOP__" uint64_t;
-          makeGlobalVar "_tmptime2_SCOOP__" uint64_t;
-        )
-        (* const int tpc_task_arguments_list[]; *)
-        | "XPPFX" -> (
-          makeGlobalVar (Some (SingleInit(zero)))
-                        "tpc_task_arguments_list"
-                        (TArray(TInt(IInt, [Attr("const", [])]), None, []));
-        )
-        | _ -> ()
-      );
-      add_at_top !ppc_file !globals;
+      codeGenerator#declareGlobals;
+
+      (* let globals = ref [] in *)
+      (* let makeGlobalVar ini n t = *)
+      (*   globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals; *)
+      (* in *)
+      (* (match !arch with *)
+      (*   (\* const int tpc_task_arguments_list[]; *\) *)
+      (*   | "XPPFX" -> ( *)
+      (*     makeGlobalVar (Some (SingleInit(zero))) *)
+      (*                   "tpc_task_arguments_list" *)
+      (*                   (TArray(TInt(IInt, [Attr("const", [])]), None, [])); *)
+      (*   ) *)
+      (*   | _ -> () *)
+      (* ); *)
+      (* SU.add_at_top !gen_file !globals; *)
 
       (* SDAM *)
-      if ( !arch = "bddt" ||
-           !arch = "adam" ||
-           !arch = "myrmics" ||
-           !arch = "cellgod" ||
-           !arch = "nesting" ||
-           !arch = "XPPFX" ) then
-        (Ptdepa.find_dependencies f !dis_sdam);
+      codeGenerator#parseFile !dis_sdam;
 
-      Cil.iterGlobals !ppc_file
-        (function
-          GFun(fd,_) ->
-            currentFunction := fd;
-            ignore(visitCilFunction (fspuVisitor :> Cil.cilVisitor) fd);
-        | _ -> ()
-        )
-      ;
-
-      (* copy all globals except the function declaration of "tpc_call_tpcAD65" *)
-      (!ppc_file).globals <- List.filter isNotSkeleton (!ppc_file).globals;
-
-      (* tasks  (new_tpc * old_original * args) *)
-      let (_, tasks) = List.split (L.rev fspuVisitor#getTasks) in
-      if (!arch = "cellgod") then (
-        (!ppc_file).globals <-
-          (make_null_task_table tasks)::((!ppc_file).globals);
-        (!spu_file).globals <-
-          (!spu_file).globals@[(make_task_table "Task_table" tasks)]
-      ) else if ( !arch = "adam" || !arch = "bddt" ) then (
-        (!ppc_file).globals <-
-          ((!ppc_file).globals)@[(make_task_table "Task_table" tasks)]
-      ) else if ( !arch = "myrmics" ) then (
-        let main = find_function_sign !ppc_file !myrmics_main in
-        let tasks = (dummyFunDec, main, [])::tasks in
-        (!ppc_file).globals <-
-          ((!ppc_file).globals)@[(make_task_table (!myrmics_main^"_task_table") tasks)]
-      );
-
-      (* execute_task is redundant in x86*)
-      if !isCell then
-        (!spu_file).globals <-
-          (!spu_file).globals@[Scoop_make_exec.make_exec_func !arch !spu_file tasks];
+      (* Create a task table *)
+      codeGenerator#makeTaskTable;
 
       (* eliminate dead code *)
-(*        Cfg.computeFileCFG !ppc_file;
-      Deadcodeelim.dce !ppc_file;
+(*        Cfg.computeFileCFG !gen_file;
+      Deadcodeelim.dce !gen_file;
       Cfg.computeFileCFG !spu_file;
       Deadcodeelim.dce !spu_file;*)
 
-(*         Scoop_rmtmps.removeUnused !ppc_file; *)
-      writeFile !ppc_file;
-      if !isCell then
-        writeFile !spu_file;
+      (* Scoop_rmtmps.removeUnused !gen_file; *)
+      codeGenerator#writeFile;
     );
     fd_post_check = true;
   }

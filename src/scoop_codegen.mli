@@ -22,15 +22,41 @@
 (* limitations under the License.                                           *)
 (****************************************************************************)
 
-class findTaskDeclVisitor : Callgraph.callgraph -> Cil.file -> string ->
-  object
-    inherit Cil.nopCilVisitor
-    val mutable spu_tasks :
+(** Generic code generation class. To be inherited by runtime specific
+    code generators *)
+class virtual codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
+  object inherit Cil.nopCilVisitor
+    val callgraph     : Callgraph.callgraph
+    val new_file      : Cil.file
+    val pragma_str    : string
+    val scoop_wait_on : string
+    val scoop_barrier : string
+    val scoop_start   : string
+    val scoop_finish  : string
+    val scoop_malloc  : string
+    val scoop_free    : string
+    val runtime       : string
+    val includePath   : string
+    val un_id         : int ref
+    val querie_no     : int ref
+    val func_id       : int ref
+    val mutable found_tasks :
       ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
-    val callgraph : Callgraph.callgraph
-    val ppc_file : Cil.file
-    val pragma_str : string
-    (* visits all stmts and checks for pragma directives *)
+
+    (** Write the generated file to disk *)
+    method writeFile : unit
+    (** Creates a task table (a tale with all tasks with the funcid as
+     * index) and adds it to the file to be generated *)
+    method makeTaskTable : unit
+    (** Parse file to find task spawns and dependencies between arguments *)
+    method parseFile : bool -> unit
+    (** Declare any globals needed by the code generator *)
+    method declareGlobals : unit
+    (** Preprocesses the runtime header file and merges it with new_file. *)
+    method preprocessAndMergeWithHeader : string -> unit
+    (* populates the global list of tasks [tasks] *)
+    (** visits all stmts and checks for pragma directives *)
     method vstmt : Cil.stmt -> Cil.stmt Cil.visitAction
-    method getTasks : ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
+    method getTasks :
+             ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
   end
