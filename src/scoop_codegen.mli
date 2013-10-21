@@ -54,6 +54,10 @@ class virtual codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
     method declareGlobals : unit
     (** Preprocesses the runtime header file and merges it with new_file. *)
     method preprocessAndMergeWithHeader : string -> unit
+    (** Generates the code to spawn a task *)
+    method virtual make_task_spawn : Cil.location -> Cil.varinfo -> Cil.exp list
+                                     -> Scoop_util.arg_descr list
+                                     -> (Cil.stmt list * (int * Scoop_util.arg_descr) list)
     (* populates the global list of tasks [tasks] *)
     (** visits all stmts and checks for pragma directives *)
     method vstmt : Cil.stmt -> Cil.stmt Cil.visitAction

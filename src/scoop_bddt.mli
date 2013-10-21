@@ -27,4 +27,7 @@ val options : (string * Arg.spec * string) list
 class codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
   object
     inherit Scoop_codegen.codegen
+    method make_task_spawn : Cil.location -> Cil.varinfo -> Cil.exp list
+                             -> Scoop_util.arg_descr list
+                             -> (Cil.stmt list * (int * Scoop_util.arg_descr) list)
   end

@@ -104,9 +104,9 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
    * @return the stmts that will replace the call paired with a list of numbered
    * argument descriptors
    *)
-  method private make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
-                                 (args: SU.arg_descr list) (f: file)
-                 : (stmt list * (int * SU.arg_descr) list) =
+  method make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
+                         (args: SU.arg_descr list)
+         : (stmt list * (int * SU.arg_descr) list) =
     incr un_id;
 
     let args_num = List.length oargs in
@@ -160,7 +160,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     in
 
     (* spawn(taskd); *)
-    let tpc_call_f = SU.find_function_sign f "spawn" in
+    let tpc_call_f = SU.find_function_sign new_file "spawn" in
 
     let filename = mkString loc.file in
     (* the funcid is +1 in order to skip the main function which is pushed in the task table at the end *)
@@ -287,7 +287,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
             (* create the spawn function *)
             let rest_f2 var_i =
               let (stmts, args) =
-                self#make_task_spawn loc var_i oargs args new_file
+                self#make_task_spawn loc var_i oargs args
               in
               found_tasks <- (funname, (dummyFunDec, var_i, args))::found_tasks;
               ChangeTo(mkStmt (Block(mkBlock stmts)) )

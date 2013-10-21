@@ -171,76 +171,9 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
      * @return the stmts that will replace the call paired with a list of numbered
      * argument descriptors
      *)
-    method private make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
-                                   (args: SU.arg_descr list) (f: file)
-                   : (stmt list * (int * SU.arg_descr) list) =
-      incr un_id;
-
-      let args_num = List.length oargs in
-      let args_num_i = integer args_num in
-
-      (* Try to find locally an array with the argument descriptors *)
-      let scoop2179_args =
-        try
-          let args = SU.__find_local_var !SU.currentFunction "scoop2179_s_args" in
-          (* Check if the array is large enough for this spawn *)
-          ( match args.vtype with
-            | TArray(t, Some(Const(CInt64(size, _, _))), _) ->
-              if args_num > (i64_to_int size) then
-                args.vtype <- TArray(t, Some(args_num_i), []);
-            | _ -> assert false;
-          );
-          var args
-        with Not_found ->
-          var (makeLocalVar !SU.currentFunction "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), [])))
-      in
-
-      let scoop2179_typs =
-        try
-          let typs = SU.__find_local_var !SU.currentFunction "scoop2179_t_args" in
-          (* Check if the array is large enough for this spawn *)
-          ( match typs.vtype with
-              TArray(t, Some(Const(CInt64(size, _, _))), _) ->
-              if args_num > (i64_to_int size) then
-                typs.vtype <- TArray(t, Some(args_num_i), []);
-              | _ -> assert false;
-          );
-          var typs
-        with Not_found ->
-          var (makeLocalVar !SU.currentFunction "scoop2179_t_args" (TArray(uintType, Some(args_num_i), [])))
-      in
-
-      let args_n, instrs =
-        (* if we have arguments *)
-        if (oargs <> []) then (
-          let args_n = SU.number_args args oargs in
-
-          (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("A= "^(string_of_int i)^" "^name) ) args_n); *)
-
-          let args_n = List.sort SU.sort_args_n args_n in
-          (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
-          incr querie_no;
-          let doArgument = self#doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
-          let mapped = L.flatten (List.map doArgument args_n) in
-          (args_n, mapped)
-        ) else ([], [])
-      in
-
-      (* spawn(taskd); *)
-      let tpc_call_f = SU.find_function_sign f "spawn" in
-
-      let filename = mkString loc.file in
-      (* the funcid is +1 in order to skip the main function which is pushed in the task table at the end *)
-      let call_args = [filename;
-                       integer loc.line;
-                       integer (!func_id+1);
-                       Lval scoop2179_args;
-                       Lval scoop2179_typs;
-                       args_num_i] in
-      let instrs = Call (None, Lval (var tpc_call_f), call_args, locUnknown)::instrs in
-
-      incr func_id;
-      ([mkStmt (Instr(L.rev instrs))], args_n)
+    method virtual make_task_spawn : Cil.location -> Cil.varinfo -> Cil.exp list
+                                     -> SU.arg_descr list
+                                     -> (stmt list * (int * SU.arg_descr) list)
 
     (* populates the global list of tasks [tasks] *)
     (** visits all stmts and checks for pragma directives *)
@@ -315,7 +248,7 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
               (* create the spawn function *)
               let rest_f2 var_i =
                 let (stmts, args) =
-                  self#make_task_spawn loc var_i oargs args new_file
+                  self#make_task_spawn loc var_i oargs args
                 in
                 found_tasks <- (funname, (dummyFunDec, var_i, args))::found_tasks;
                 ChangeTo(mkStmt (Block(mkBlock stmts)) )

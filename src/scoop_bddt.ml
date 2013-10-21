@@ -311,7 +311,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
      * @return the stmts that will replace the call paired with a list of numbered
      * argument descriptors
      *)
-    method private make_task_spawn (loc: location) (func_vi: varinfo)
+    method make_task_spawn (loc: location) (func_vi: varinfo)
                                    (oargs: exp list) (args: SU.arg_descr list)
                    : (stmt list * (int * SU.arg_descr) list) =
       incr un_id;

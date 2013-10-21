@@ -149,6 +149,9 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
                                          (" -DSPU=1"^(def))
                                          includePath;
 
+  method make_task_spawn (loc: location) (func_vi: varinfo)
+                         (oargs: exp list) (args: SU.arg_descr list)
+         : (stmt list * (int * SU.arg_descr) list) = ([], [])
 
   (** Creates a tpc_ version of the function (for use on the ppc side)
    * uses the tpc_call_tpcAD65 from tpc_skeleton_tpc.c as a template
@@ -159,7 +162,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
    * @return the new function declaration paired with a list of numbered argument
    *         descriptors
    *)
-  method private make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
+  method private make_task_spawn2 (loc: location) (func_vi: varinfo) (oargs: exp list)
                       (args: SU.arg_descr list) : (fundec * (int * SU.arg_descr) list) = (
       incr un_id;
       print_endline ("Creating tpc_function_" ^ func_vi.vname ^ (string_of_int !un_id));
@@ -470,7 +473,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
               in
               let rest_f2 var_i =
                 let (new_fd, args) =
-                  self#make_task_spawn loc var_i oargs args
+                  self#make_task_spawn2 loc var_i oargs args
                 in
                 Lockutil.add_after_s new_file var_i.vname new_fd;
                 found_tasks <- (funname, (new_fd, var_i, args))::found_tasks;

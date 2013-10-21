@@ -33,14 +33,14 @@ class addFunVisitor (f_old: string) (f_new: fundec) : cilVisitor = object (self)
   inherit nopCilVisitor
   method vglob glob =
     match glob with
-      | GFun(fd, _) when fd.svar.vname = f_old ->
-          let declaration = GVarDecl(f_new.svar, locUnknown) in
-          ChangeTo [declaration; glob]
-      | GVarDecl(vi, _) when vi.vname = f_old ->
-          let declaration = GVarDecl(f_new.svar, locUnknown) in
-          ChangeTo [declaration; glob]
-      | _ -> SkipChildren
-  end
+    | GFun(fd, _) when fd.svar.vname = f_old ->
+      let declaration = GVarDecl(f_new.svar, locUnknown) in
+      ChangeTo [declaration; glob]
+    | GVarDecl(vi, _) when vi.vname = f_old ->
+      let declaration = GVarDecl(f_new.svar, locUnknown) in
+      ChangeTo [declaration; glob]
+    | _ -> SkipChildren
+end
 
 (* Adds a declaration of function f_new right AFTER the first occurence
  * (declaration or definition) of the function named <f_old>. Also, the body of
@@ -138,31 +138,31 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     [mkStmt (Instr (L.rev !il))]
 
 
-    (** Generates the code to spawn a task
-     * @param loc the current file location
-     * @param func_vi the varinfo of the original function
-     * @param oargs the original arguments
-     * @param args the arguments from the pragma directive
-     * @param new_file the file we are modifying
-     * @return the stmts that will replace the call paired with a list of numbered
-     * argument descriptors
-     *)
-    method private make_task_spawn (loc: location) (func_vi: varinfo)
-                                   (oargs: exp list) (args: SU.arg_descr list)
-                   : (stmt list * (int * SU.arg_descr) list) =
-      incr un_id;
+  (** Generates the code to spawn a task
+   * @param loc the current file location
+   * @param func_vi the varinfo of the original function
+   * @param oargs the original arguments
+   * @param args the arguments from the pragma directive
+   * @param new_file the file we are modifying
+   * @return the stmts that will replace the call paired with a list of numbered
+   * argument descriptors
+   *)
+  method make_task_spawn (loc: location) (func_vi: varinfo)
+                         (oargs: exp list) (args: SU.arg_descr list)
+         : (stmt list * (int * SU.arg_descr) list) =
+    incr un_id;
 
-      (*   let instrs = ref [] in *)
-      let uint8_t = (SU.find_type new_file "uint8_t") in
-      (*let uint32_t = (SU.find_type new_file "uint32_t") in*)
-      let args_num = List.length oargs in
-      let args_num_i = integer args_num in
-      let tpc_task_descriptor_pt = TPtr(SU.find_type new_file "tpc_task_descriptor", []) in
-      let tpc_task_argument_pt = TPtr(SU.find_type new_file "tpc_task_argument", []) in
-      let taskd = var (makeTempVar !SU.currentFunction tpc_task_descriptor_pt) in
-      let full_queue_res = var (makeTempVar !SU.currentFunction uint8_t) in
+    (*   let instrs = ref [] in *)
+    let uint8_t = (SU.find_type new_file "uint8_t") in
+    (*let uint32_t = (SU.find_type new_file "uint32_t") in*)
+    let args_num = List.length oargs in
+    let args_num_i = integer args_num in
+    let tpc_task_descriptor_pt = TPtr(SU.find_type new_file "tpc_task_descriptor", []) in
+    let tpc_task_argument_pt = TPtr(SU.find_type new_file "tpc_task_argument", []) in
+    let taskd = var (makeTempVar !SU.currentFunction tpc_task_descriptor_pt) in
+    let full_queue_res = var (makeTempVar !SU.currentFunction uint8_t) in
 
-      (*  (* const int tpc_task_arguments_list[] = {2, 3, 5, 9}; *)
+    (*  (* const int tpc_task_arguments_list[] = {2, 3, 5, 9}; *)
   let tpc_tal = find_global_Gvar new_file "tpc_task_arguments_list" in
   (match tpc_tal with
      GVar(_, initi, _) -> (
@@ -182,126 +182,126 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     | _ -> assert false;
   );*)
 
-      (* task_desc = tpc_task_descriptor_alloc(args_num); *)
-      let tpc_task_descriptor_alloc = SU.find_function_sign new_file "tpc_task_descriptor_alloc" in
-      let instrs = [Call (Some taskd, Lval (var tpc_task_descriptor_alloc), [args_num_i], locUnknown)] in
+    (* task_desc = tpc_task_descriptor_alloc(args_num); *)
+    let tpc_task_descriptor_alloc = SU.find_function_sign new_file "tpc_task_descriptor_alloc" in
+    let instrs = [Call (Some taskd, Lval (var tpc_task_descriptor_alloc), [args_num_i], locUnknown)] in
 
-      (* task_desc->task = wrapper_func; *)
-      let taskd_task = SU.mkFieldAccess taskd "task" in
-      (* make the wrapper id it doesn't already exist *)
-      let wrapper =
-        try
-          SU.find_function_fundec_g new_file.globals ("wrapper_SCOOP__" ^ func_vi.vname)
-        with Not_found -> (
-          let wrapper_t = SU.find_function_fundec new_file "wrapper_SCOOP__" in
-          let new_fd = copyFunction wrapper_t ("wrapper_SCOOP__" ^ func_vi.vname) in
-          add_wrapper new_file func_vi.vname new_fd;
-          new_fd
-        )
-      in
+    (* task_desc->task = wrapper_func; *)
+    let taskd_task = SU.mkFieldAccess taskd "task" in
+    (* make the wrapper id it doesn't already exist *)
+    let wrapper =
+      try
+        SU.find_function_fundec_g new_file.globals ("wrapper_SCOOP__" ^ func_vi.vname)
+      with Not_found -> (
+        let wrapper_t = SU.find_function_fundec new_file "wrapper_SCOOP__" in
+        let new_fd = copyFunction wrapper_t ("wrapper_SCOOP__" ^ func_vi.vname) in
+        add_wrapper new_file func_vi.vname new_fd;
+        new_fd
+      )
+    in
 
-      let args_n = SU.number_args args oargs in
-      let args_n = List.sort SU.sort_args_n args_n in
+    let args_n = SU.number_args args oargs in
+    let args_n = List.sort SU.sort_args_n args_n in
 
-      (* make the wrappers body *)
-      let _, arglopt, hasvararg, _ = splitFunctionType func_vi.vtype in
-      assert(not hasvararg);
-      let argl = match arglopt with None -> [] | Some l -> l in
-      let wr_arg = var (List.hd wrapper.sformals) in
-      let il = ref [] in
-      let i = ref 0 in
-      let doArg = function
-        | ((_, t, _), (_, arg_descr)) -> (
-          let ar = var (makeTempVar wrapper t) in
-          il := Set(ar, mkCast (Lval (SU.mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
-          il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
-          incr i;
-          Lval ar
-        )
-      in
-      let arglist = List.map doArg (L.combine argl (L.rev args_n)) in
-      il := Call (None, Lval (var func_vi), arglist, locUnknown)::!il;
-      wrapper.sbody <- mkBlock [mkStmt (Instr (List.rev !il))];
+    (* make the wrappers body *)
+    let _, arglopt, hasvararg, _ = splitFunctionType func_vi.vtype in
+    assert(not hasvararg);
+    let argl = match arglopt with None -> [] | Some l -> l in
+    let wr_arg = var (List.hd wrapper.sformals) in
+    let il = ref [] in
+    let i = ref 0 in
+    let doArg = function
+      | ((_, t, _), (_, arg_descr)) -> (
+        let ar = var (makeTempVar wrapper t) in
+        il := Set(ar, mkCast (Lval (SU.mkFieldAccess wr_arg "addr_in")) t, locUnknown)::!il;
+        il := Set(wr_arg, BinOp( PlusPI, Lval wr_arg, one, tpc_task_argument_pt) , locUnknown)::!il;
+        incr i;
+        Lval ar
+      )
+    in
+    let arglist = List.map doArg (L.combine argl (L.rev args_n)) in
+    il := Call (None, Lval (var func_vi), arglist, locUnknown)::!il;
+    wrapper.sbody <- mkBlock [mkStmt (Instr (List.rev !il))];
 
-      let instrs        = Set(taskd_task, Lval (var wrapper.svar), locUnknown)::instrs in
-      (* task_desc->args = task_desc; *)
-      let taskd_args    = SU.mkFieldAccess taskd "args" in
-      (*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs;*)
-      let set_argsPtr   = Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown) in
-      let instrs        = set_argsPtr::instrs in
-      (*   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs; *)
-      (* task_desc->args_no = args_num; *)
-      let taskd_args_no = SU.mkFieldAccess taskd "args_num" in
-      let instrs        = Set(taskd_args_no, args_num_i, locUnknown)::instrs in
+    let instrs        = Set(taskd_task, Lval (var wrapper.svar), locUnknown)::instrs in
+    (* task_desc->args = task_desc; *)
+    let taskd_args    = SU.mkFieldAccess taskd "args" in
+    (*   instrs := Set(taskd_args, BinOp( PlusPI, Lval taskd, integer 32, tpc_task_argument_pt) , locUnknown)::!instrs;*)
+    let set_argsPtr   = Set(taskd_args, CastE( tpc_task_argument_pt, BinOp( PlusPI, Lval taskd, one, tpc_task_argument_pt)) , locUnknown) in
+    let instrs        = set_argsPtr::instrs in
+    (*   instrs := Set(taskd_args, Lval taskd, locUnknown)::!instrs; *)
+    (* task_desc->args_no = args_num; *)
+    let taskd_args_no = SU.mkFieldAccess taskd "args_num" in
+    let instrs        = Set(taskd_args_no, args_num_i, locUnknown)::instrs in
 
-      (* task_desc->number_of_children = 0; *)
-      let taskd_children = SU.mkFieldAccess taskd "number_of_children" in
-      let instrs         = Set(taskd_children, zero, locUnknown)::instrs in
-      (* task_desc->status = 0; *)
-      let taskd_status   = SU.mkFieldAccess taskd "status" in
-      let instrs         = Set(taskd_status, zero, locUnknown)::instrs in
-      (* task_desc->parent = parent; *)
-      let parent_g =
-        try Lval(var (SU.find_global_var new_file "parent"))
-        with Not_found -> E.s (errorLoc loc "parent Not found");
-      in
-      let taskd_parent   = SU.mkFieldAccess taskd "parent" in
-      let instrs         = Set(taskd_parent, parent_g, locUnknown)::instrs in
-      (* Leave uninitialized
+    (* task_desc->number_of_children = 0; *)
+    let taskd_children = SU.mkFieldAccess taskd "number_of_children" in
+    let instrs         = Set(taskd_children, zero, locUnknown)::instrs in
+    (* task_desc->status = 0; *)
+    let taskd_status   = SU.mkFieldAccess taskd "status" in
+    let instrs         = Set(taskd_status, zero, locUnknown)::instrs in
+    (* task_desc->parent = parent; *)
+    let parent_g =
+      try Lval(var (SU.find_global_var new_file "parent"))
+      with Not_found -> E.s (errorLoc loc "parent Not found");
+    in
+    let taskd_parent   = SU.mkFieldAccess taskd "parent" in
+    let instrs         = Set(taskd_parent, parent_g, locUnknown)::instrs in
+    (* Leave uninitialized
      task_desc->rfu and task_desc->extras *)
 
-      let (stmts, args_n) =
-        (* if we have arguments *)
-        if (oargs <> []) then (
-          incr querie_no;
-          let doArgument =
-            self#doArgument taskd_args func_vi.vname !querie_no loc in
-          let mapped = L.flatten (List.rev_map doArgument args_n) in
-          (mkStmt (Instr (L.rev instrs))::mapped, args_n)
-        ) else (
-          ([mkStmt (Instr (L.rev instrs))], [])
-        )
+    let (stmts, args_n) =
+      (* if we have arguments *)
+      if (oargs <> []) then (
+        incr querie_no;
+        let doArgument =
+          self#doArgument taskd_args func_vi.vname !querie_no loc in
+        let mapped = L.flatten (List.rev_map doArgument args_n) in
+        (mkStmt (Instr (L.rev instrs))::mapped, args_n)
+      ) else (
+        ([mkStmt (Instr (L.rev instrs))], [])
+      )
+    in
+
+    (* tpc_call(taskd); *)
+    let tpc_call_f = SU.find_function_sign new_file "tpc_call" in
+    let call = Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown) in
+
+    let rest = mkStmt (Instr [set_argsPtr; call]) in
+
+    (* task_desc->args = task_desc+32; *)
+    let stmts = stmts@[rest] in
+
+    (* if(isFull_Queue(task_Queues[thread_id])==0) *)
+    let isfull_queue =
+      let isfull_queue = SU.find_function_sign new_file "isFull_Queue" in
+      let task_queues =
+        try var (SU.find_global_var new_file "task_Queues")
+        with Not_found -> E.s (errorLoc loc "task_Queues Not found");
       in
-
-      (* tpc_call(taskd); *)
-      let tpc_call_f = SU.find_function_sign new_file "tpc_call" in
-      let call = Call (None, Lval (var tpc_call_f), [Lval taskd], locUnknown) in
-
-      let rest = mkStmt (Instr [set_argsPtr; call]) in
-
-      (* task_desc->args = task_desc+32; *)
-      let stmts = stmts@[rest] in
-
-      (* if(isFull_Queue(task_Queues[thread_id])==0) *)
-      let isfull_queue =
-        let isfull_queue = SU.find_function_sign new_file "isFull_Queue" in
-        let task_queues =
-          try var (SU.find_global_var new_file "task_Queues")
-          with Not_found -> E.s (errorLoc loc "task_Queues Not found");
-        in
-        let thread_id =
-          try Lval (var (SU.find_global_var new_file "thread_id"))
-          with Not_found -> E.s (errorLoc loc "thread_id Not found");
-        in
-        let arg = Lval (addOffsetLval (Index(thread_id, NoOffset)) task_queues) in
-        Call (Some full_queue_res, Lval (var isfull_queue), [arg], locUnknown)
+      let thread_id =
+        try Lval (var (SU.find_global_var new_file "thread_id"))
+        with Not_found -> E.s (errorLoc loc "thread_id Not found");
       in
+      let arg = Lval (addOffsetLval (Index(thread_id, NoOffset)) task_queues) in
+      Call (Some full_queue_res, Lval (var isfull_queue), [arg], locUnknown)
+    in
 
-      let cond = BinOp(Eq, Lval full_queue_res, zero, SU.boolType) in
+    let cond = BinOp(Eq, Lval full_queue_res, zero, SU.boolType) in
 
-      let else_case =
-        let orig_args = List.map (fun f -> f.SU.address) args in
-        [mkStmtOneInstr (Call (None, Lval (var func_vi), orig_args, locUnknown))]
-      in
+    let else_case =
+      let orig_args = List.map (fun f -> f.SU.address) args in
+      [mkStmtOneInstr (Call (None, Lval (var func_vi), orig_args, locUnknown))]
+    in
 
-      let if_stmt =
-        mkStmt (If(cond, mkBlock stmts, mkBlock else_case, locUnknown))
-      in
+    let if_stmt =
+      mkStmt (If(cond, mkBlock stmts, mkBlock else_case, locUnknown))
+    in
 
-      let stmts = [mkStmtOneInstr isfull_queue; if_stmt] in
+    let stmts = [mkStmtOneInstr isfull_queue; if_stmt] in
 
-      incr func_id;
-      (stmts, args_n)
+    incr func_id;
+    (stmts, args_n)
 
-    method getTasks = found_tasks
-  end
+  method getTasks = found_tasks
+end
