@@ -15,9 +15,7 @@ a4paper,
 
 \input{preamble.tex}
 
-% scoopversion.tex is generated automatically to define \scoopversion
-\include{scoop.version}
-
+\def\scoopversion{2.0.0}
 
 \begin{document}
 
@@ -28,11 +26,13 @@ a4paper,
 
   \LARGE \textbf{SCOOP v\scoopversion\\}
   Manual\\[0.5cm]
-  \large \today\\ (Not fully up to date)
+  \large \today
 
   \vfill
 
-  \large Author: \href{mailto:zakkak@ics.forth.gr}{\textit{Foivos S. Zakkak}}\\[1cm]
+  \large Author:
+  {\textit{Foivos S. Zakkak}}\\
+  \href{mailto:zakkak@ics.forth.gr}{\textit{zakkak@ics.forth.gr}}\\[1cm]
 
   Foundation for Research and Technology - Hellas (FORTH)\\
   Institute of Computer Science\\
@@ -82,36 +82,39 @@ limitations under the License.
 
 \section{Annotation Syntax}
 
-    \verb!  #pragma css start(list of variables)!\\
-    \verb!  #pragma css finish!\\
-    \verb!  #pragma css malloc!\\
-    \verb!  #pragma css free!\\
-    \verb!  #pragma css sync!\\
-    \verb!  #pragma css wait all!\\
-    \verb!  #pragma css wait on(list of variables)! //Not implemented yet\\
-    \verb!  #pragma css task [in(<input parameters>)]!\\
-    \verb!                   [inout(<input parameters>)]!\\
-    \verb!                   [out(<input parameters>)]!\\
-    \verb!                   [highpriority] (highpriority is simply ignored)!\\[1em]
+    \verb!  #pragma scoop start(list of variables)!\\
+    \verb!  #pragma scoop finish!\\
+    \verb!  #pragma scoop malloc!\\
+    \verb!  #pragma scoop free!\\
+    \verb!  #pragma scoop sync!\\
+    \verb!  #pragma scoop barrier!\\
+    \verb!  #pragma scoop wait all!\\
+    \verb!  #pragma scoop wait on(list of variables)!\\
+    \verb!  #pragma scoop task [in(<input parameters>)]!\\
+    \verb!                     [inout(<input parameters>)]!\\
+    \verb!                     [out(<input parameters>)]!\\[1em]
+
     Parameter notation:\\
 
       Non stride: \ \verb!<parameter>[\[number of elements (for arrays)\]]!
-      \footnote{XPPFX and nesting require the size in bytes and not in elements}\\
+      %% \footnote{XPPFX and nesting require the size in bytes and not in
+      %%   elements}
+      \\
 
       Stride: \ \ \ \ \ \ \ \verb!<parameter>\[Block Rows|Block Columns\]\[[Array Rows|]Array Columns\]!\\
         \hspace{2cm}Array Rows is optional and is totally ignored\\
 
-      Stride (Legacy): \ \ \ \ \ \ \ \verb!<parameter>\[stride\]\[ els | elsz \]!\\
-        \hspace{2cm}where stride is the step (original row length)\\
-        \hspace{2cm}els is the block's number of rows\\
-        \hspace{2cm}elsz is the block's row length\\
+      %% Stride (Legacy): \ \ \ \ \ \ \ \verb!<parameter>\[stride\]\[ els | elsz \]!\\
+      %%   \hspace{2cm}where stride is the step (original row length)\\
+      %%   \hspace{2cm}els is the block's number of rows\\
+      %%   \hspace{2cm}elsz is the block's row length\\
 
       The parameter size/stride/els/elsz must be an expression, thus
       we don't allow function calls. Also there is no support for the
       conditional operator (? :)\\
 
     Example:
-      \verb!#pragma css task in(a, b[4]) out(c[16])!
+      \verb!#pragma scoop task in(a, b[4]) out(c[16])!
 
 
 \section{Installing}
@@ -131,7 +134,7 @@ packages:
   \setlength{\itemsep}{1pt}
   \setlength{\parskip}{0pt}
   \setlength{\parsep}{0pt}
-  \item ocaml
+  \item ocaml $>=$ 3.11.2
   \item camlp4/ocaml-camlp4/ocaml-camlp4-devel
   \item flex
   \item bison
@@ -141,15 +144,15 @@ packages:
   \item gperf
 \end{itemize}
 
-\begin{tabbing}
-for \emph{CELL B.E} runtimes you will also need the cell development package
-including ppu\_intrinsics.h,\\ altivec.h etc in your include path
-(C\_INCLUDE\_PATH)\\
-  (e.g. \=\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include!\\
-   \>\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include!)\\
-  and ppu32-gcc in your PATH\\
-  (e.g. \verb!export PATH=$PATH:/opt/cell/toolchain/bin!)\\
-\end{tabbing}
+%% \begin{tabbing}
+%% for \emph{CELL B.E} runtimes you will also need the cell development package
+%% including ppu\_intrinsics.h,\\ altivec.h etc in your include path
+%% (C\_INCLUDE\_PATH)\\
+%%   (e.g. \=\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/ppu/4.1.1/include!\\
+%%    \>\verb!export C_INCLUDE_PATH=$C_INCLUDE_PATH:/opt/cell/toolchain/lib/gcc/spu/4.1.1/include!)\\
+%%   and ppu32-gcc in your PATH\\
+%%   (e.g. \verb!export PATH=$PATH:/opt/cell/toolchain/bin!)\\
+%% \end{tabbing}
 
 \subsection{Compile}
 To compile SCOOP you have to run \verb!configure! and then \verb!make!.
@@ -163,7 +166,8 @@ You can install SCOOP running
   sudo make install
 \end{bash}
 this will create a copy of the scoop executable in
-\verb!/usr/local/bin!.
+\verb!/usr/local/bin!.\\
+\textbf{NOTE}: You still have to keep the current directory to your system.
 
 Alternatively you can append \verb!/opt/scoop! to the \verb!PATH!
 variable.\\
@@ -184,55 +188,67 @@ this will erase the copy of the scoop executable from
 If you chose the alternative method of adding \verb!/opt/scoop! to
 your \verb!PATH! variable, simply remove the added line from your \verb!.bashrc!
 
-\section{Using}
+\section{Usage}
 
 \begin{bash}
-  scoop --runtime=<adam/bddt/cell/cellgod/cellBlade/cellgodBlade/myrmics/scc/nesting/XPPFX> [options] <file> [file2 ...]
+  scoop --runtime=<myrmics/dummy> [options] <file> [file2 ...]
 \end{bash}
 
-\subsection{Options (Needs update)}
+\subsection{Options}
 
   \begin{tabbing}
-  \ \ \=\verb!--runtime!\hspace{9em} \=
-  Defines the target runtime/architecture\\
-                                    \>\>adam | bddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX\\[1ex]
+  \ \ \=\verb!--runtime!\hspace{4em} \=Define the target runtime/architecture\\
+                                    \>\>myrmics $|$ dummy\\[1ex]
   \>\verb!--cflags!                   \>Defines the flags you want to pass to gcc\\[1ex]
-  \>\verb!--tpcIncludePath!           \>Defines the include path for the tpc runtime\\[1ex]
-  \>\verb!--debugSCOOP!               \>Print debugging information\\[1ex]
+  \>\verb!--include-path!             \>Defines the path containing the runtime header files.\\[1ex]
+  \>\verb!--debug-SCOOP!              \>Print debugging information\\[1ex]
   \>\verb!--trace!                    \>Trace SCOOP\\[1ex]
-  \>\verb!--pragma!                   \>Specify the string constant following the pragma e.g. (default: css) will recognise \#pragma css ... (myrmics' default is myrmics)\\[1ex]
-  \>\verb!--out-name!                 \>Specify the output files' prefix. e.g. (default: scoop\_trans) will produce scoop\_trans.c\\
-                                    \>\>(and scoop\_trans\_func.c for cell)\\[1ex]
-  \>\verb!--queue-size!               \>Specify the queue size for Cell. Defined in the Makefile as\\
-                                    \>\>MAX\_QUEUE\_ENTRIES\\[1ex]
-  \>\verb!--with-stats!               \>Enable code generation for statistics, for use with -DSTATISTICS\\[1ex]
-%   \>\verb!--with-unaligned-arguments! \>Allow unaligned arguments in x86, for use with\\
-%                                     \>\>-DUNALIGNED\_ARGUMENTS\_ALLOWED\\[1ex]
-%   \>\verb!--with-blocking!            \>Enable blocking arguments in x86. for use with -DBLOCKING\\[1ex]
-  \>\verb!--threaded!                 \>Generate thread safe code for Cell, for use with\\
-                                    \>\>-DTPC\_MULTITHREADED\\[1ex]
+  \>\verb!--out-name!                 \>Specify the output files' prefix. e.g. (default: scoop\_trans)\\
+                                    \>\>will produce scoop\_trans.c\\[1ex]
+  \>\verb!--pragma!                   \>Specify the string constant following the pragma e.g.\\
+                                    \>\>(default: runtime's name). For myrmics will recognise\\
+                                    \>\>\verb!#pragma myrmics!\\[1ex]
   \>\verb!--disable-sdam!             \>Disable the static dependence analysis module
   \end{tabbing}
+
+\section{Extending SCOOP}
+
+In order to add support for your runtime on the SCOOP compiler you
+have to take the following steps.
+
+\begin{enumerate}
+  \item copy src/scoop\_dummy.ml and src/scoop\_dummy.mli to
+    src/scoop\_myruntime.ml and src/scoop\_myruntime.mli respectively.
+  \item append scoop\_myruntime to the SCOOP\_MODULES variable in
+    Makefile.
+  \item Perform any required changes to src/scoop\_myruntime.ml
+  \item Append \verb!Scoop_myruntime.options! to \verb!fd_extraopt! in
+    src/scoop.ml
+  \item Add the following lines to \verb~match !arch with~ in src/scoop.ml\\
+    \verb~| "myruntime" ->~\\
+    \verb~  new Scoop_myruntime.codegen callgraph !gen_file !pragma_str !includePath~
+\end{enumerate}
 
 \section{Common Errors/Limitations/Known Bugs}
 
 \begin{itemize}
-\item Adding a semicolon at the end of \verb!#pragma!s
-\item Putting \verb!#pragma css barrier! at the end of a block (fix,
-  add a semicolon right below of it)
+\item Adding a semicolon at the end of \verb!#pragma!s will make SCOOP fail\\
+  i.e. \verb!#pragma scoop sync;!
+\item Putting \verb!#pragma scoop barrier! at the end of a block will make SCOOP fail\\
+  (add a semicolon right below the \verb!#pragma! to fix it).
 \item \textbf{{Fatal error: exception Invalid\_argument("Unknown")}}
   you probably have wrong argument at a call tagged with
-  \verb!#pragma css task!
-\item Using \verb!#define!s in pragmas (preprocessor doesn't process
+  \verb!#pragma scoop task!
+\item Using DEFINES or MACROS in pragmas (preprocessor doesn't process
   them)
 \item Putting \verb!#pragma!s directly above a declaration of a
   variable (pragmas are only supported above statements)
-\item \textbf{Error: "segment\_\_\_0" not found in the \#pragma css
+\item Using directly the runtime API instead of the corresponging
+  \verb!#pragma! may result in SDAM not working properly.
+\item \textbf{Error: "segment\_\_\_0" not found in the \#pragma scoop
     task} usually means that the tool is renaming a variable due to
   previous declaration try renaming it manually (e.g. segment2) (This
   should be fixed by now)
-\item Using \verb!tpc_wait_all! instead of \verb!#pragma css barrier!
-  results in broken SDAM
 \end{itemize}
 
 \end{document}

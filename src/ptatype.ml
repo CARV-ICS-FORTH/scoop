@@ -69,22 +69,22 @@ open Scoop_util
 open Shared
 open Ptatypes
 
-module E = Errormsg
-module U = Uref
-module Lprof = Lockprofile
-module Uniq = Uniqueness
-module LV = Liveness
-module LN = Labelname
-module CG = Callgraph
-module LF = Labelflow
-module VS = Usedef.VS
-module RD = Reachingdefs
-module GB = Correlation
-module Conf = Locksettings
-module Q = Worklist.QueueWorklist
-module CF = Controlflow
+module E      = Errormsg
+module U      = Uref
+module Lprof  = Lockprofile
+module Uniq   = Uniqueness
+module LV     = Liveness
+module LN     = Labelname
+module CG     = Callgraph
+module LF     = Labelflow
+module VS     = Usedef.VS
+module RD     = Reachingdefs
+module GB     = Correlation
+module Conf   = Locksettings
+module Q      = Worklist.QueueWorklist
+module CF     = Controlflow
 module PhiSet = CF.PhiSet
-module LP = Loopa
+module LP     = Loopa
 
 let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
@@ -106,8 +106,8 @@ let make_phi (s: string) (k: CF.phi_kind) : phi =
   p
 
 (* user interface *)
-(** the str following the pragma, default is css (#pragma css ...) *)
-let pragma_str = ref "css"
+(* the str following the pragma *)
+let pragma_str = ref ""
 (* debug moved to ptatypes.ml *)
 let debug_SDAM = ref false
 let debug_region = ref false
@@ -3087,6 +3087,7 @@ and type_pragma ((env, phi, eff), (kind, (loop_d: loop_descr option))) pragma =
 
       ((env, barrier_phi, eff), (kind, loop_d))
     )
+    | AStr("sync")::_
     | AStr("barrier")::_ ->
       if !debug_SDAM then ignore(E.log "SDAM: Barrier found!\n");
       let barrier_phi = make_phi "Barrier" CF.PhiBarrier in

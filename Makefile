@@ -82,7 +82,7 @@ LOCKSMITH_MODULES =     \
   semiunification       \
   locktype              \
   lockalloc
-SCOOP_MODULES =         \
+SCOOP_MODULES     =     \
   ptatypes              \
   sdam                  \
   scoop_util            \

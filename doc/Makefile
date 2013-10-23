@@ -29,11 +29,9 @@ ODOC_FILES   = ../src/scoop*.ml
 .PHONY: html pdf
 
 manual.pdf: src/manual.tex
-	$(AT)cd src; echo "\def\scoopversion{1.5.5}" > scoop.version.tex
 	$(AT)cd src; pdflatex manual.tex; pdflatex manual.tex
 	$(AT)cd src; mv manual.pdf ../manual.pdf
-	$(AT)cd src; rm -f *.aux *.log scoop.version.tex
-
+	$(AT)cd src; rm -f *.aux *.log
 
 html scoop_api.tex: $(OBJDIR)/pretty.cmi $(OBJDIR)/cil.cmi
 
