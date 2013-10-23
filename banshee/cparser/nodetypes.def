@@ -1,0 +1,572 @@
+;    This file is part of the RC compiler.
+;    Copyright (C) 2000-2001 The Regents of the University of California.
+;
+; RC is free software; you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation; either version 2, or (at your option)
+; any later version.
+;
+; RC is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with RC; see the file COPYING.  If not, write to
+; the Free Software Foundation, 59 Temple Place - Suite 330,
+; Boston, MA 02111-1307, USA.
+
+;; AST definition  -*-Lisp-*-
+
+;; (banshee-deffield FIELD-NAME C-TYPE (ATTRIBUTES))
+;; (banshee-deftype TYPE-NAME SUPER-TYPE (FIELDS) "DOCUMENTATION")
+;; (banshee-defnode NODE-NAME TYPE-NAME "DOCUMENTATION")
+
+;; deffield:
+;; Define field FIELD-NAME with type C-TYPE. The attributes listed are
+;; interpreted by the various generators, attributes are either symbols,
+;; or lists whose first element is a symbol
+
+;; Current attributes:
+;;   init: field is an argument to the constructing function for the types
+;;         that contain it
+;;   nodump: field is not marshalled/unmarshalled
+;;   noprint: field is not printed as part of AST
+;;   dump-special: call dump_FIELD-NAME to marshall/unmarshall this node
+;;   print-special: call print_FIELD-NAME to print node
+
+
+
+(banshee-deffield temp int (nodump noprint (default "23"))) ; a random int field with default value 23
+
+(banshee-deffield type type ())
+(banshee-deffield declared_type type ())
+(banshee-deffield name "const char *" ())
+(banshee-deffield location location (init))
+(banshee-deffield next "node sameregion" ())
+(banshee-deffield asttype asttype (init tree))
+(banshee-deffield condition expression (init tree))
+(banshee-deffield arg1 expression (init tree))
+(banshee-deffield arg2 expression (init tree))
+(banshee-deffield arg3 expression (init tree))
+(banshee-deffield stmt statement (init tree))
+(banshee-deffield stmt1 statement (init tree))
+(banshee-deffield stmt2 statement (init tree))
+(banshee-deffield stmts statement (init tree))
+(banshee-deffield asm_stmt asm_stmt (init tree))
+(banshee-deffield extension bool ())
+(banshee-deffield label label (init tree))
+(banshee-deffield labels label (init tree))
+(banshee-deffield id_label id_label (init tree))
+(banshee-deffield id_labels id_label (init tree))
+(banshee-deffield cstring cstring (init))
+(banshee-deffield word1 word (init tree))
+(banshee-deffield word2 word (init tree))
+(banshee-deffield strings expression (init tree))
+(banshee-deffield args expression (init tree))
+(banshee-deffield modifiers type_element (init tree))
+(banshee-deffield qualifiers type_element (init tree))
+(banshee-deffield init_expr expression (init tree))
+(banshee-deffield parms declaration (init tree))
+(banshee-deffield decl declaration (init tree))
+(banshee-deffield decls declaration (init tree))
+(banshee-deffield asm_operands1 asm_operand (init tree))
+(banshee-deffield asm_operands2 asm_operand (init tree))
+(banshee-deffield asm_clobbers string (init tree))
+(banshee-deffield id "enum rid" (init))
+(banshee-deffield declarator declarator (init tree))
+(banshee-deffield string string (init tree))
+(banshee-deffield fields declaration (init tree))
+(banshee-deffield defined bool (init))
+(banshee-deffield parent_function function_decl (init))
+(banshee-deffield env environment (init))
+(banshee-deffield ddecl data_declaration (init))
+(banshee-deffield ident identifier (init))
+(banshee-deffield incrementrc bool (init))
+(banshee-deffield old_parms declaration (init))
+(banshee-deffield attributes attribute (init tree))
+(banshee-deffield chars "wchar_t *" (init))
+(banshee-deffield length size_t (init))
+(banshee-deffield cval cval (init))
+(banshee-deffield va_arg_call asttype (init))
+
+(banshee-deffield tdecl tag_declaration ())
+(banshee-deffield fdeclarator function_declarator ())
+(banshee-deffield lvalue bool ())
+(banshee-deffield bitfield bool ())
+(banshee-deffield isregister bool ())
+(banshee-deffield side_effects bool ())
+(banshee-deffield cst known_cst ())
+(banshee-deffield static_address known_cst ())
+(banshee-deffield undeclared_variables env ())
+(banshee-deffield base_labels env ())
+(banshee-deffield scoped_labels env ())
+(banshee-deffield ldecl label_declaration ())
+(banshee-deffield parent_loop statement ())
+(banshee-deffield current_loop statement ())
+(banshee-deffield next_label label ())
+(banshee-deffield vertex node ())
+(banshee-deffield vertex_next node ())
+(banshee-deffield edges_out edge ())
+(banshee-deffield edges_in edge ())
+(banshee-deffield cfg_entry node ())
+(banshee-deffield cfg_size long ())
+(banshee-deffield cfg_nextnode long ())
+(banshee-deffield cfg_nodes "node parentptr *" ())
+(banshee-deffield postorder_nodes "node parentptr *" ())
+(banshee-deffield preorder_nodes "node parentptr *" ())
+(banshee-deffield postorder_size long ())
+(banshee-deffield addressed_labels dd_list ())
+(banshee-deffield break_dest node ())
+(banshee-deffield continue_dest node ())
+(banshee-deffield mark long ())
+(banshee-deffield live_in bitset ())
+(banshee-deffield live_out bitset ())
+(banshee-deffield defs_out "noderef *" ())
+(banshee-deffield parent "node sameregion" ())
+(banshee-deffield parent_ptr "node sameregion *sameregion" ())
+(banshee-deffield nlocals int ())
+(banshee-deffield inscope_vars bitset ())
+(banshee-deffield vmap "data_declaration *" ())
+(banshee-deffield temps "data_declaration %s[MAXRCTEMPS]" (format))
+(banshee-deffield in_postorder "unsigned long" ())
+(banshee-deffield clearing bool ())
+(banshee-deffield rcop generic_rc ())
+(banshee-deffield allrcops "generic_rc sameregion *sameregion" ())
+(banshee-deffield mf_height int ())
+(banshee-deffield mf_excess int ())
+(banshee-deffield mf_marked bool ())
+(banshee-deffield rc_fns declaration ())
+(banshee-deffield rcfn_decl data_declaration ())
+(banshee-deffield sr_vertex gnode ())
+(banshee-deffield sr_graph ggraph ())
+(banshee-deffield sr_entry gnode ())
+(banshee-deffield sr_vmap "data_declaration *" ())
+(banshee-deffield sr_nvars int ())
+(banshee-deffield sr_return_id place ())
+(banshee-deffield sr_nptrargs int ())
+(banshee-deffield sr_unknown_arguments bool ())
+(banshee-deffield sr_temp "struct sr_state" ((default "zero_state")))
+(banshee-deffield sr_local2placeidmap "place *" ())
+(banshee-deffield sr_preorder "gnode *" ())
+(banshee-deffield sr_size int ())
+(banshee-deffield lregion gplace ((default "PERROR")))
+(banshee-deffield rregion gplace ((default "PERROR")))
+(banshee-deffield chkopt_time double ())
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Base types
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype node nil (location type next edges_out edges_in vertex vertex_next
+		   mark live_in live_out parent parent_ptr inscope_vars
+		   mf_height mf_excess mf_marked in_postorder
+		   sr_vertex defs_out)
+  "The common supertype of all AST nodes
+VERTEX points to the node that represents the vertex of this cfg node after
+collapsing the graph. VERTEX_NEXT forms a list of all nodes collapsed to
+the same vertex.
+MF_HEIGHT and MF_EXCESS are used by the maxflow algorithm.
+SR_VERTEX is the vertex (or null for none) of this node in the reduced
+sameregion-optimisation cfg")
+
+(banshee-deftype declaration node ()
+  "The common type of all definitions")
+
+(banshee-deftype statement node (parent_loop break_dest continue_dest)
+  "The common type of all statements
+PARENT_LOOP:
+  - for break and continue: the containing for/while/do-while/switch
+    statement they escape from
+  - for for/while/do-while: the containing for/while/do-while/switch
+    statement
+BREAK_DEST and CONTINUE_DEST: for for/while/do-while/switch statements
+the CFG node to which break or continue should go to")
+
+(banshee-deftype expression node (lvalue side_effects cst bitfield isregister
+			  static_address lregion rregion)
+  "Expression nodes are subtypes of this type.
+LVALUE is true if this expression can be used in a context requiring an lvalue.
+BITFIELD is true if this lvalue is a bitfield.
+ISREGISTER is true if this lvalue is (declared to be) in a register.
+SIDE_EFFECTS is true if the expression has side effects.
+CST is non-null (and points to an appropriate constant) if this expression is
+constant.
+STATIC_ADDRESS is true for lvalues whose address is a constant expression
+LREGION and RREGION specify the region where the address of this value (when
+meaningful) and the actual value are known to live. See chkopt.[ch]. LREGION
+and RREGION are generalised places.")
+
+(banshee-deftype type_element node ()
+  "A common super-type for all type-building elements (qualifiers, etc)")
+
+(banshee-deftype declarator node ()
+  "A common super-type for all declarator elements")
+
+(banshee-deftype label node (next_label)
+  "A common super-type for all labels.
+NEXT_LABEL points to the next case or default label of a switch
+(for case or default labels only)")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Declarations
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-defnode error_decl declaration "Placeholder for erroneous declarations")
+
+(banshee-deftype asm_decl declaration (asm_stmt)
+  "Asm statement STMT at the top level of a file (GCC)")
+
+(banshee-deftype data_decl declaration (modifiers attributes decls)
+  "The declaration MODIFIERS ATTRIBUTES DECLS;
+DECLS is a list")
+
+(banshee-deftype extension_decl declaration (decl)
+  "__extension__ DECL; (GCC)")
+
+(banshee-deftype ellipsis_decl declaration ()
+  "A pseudo-declaration to represent ... in a function argument list")
+
+(banshee-deftype enumerator declaration (cstring arg1 ddecl)
+  "The enumeration element CSTRING = ARG1. CSTRING is optional")
+
+(banshee-deftype oldidentifier_decl declaration (cstring ddecl)
+  "CSTRING in an old-style parameter list")
+
+(banshee-deftype function_decl declaration (declarator qualifiers attributes old_parms stmt
+				    parent_function ddecl fdeclarator
+				    declared_type undeclared_variables
+				    base_labels scoped_labels current_loop
+				    cfg_entry cfg_nodes cfg_nextnode cfg_size
+				    postorder_nodes preorder_nodes postorder_size
+				    addressed_labels nlocals vmap rc_fns
+				    sr_graph sr_entry sr_vmap sr_nvars sr_return_id
+				    sr_nptrargs sr_unknown_arguments sr_temp
+				    sr_local2placeidmap sr_preorder sr_size
+				    chkopt_time allrcops)
+  "A function definition with body STMT.
+OLD_PARMS is the old-style parameter declaration list.
+CFG_ENTRY is the first vertex of the function's cfg.
+RC_FNS is a list of adjust_function_decl or update_function_decl that
+should be generated before this function.
+")
+
+(banshee-deftype implicit_decl declaration (ident)
+  "Used as the AST node for implicit declarations. IDENT points to the
+identifier node that implicitly declared the function")
+
+(banshee-deftype variable_decl declaration (declarator attributes arg1 asm_stmt
+				    ddecl declared_type)
+  "Declaration of ATTRIBUTES ASM_STMT DECLARATOR = ARG1.
+ATTRIBUTEES is a list. ASM_STMT is optional (GCC specific).
+ARG1 is an optional initialiser.
+DDECL points to the declaration for this item.
+DECLARED_TYPE is the type in this declaration (which may be different than that
+in DDECL->TYPE)")
+
+(banshee-deftype field_decl declaration (declarator attributes arg1)
+  "Declaration of field QUALIFIERS ATTRIBUTES DECLARATOR : ARG1.
+QUALIFIERS and ATTRIBUTEES are lists. ARG1 is an optional bitfield specifier")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Types and type elements
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype asttype node (declarator qualifiers)
+  "The source-level type QUALIFIERS DECLARATOR")
+
+(banshee-deftype typename type_element (ddecl)
+  "typedef-type with declaration DDECL. The name is ddecl->name")
+
+(banshee-deftype typeof_expr type_element (arg1)
+  "typeof(ARG1)")
+
+(banshee-deftype typeof_type type_element (asttype)
+  "typeof(ASTTYPE)")
+
+(banshee-deftype attribute type_element (word1 word2 args)
+  "The attribute WORD1(WORD2, ARGS). word2 and args are optional")
+
+(banshee-deftype rid type_element (id)
+  "Storage class specifier, type specifier or type qualifier ID (see RID_xxx)")
+
+(banshee-deftype qualifier type_element (id)
+  "Type or function qualifier ID (see qualifiers.h and type_quals in types.h)")
+
+(banshee-deftype tag_ref type_element (word1 attributes fields defined
+			       tdecl)
+  "struct/union/enum WORD1 { FIELDS; }  ATTRIBUTES
+ATTRIBUTES and FIELDS are lists.
+ATTRIBUTES is GCC specific. WORD1 is optional.
+DEFINED is TRUE if this declaration defines the struct/union/enum.
+DEFINED == FALSE => FIELDS == NULL
+
+TDECL points to the internal declaration node for this type")
+(banshee-defnode struct_ref tag_ref "A struct")
+(banshee-defnode union_ref tag_ref "A union")
+(banshee-defnode enum_ref tag_ref "An enum")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Declarators
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The last DECLARATOR in a chain is:
+;;   NULL_NODE in absolute declarations
+;;   an identifier_decl otherwise
+
+(banshee-deftype function_declarator declarator (declarator parms qualifiers env)
+  "Function declarator DECLARATOR(PARMS). PARMS is a list of declarations.
+ENV is the environment for parms")
+
+(banshee-deftype pointer_declarator declarator (declarator qualifiers)
+  "Pointer declarator *QUALIFIERS DECLARATOR")
+
+(banshee-deftype array_declarator declarator (declarator arg1)
+  "Array declarator DECLARATOR[ARG1]. ARG1 is optional")
+
+(banshee-deftype identifier_declarator declarator (cstring)
+  "Declaration of CSTRING")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Statements
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-defnode error_stmt statement "Placeholder for erroneous statements")
+
+(banshee-deftype asm_stmt statement (arg1 asm_operands1 asm_operands2 asm_clobbers qualifiers)
+  "The statement asm QUALIFIERS (ARG1 : ASM_OPERANDS1 : ASM_OPERANDS2 : ASM_CLOBBERS)
+where ASM_OPERANDS1, ASM_OPERANDS2, QUALIFIERS are optional, ASM_CLOBBERS is a list (GCC)")
+
+(banshee-deftype compound_stmt statement (id_labels decls stmts env)
+  "{ ID_LABELS DECLS STMTS }. The ID_LABELS are GCC-specific. ID_LABELS, DECLS,
+STMTS are lists
+ENV is the environment for the block")
+
+(banshee-deftype if_stmt statement (condition stmt1 stmt2)
+  "IF (CONDITION) STMT1 ELSE STMT2. STMT2 is optional")
+
+(banshee-deftype labeled_stmt statement (label stmt)
+  "LABEL: STMT")
+
+(banshee-deftype expression_stmt statement (arg1)
+  "EXPR;")
+
+
+(banshee-deftype conditional_stmt statement (condition stmt)
+  "Basic type for all conditional statements")
+(banshee-defnode while_stmt conditional_stmt "WHILE (CONDITION) STMT")
+(banshee-defnode dowhile_stmt conditional_stmt "DO STMT WHILE (CONDITION")
+(banshee-deftype switch_stmt conditional_stmt (next_label)
+  "SWITCH (CONDITION) STMT.
+NEXT_LABEL points to the switches first label")
+
+(banshee-deftype for_stmt statement (arg1 arg2 arg3 stmt)
+  "FOR (ARG1; ARG2; ARG3) STMT. ARG1, ARG2, ARG3 are optional")
+
+(banshee-deftype break_stmt statement ()
+  "BREAK;")
+
+(banshee-deftype continue_stmt statement ()
+  "CONTINUE;")
+
+(banshee-deftype return_stmt statement (arg1)
+  "RETURN ARG1. ARG1 is optional")
+
+(banshee-deftype goto_stmt statement (id_label)
+  "GOTO ID_LABEL")
+
+(banshee-deftype computed_goto_stmt statement (arg1)
+  "GOTO *ARG1 (GCC)")
+
+(banshee-deftype empty_stmt statement ()
+  ";")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Expressions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-defnode error_expr expression "Placeholder for erroneous expressions")
+
+(banshee-deftype unary expression (arg1)
+  "Unary expression nodes, kind defines operator")
+
+(banshee-deftype binary expression (arg1 arg2)
+  "Binary expression nodes, kind defines operator")
+
+(banshee-deftype comma expression (arg1)
+  "A comma separated list of expressions ARG1")
+
+(banshee-deftype sizeof_type expression (asttype)
+  "sizeof (ASTTYPE)")
+
+(banshee-deftype alignof_type expression (asttype)
+  "__alignof (ASTTYPE) (GCC)")
+
+(banshee-deftype label_address expression (id_label)
+  "&&ID_LABEL (GCC)")
+
+(banshee-deftype cast unary (asttype)
+  "(ASTTYPE)ARG1")
+
+(banshee-deftype cast_list expression (asttype init_expr)
+  "(ASTTYPE){INIT_EXPR} (GCC)")
+
+(banshee-deftype conditional expression (condition arg1 arg2)
+  "CONDITION ? ARG1 : ARG2
+   GCC specific: ARG1 is optional")
+
+(banshee-deftype identifier expression (cstring ddecl)
+  "The identrifier CSTRING.
+DEAD_USE is true for identifiers used as the target of a regular assignment")
+
+(banshee-deftype compound_expr expression (stmt)
+  "({stmt}) (GCC)")
+
+(banshee-deftype function_call expression (arg1 args va_arg_call)
+  "ARG1(ARGS). ARGS is a list of expressions
+If VA_ARG_CALL is non-null, this is actually a call to the pseudo-function
+__builtin_va_arg(args, va_arg_call) (where va_arg_call is a type). In
+this case arg1 is a dummy identifier.")
+
+(banshee-defnode array_ref binary "ARG1[ARG2]")
+
+(banshee-deftype field_ref unary (cstring)
+  "ARG1.CSTRING")
+
+(banshee-defnode dereference unary "*ARG1")
+(banshee-defnode extension_expr unary "__extension__ ARG1 (GCC)")
+(banshee-defnode sizeof_expr unary "sizeof ARG1")
+(banshee-defnode alignof_expr unary "__alignof ARG1 (GCC)")
+(banshee-defnode realpart unary "__real ARG1 (GCC)")
+(banshee-defnode imagpart unary "__imag ARG1 (GCC)")
+(banshee-defnode address_of unary "&ARG1")
+(banshee-defnode unary_minus unary "-ARG1")
+(banshee-defnode unary_plus unary "+ARG1")
+(banshee-defnode conjugate unary "~ARG1 on complex arguments")
+(banshee-defnode preincrement unary "++ARG1")
+(banshee-defnode predecrement unary "--ARG1")
+(banshee-defnode postincrement unary "ARG1++")
+(banshee-defnode postdecrement unary "ARG1--")
+(banshee-defnode bitnot unary "~ARG1")
+(banshee-defnode not unary "!ARG1")
+
+(banshee-defnode plus binary "ARG1 + ARG2")
+(banshee-defnode minus binary "ARG1 - ARG2")
+(banshee-defnode times binary "ARG1 * ARG2")
+(banshee-defnode divide binary "ARG1 / ARG2")
+(banshee-defnode modulo binary "ARG1 % ARG2")
+(banshee-defnode lshift binary "ARG1 << ARG2")
+(banshee-defnode rshift binary "ARG1 >> ARG2")
+(banshee-defnode leq binary "ARG1 <= ARG2")
+(banshee-defnode geq binary "ARG1 >= ARG2")
+(banshee-defnode lt binary "ARG1 < ARG2")
+(banshee-defnode gt binary "ARG1 > ARG2")
+(banshee-defnode eq binary "ARG1 == ARG2")
+(banshee-defnode ne binary "ARG1 != ARG2")
+(banshee-defnode bitand binary "ARG1 & ARG2")
+(banshee-defnode bitor binary "ARG1 | ARG2")
+(banshee-defnode bitxor binary "ARG1 ^ ARG2")
+(banshee-defnode andand binary "ARG1 && ARG2")
+(banshee-defnode oror binary "ARG1 || ARG2")
+(banshee-deftype assign binary (clearing rcop)
+  "ARG1 = ARG2.
+CLEARING is true for assignments used to pre-set local pointers to NULL")
+(banshee-defnode plus_assign binary "ARG1 += ARG2")
+(banshee-defnode minus_assign binary "ARG1 -= ARG2")
+(banshee-defnode times_assign binary "ARG1 *= ARG2")
+(banshee-defnode divide_assign binary "ARG1 /= ARG2")
+(banshee-defnode modulo_assign binary "ARG1 %= ARG2")
+(banshee-defnode lshift_assign binary "ARG1 <<= ARG2")
+(banshee-defnode rshift_assign binary "ARG1 >>= ARG2")
+(banshee-defnode bitand_assign binary "ARG1 &= ARG2")
+(banshee-defnode bitor_assign binary "ARG1 |= ARG2")
+(banshee-defnode bitxor_assign binary "ARG1 ^= ARG2")
+
+;; Initialiser expressions (not allowed in most contexts)
+
+(banshee-deftype init_list expression (args)
+  "{ ARGS }. ARGS is a list of expressions")
+
+(banshee-deftype init_index expression (arg1 arg2 init_expr)
+  "[ ARG1 ... ARG2] INIT_EXPR (GCC). ARG2 is optional")
+
+(banshee-deftype init_field expression (word1 init_expr)
+  "WORD1 : INIT_EXPR (GCC)")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Constants
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype known_cst expression (cval)
+  "A constant representable in CVAL. These do not appear as part of the
+AST (they show up in the cst and static_address fields of expressions).")
+
+(banshee-deftype lexical_cst expression (cstring)
+  "A constant represented as in its unparsed lexical form CSTRING. These
+appear in the AST.")
+
+(banshee-deftype string_cst lexical_cst (chars length)
+  "A single lexical string whose LENGTH characters are CHARS. The source
+form of the constant can be found in CSTRING.")
+
+(banshee-deftype string expression (strings ddecl)
+  "A list of STRINGS forming a single string constant.
+DDECL is the magic_string declaration for this string.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Labels
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype id_label label (cstring ldecl)
+  "The label CSTRING:")
+
+(banshee-deftype case_label label (arg1 arg2)
+  "CASE ARG1 ... ARG2: ARG2 is optional, it's presence is GCC-specific")
+
+(banshee-deftype default_label label ()
+  "DEFAULT:")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Miscellaneous
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype word node (cstring)
+  "The identifier CSTRING used uninterpreted")
+
+(banshee-deftype asm_operand node (string arg1)
+  "STRING(EXPR) (GCC)")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Internal use
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(banshee-deftype adjust_rc expression (arg1 incrementrc rcfn_decl)
+  "Adjust the rc of value of pointers of ARG1 (increment if INCREMENTRC true,
+decrement otherwise)
+RCFN_DECL is the declaration of any necessary rc_adjust function")
+
+(banshee-deftype generic_rc binary (temps rcfn_decl)
+  "Update rc for 'ARG1 = ARG2'
+RCFN_DECL is the declaration of any necessary rc_adjust/rc_update function")
+
+(banshee-deftype update_rc generic_rc (ddecl)
+  "Update rc for 'ARG1 = ARG2', where ARG1 is accessed (possibly as an offset)
+off pointer variable DDECL
+RCFN_DECL is the declaration of any necessary rc_update function")
+
+(banshee-defnode global_rc generic_rc
+  "Update rc for 'ARG1 = ARG2', where ARG1 is a global or local variable
+with an optional field access path")
+
+(banshee-deftype adjust_function_decl declaration (rcfn_decl)
+  "A placeholder representing an automatically generated rc_adjust_x
+function for type TYPE")
+
+(banshee-deftype adjustarray_function_decl declaration (rcfn_decl)
+  "A placeholder representing an automatically generated __rc_adjustarray
+function")
+
+(banshee-deftype update_function_decl declaration (rcfn_decl)
+  "A placeholder representing an automatically generated rc_update_x
+function for type TYPE")

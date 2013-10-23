@@ -1,0 +1,168 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Include packages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% most of the packages bellow are from
+% http://tex.stackexchange.com/questions/553/what-packages-do-people-load-by-default-in-latex
+
+% less hyphens... (works only with pdflatex)
+% stretch=10 allows font expansion up to 1% (default is 2%)
+\usepackage[stretch=10]{microtype}
+% disable ff and fi etc. ligatures
+\DisableLigatures{encoding = *, family = *}
+% allow breakable urls
+\usepackage[hyphens]{url}
+% If grouped citations are in the same order put the range i.e. 5-7
+% DOES NOT WORK WITH biblatex package
+%\usepackage{cite}
+% For hyperlinks and more in the pdfs
+\usepackage{hyperref}
+\hypersetup{
+  linktoc=all,
+  bookmarks=false,           % show bookmarks bar?
+  bookmarksopen,
+  bookmarksnumbered,
+  colorlinks = true,
+%  linkcolor=black,           % color of interlinks
+  citecolor=black,           % color of the citation links
+%  urlcolor=black,            % the url color
+  unicode=true,              % non-Latin characters in Acrobat’s bookmarks
+  pdftoolbar=true,           % show Acrobat’s toolbar?
+  pdfmenubar=true,           % show Acrobat’s menu?
+  pdffitwindow=true,         % window fit to page when opened
+  pdftitle={greenvm User's Manual},  % title
+  pdfborder={ 0 0 0 },        % uBorder tin links
+  pdfauthor = {Foivos S. Zakkak},
+  pdfcreator = {Foivos S. Zakkak},
+}
+% handles spaces in commands (i.e. \newcommand{\test}[0]{Test\xspace},
+% this way \test will be replaced by Test and a space *iff* needed)
+\usepackage{xspace}
+% For citations and bibliographies, biblatex is the package of my
+% choice
+\usepackage{biblatex}
+% The booktabs package creates much nicer looking tables than the
+% standard latex tables;
+\usepackage{booktabs}
+% the array package's ability to create custom columns is invaluable
+% for formatting tabular material on a per-column basis.
+\usepackage{array}
+% For unicode files
+\usepackage[utf8]{inputenc}
+% For including figures, rotating or scaling text. I also use the
+% \graphicspath command to specify a subfolder to help organize my
+% figures and so I can easily change between, for example, a set of
+% figures for internal used (with extra info) and final versions for
+% distribution.
+\usepackage{graphicx}
+% define the default path for the figures
+\graphicspath{{./figs/}}
+% This package provides very sophisticated facilities for reading and
+% writing verbatim TeX code. Users can perform common tasks like
+% changing font family and size, numbering lines, framing code
+% examples, colouring text and conditionally processing text.
+\usepackage{fancyvrb}
+
+% Using listings
+\usepackage{listings}
+% Change the listing captions
+% to use \begin{lstlisting}[label=some-code,caption=Some Code]
+\usepackage{caption}
+\DeclareCaptionFont{white}{\color{white}}
+\DeclareCaptionFormat{listing}{\colorbox{MidnightBlue}{\parbox{.98\textwidth}{#1#2#3}}}
+\captionsetup[lstlisting]{format=listing,labelfont=white,textfont=white}
+\renewcommand{\lstlistingname}{Code}
+\renewcommand\lstlistlistingname{List of Codes}
+\def\lstlistingautorefname{Code }
+% lstset
+\lstset{
+  language=C,
+  basicstyle=\sffamily,
+  columns=flexible,
+  numbers=left,
+%   numberstyle=\em\scriptsize,s
+  showstringspaces=false,
+  alsoletter={-},
+  morekeywords={in,out,inout,pragma,task,wait,all,safe,scoop,input,output,start,finish},
+  otherkeywords={INOUT,INPUT,SAFE,OUTPUT,START},
+  literate={-}{-}1,
+  numbersep=1em,
+  xleftmargin=2.5em,
+  xrightmargin=1em,
+  escapeinside={@}{@},
+  morecomment=[l][\bf\color{BrickRed}]{\#pragma\ scoop},
+  commentstyle=\color{gray},
+%   identifierstyle=\color{green},
+%   backgroundcolor=\color{gray},
+  keywordstyle=\bf\color{MidnightBlue},
+  stringstyle=\color{OliveGreen},
+}
+% Allow different numbering styles in enumerate environment
+\usepackage{enumerate}
+% Adds the \todo command which adds nice todo blocks to the document
+\usepackage{todonotes}
+% change the side for the todos
+\reversemarginpar
+% I much prfeer no indentation and space between paragraphs
+\usepackage[parfill]{parskip}
+% Add fonts
+\usepackage{comfortaa}
+% use tikz
+\usepackage{tikz}
+% For quotations
+\usepackage[
+indentfirst=true,
+font=itshape,
+begintext=\textquotedblleft,
+endtext=\textquotedblright,
+]{quoting}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Change the margins
+\usepackage[margin=2.5cm]{geometry}
+\setlength{\marginparwidth}{2cm}
+
+
+%% Boxes for notes and caution messages
+\usetikzlibrary{shapes}
+\tikzstyle{notebox} = [draw=yellow, fill=yellow!10, very thick,
+    rectangle, rounded corners, inner sep=10pt, inner ysep=15pt]
+\tikzstyle{notetitle} =[draw=yellow, fill=white, text=black, very thick]
+
+\newcommand{\notebox}[1]{
+  \begin{tikzpicture}
+    \node [notebox] (box){%
+      \begin{minipage}{.95\linewidth}
+        #1
+      \end{minipage}
+    };
+    \node[notetitle, rounded corners, right=10pt] at (box.north west) {Note:};
+  \end{tikzpicture}%
+}
+
+\tikzstyle{cautionbox} = [draw=red, fill=red!10, very thick,
+    rectangle, rounded corners, inner sep=10pt, inner ysep=15pt]
+\tikzstyle{cautiontitle} =[draw=red, fill=white, text=black, very thick]
+
+\newcommand{\cautionbox}[1]{
+  \begin{tikzpicture}
+    \node [cautionbox] (box){%
+      \begin{minipage}{.95\linewidth}
+        #1
+      \end{minipage}
+    };
+    \node[cautiontitle, rounded corners, right=10pt] at (box.north west) {\textbf{Caution:}};
+  \end{tikzpicture}%
+}
+
+%%
+
+\renewcommand{\FancyVerbFormatLine}[1]{%
+  \$ #1}
+\DefineVerbatimEnvironment{bash}{Verbatim}{
+  fontsize=\footnotesize,
+  frame=lines,
+  framesep=3mm,
+  label={\normalsize{Code}},
+  labelposition=topline,
+  commentchar=\#,
+}
