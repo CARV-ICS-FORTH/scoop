@@ -46,29 +46,23 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
     val scoop_malloc        = "scoop_malloc"
     (** The function name that implements free *)
     val scoop_free          = "scoop_free"
-    (** The runtime name*)
+    (** The runtime name *)
     val runtime             = "codegen"
     (** The path containing the runtime header *)
     val includePath         = includePath
-    (* a unique id for the tpc_function_* *)
-    val un_id               = ref 0
-    (* XXX: this is for sdam *)
-    val querie_no           = ref 0
-    (* keeps the current funcid for the new tpc_function *)
-    val func_id             = ref 0
     val mutable found_tasks = []
 
     (** Write the generated file to disk *)
     method writeFile : unit =
       SU.writeFile new_file;
 
-    (** Creates a task table (a tale with all tasks with the funcid as
+    (** Creates a task table (a table with all tasks with the funcid as
      * index) and adds it to the file to be generated *)
     method makeTaskTable : unit =
       (* tasks  (new_tpc * old_original * args) *)
       let (_, tasks) = List.split (L.rev found_tasks) in
       new_file.globals <-
-        (new_file.globals)@[(SU.make_task_table "Task_table" tasks)]
+        (new_file.globals)@[(SU.make_task_table "task_table_g" tasks)]
 
     (** Parse file to find task spawns and dependencies between arguments *)
     method parseFile (disableSDAM: bool) : unit =
@@ -82,15 +76,7 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
                       );
 
     (** Declare any globals needed by the code generator *)
-    method declareGlobals : unit =
-      let globals = ref [] in
-      let uint64_t = (SU.find_type new_file "uint64_t") in
-      let makeGlobalVar ini n t =
-        globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals;
-      in
-      makeGlobalVar None "_tmptime1_SCOOP__" uint64_t;
-      makeGlobalVar None "_tmptime2_SCOOP__" uint64_t;
-      SU.add_at_top new_file !globals;
+    method declareGlobals : unit = ();
 
     (** Preprocesses the runtime header file and merges it with new_file. *)
     method preprocessAndMergeWithHeader flags : unit =
@@ -111,56 +97,6 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
         (SU.scoop_process_args false new_file arg_typ loc args)@lst
       | [] -> []
       | _ -> E.s (errorLoc loc "Syntax error in #pragma %s task\n" pragma_str);
-
-    (** passes the arguments to the arrays in the correct order
-     * @param targs the arguments' table
-     * @param ttyps the types' table
-     * @param orig_tname the original function's name
-     * @param tid an id marking the query (needed by SDAM)
-     * @param arg the argument we want to place
-     * @return the generated Set instrs
-     *)
-    method private doArgument targs ttyps (orig_tname: string) (tid: int)
-                              (arg: (int * SU.arg_descr) ) : instr list =
-      let (i_m, arg_desc) = arg in
-      let arg_addr = arg_desc.SU.address in
-      let arg_type = arg_desc.SU.atype in
-      let arg_name = arg_desc.SU.aname in
-
-      let arg_type_tmp = SU.arg_type2int arg_type in
-      let arg_type_tmp =
-        (* TPC_BYVALUE_ARG; *)
-        if (SU.isScalar arg_desc) then (
-          0x9
-        (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
-        (* arg_flag|TPC_SAFE_ARG; *)
-        ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
-          arg_type_tmp lor 0x8
-        ) else (
-          arg_type_tmp
-        )
-      in
-      let arg_type_tmp =
-        (* arg_flag|TPC_REGION_ARG; *)
-        if (SU.isRegion arg_desc) then (
-          arg_type_tmp lor 0x10
-        ) else if (SU.isNTRegion arg_desc) then (
-          arg_type_tmp lor 0x14
-        ) else
-          arg_type_tmp
-      in
-
-      let mkSet table i arg =
-        let t = (
-          match typeOfLval table with
-            TArray(t', _, _) -> t'
-          | t' -> t'
-        ) in
-        let curr = addOffsetLval (Index(integer i, NoOffset)) table in
-        Set( curr, CastE(t, arg), locUnknown)
-      in
-
-      [mkSet targs i_m arg_addr; mkSet ttyps i_m (integer arg_type_tmp)]
 
     (** Generates the code to spawn a task
      * @param loc the current file location

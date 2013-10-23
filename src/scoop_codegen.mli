@@ -37,9 +37,6 @@ class virtual codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
     val scoop_free    : string
     val runtime       : string
     val includePath   : string
-    val un_id         : int ref
-    val querie_no     : int ref
-    val func_id       : int ref
     val mutable found_tasks :
       ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
 

@@ -91,12 +91,7 @@ SCOOP_MODULES     =     \
   ptatype               \
   ptdepa                \
   scoop_codegen         \
-  scoop_make_exec       \
-  scoop_cell            \
-  scoop_cellgod         \
-  scoop_bddt            \
-  scoop_XPPFX           \
-  scoop_nesting         \
+  scoop_dummy           \
   scoop_myrmics
 
 LOCKSMITH_CMODULES = bansheeifc

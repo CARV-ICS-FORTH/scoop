@@ -52,6 +52,10 @@ let mkSet table i arg =
 class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
 
+  (* This is needed for SDAM *)
+  val query_id           = ref 0
+  (* keeps the current funcid for the new tpc_function *)
+  val func_id             = ref 0
   val scoop_wait_on = "_sys_wait_on"
   val runtime       = "myrmics"
 
@@ -107,7 +111,6 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
   method make_task_spawn (loc: location) (func_vi: varinfo) (oargs: exp list)
                          (args: SU.arg_descr list)
          : (stmt list * (int * SU.arg_descr) list) =
-    incr un_id;
 
     let args_num = List.length oargs in
     let args_num_i = integer args_num in
@@ -152,8 +155,8 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
 
         let args_n = List.sort SU.sort_args_n args_n in
         (*       ignore(L.map (fun (i, (name, _)) ->  print_endline ("B= "^(string_of_int i)^" "^name) ) args_n); *)
-        incr querie_no;
-        let doArgument = self#doArgument scoop2179_args scoop2179_typs func_vi.vname !querie_no in
+        incr query_id;
+        let doArgument = self#doArgument scoop2179_args scoop2179_typs func_vi.vname !query_id in
         let mapped = L.flatten (List.map doArgument args_n) in
         (args_n, mapped)
       ) else ([], [])

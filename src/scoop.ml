@@ -63,7 +63,7 @@ let options =
   [
     "--runtime",
       Arg.String(fun s -> arch := s),
-      " SCOOP: Define the target runtime\nbddt | cell | cellgod | cellBlade | cellgodBlade | myrmics | scc | nesting | XPPFX";
+      " SCOOP: Define the target runtime\ndummy | myrmics";
 
     "--cflags",
       Arg.String(fun s -> cflags := s),
@@ -119,12 +119,8 @@ let feature : featureDescr =
     @ Lprof.options
     @ Ptatype.options
     @ Ptdepa.options
-    @ Scoop_bddt.options
-    @ Scoop_cell.options
-    @ Scoop_cellgod.options
+    @ Scoop_dummy.options
     @ Scoop_myrmics.options
-    @ Scoop_nesting.options
-    @ Scoop_XPPFX.options
     ;
     fd_doit =
     (function (f: file) ->
@@ -147,26 +143,10 @@ let feature : featureDescr =
       (* find tpc_decl pragmas *)
       let codeGenerator =
         match !arch with
-        | "bddt" ->
-           new Scoop_bddt.codegen callgraph !gen_file !pragma_str !includePath
-        | "cell" ->
-           new Scoop_cell.codegen callgraph !gen_file !pragma_str !includePath
-               !out_name false
-        | "cellBlade" ->
-           new Scoop_cell.codegen callgraph !gen_file !pragma_str !includePath
-               !out_name true
-        | "cellgod" ->
-           new Scoop_cellgod.codegen callgraph !gen_file !pragma_str
-               !includePath !out_name false
-        | "cellgodBlade" ->
-           new Scoop_cellgod.codegen callgraph !gen_file !pragma_str
-               !includePath !out_name false
+        | "dummy" ->
+           new Scoop_dummy.codegen callgraph !gen_file !pragma_str !includePath
         | "myrmics" ->
            new Scoop_myrmics.codegen callgraph !gen_file !pragma_str !includePath
-        | "nesting" ->
-           new Scoop_nesting.codegen callgraph !gen_file !pragma_str !includePath
-        | "XPPFX" ->
-           new Scoop_XPPFX.codegen callgraph !gen_file !pragma_str !includePath
         | _ -> E.s (unimp "Runtime \"%s\" is not supported" !arch);
       in
 
