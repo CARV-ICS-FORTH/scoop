@@ -53,8 +53,8 @@ class codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as super
 
   (* This is needed for SDAM *)
-  val query_id           = ref 0
-  (* keeps the current funcid for the new tpc_function *)
+  val query_id            = ref 0
+  (* keeps the current funcid *)
   val func_id             = ref 0
   val scoop_wait_on = "_sys_wait_on"
   val runtime       = "myrmics"
@@ -93,8 +93,6 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     let instr = Call (None, Lval (var two), [filename; integer loc.line; Lval (var scoop2179_args); integer num_args], locUnknown) in
     let s' = {s with pragmas = List.tl s.pragmas} in
     ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
-
-  method declareGlobals : unit = ();
 
   method preprocessAndMergeWithHeader flags : unit = ();
 
