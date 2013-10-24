@@ -1,0 +1,545 @@
+diff -rupN cil-1.4.0/Makefile.in cil-1.4.0_ours/Makefile.in
+--- cil-1.4.0/Makefile.in	2012-03-29 11:52:34.000000000 -0400
++++ cil-1.4.0_ours/Makefile.in	2012-03-30 19:35:15.000000000 -0400
+@@ -98,12 +98,14 @@ CILLY_LIBRARY_MODULES = pretty inthash e
+               cfg liveness reachingdefs deadcodeelim availexps \
+               availexpslv predabst\
+               testcil \
++ 	      $(LOCKSMITH_MODULES) \
+ 	      $(CILLY_FEATURES) \
+ 	      ciloptions feature_config
+ # ww: we don't want "main" in an external cil library (cil.cma),
+ # otherwise every program that links against that library will get
+ # main's argument checking and whatnot ...
+ CILLY_MODULES = $(CILLY_LIBRARY_MODULES) main
++CILLY_CMODULES = $(LOCKSMITH_CMODULES)
+ CILLY_LIBS     = unix str nums
+ 
+ SOURCEDIRS  += src src/frontc src/ext src/ext/pta ocamlutil @EXTRASRCDIRS@
+@@ -129,7 +131,8 @@ ocamlbuild:
+    # Now the rule to make cilly
+ 
+ cilly: $(OBJDIR)/cilly$(EXE)
+-$(OBJDIR)/cilly$(EXE) : $(CILLY_MODULES:%=$(OBJDIR)/%.$(CMO))
++$(OBJDIR)/cilly$(EXE) : $(CILLY_MODULES:%=$(OBJDIR)/%.$(CMO)) \
++                        $(CILLY_CMODULES:%=$(OBJDIR)/%.$(CMC))
+ 	@$(NARRATIVE) "Linking $(COMPILETOWHAT) $@ $(LINKMSG)"
+ 	$(AT)$(CAMLLINK) -verbose -o $@ \
+                     $(CILLY_LIBS:%=%.$(CMXA)) \
+diff -rupN cil-1.4.0/ocamlutil/inthash.ml cil-1.4.0_ours/ocamlutil/inthash.ml
+--- cil-1.4.0/ocamlutil/inthash.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/ocamlutil/inthash.ml	2012-03-30 19:35:08.000000000 -0400
+@@ -1,4 +1,5 @@
+ (** A hash table specialized on integer keys *)
++type key = int (* LOCKSMITH *)
+ type 'a t =
+   { mutable size: int;                        (* number of elements *)
+     mutable data: 'a bucketlist array } (* the buckets *)
+diff -rupN cil-1.4.0/ocamlutil/inthash.mli cil-1.4.0_ours/ocamlutil/inthash.mli
+--- cil-1.4.0/ocamlutil/inthash.mli	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/ocamlutil/inthash.mli	2012-03-30 19:35:08.000000000 -0400
+@@ -1,3 +1,4 @@
++type key = int (* LOCKSMITH *)
+ type 'a t
+ 
+ (* These functions behave the same as Hashtbl, but the key type is
+diff -rupN cil-1.4.0/src/cil.ml cil-1.4.0_ours/src/cil.ml
+--- cil-1.4.0/src/cil.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/cil.ml	2012-03-30 19:35:06.000000000 -0400
+@@ -688,6 +688,10 @@ and block = 
+     The statement is the structural unit in the control flow graph. Use mkStmt 
+     to make a statement and then fill in the fields. *)
+ and stmt = {
++    mutable pragmas: (attribute * location) list;
++                                       (** Whether the statement is preceded by
++                                           #pragma directives *)
++
+     mutable labels: label list;        (** Whether the statement starts with 
+                                            some labels, case statements or 
+                                            default statement *)
+@@ -1288,7 +1292,7 @@ let isSigned = function
+ 
+ let mkStmt (sk: stmtkind) : stmt = 
+   { skind = sk;
+-    labels = [];
++    labels = []; pragmas = [];
+     sid = -1; succs = []; preds = [] }
+ 
+ let mkBlock (slst: stmt list) : block = 
+@@ -1316,14 +1320,14 @@ let compactStmts (b: stmt list) : stmt l
+     in
+     match body with 
+       [] -> finishLast []
+-    | ({skind=Instr il} as s) :: rest ->
++    | ({skind=Instr il} as s) :: rest when s.pragmas = [] ->
+         let ils = Clist.fromList il in
+         if lastinstrstmt != dummyStmt && s.labels == [] then
+           compress lastinstrstmt (Clist.append lastinstrs ils) rest
+         else
+           finishLast (compress s ils rest)
+ 
+-    | {skind=Block b;labels = []} :: rest when b.battrs = [] ->
++    | {skind=Block b;labels = [];pragmas=[]} :: rest when b.battrs = [] ->
+         compress lastinstrstmt lastinstrs (b.bstmts@rest)
+     | s :: rest -> 
+         let res = s :: compress dummyStmt Clist.empty rest in
+@@ -1384,8 +1388,9 @@ let attributeHash: (string, attributeCla
+     [ "section"; "constructor"; "destructor"; "unused"; "used"; "weak"; 
+       "no_instrument_function"; "alias"; "no_check_memory_usage";
+       "exception"; "model"; (* "restrict"; *)
+-      "aconst"; "__asm__" (* Gcc uses this to specifiy the name to be used in 
+-                           * assembly for a global  *)];
++      "aconst"; "__asm__"; (* Gcc uses this to specifiy the name to be used in 
++                            * assembly for a global  *)
++      "atomic" ]; (* LOCKSMITH *)
+ 
+   (* Now come the MSVC declspec attributes *)
+   List.iter (fun a -> H.add table a (AttrName true))
+@@ -6196,6 +6201,59 @@ let rec isCompleteType t =
+ 
+ module A = Alpha
+   
++(** ZAKKAK A visitor that renames the pragma vars in stmts *)      
++class renameVisitorClass name newname = object
++  inherit nopCilVisitor 
++  val on = name
++  val nn = newname
++
++  method vstmt (s: stmt) =
++      if ( s.pragmas <> [] ) then (
++        let rec attrParamProcess loc (at: attrparam): attrparam = 
++          let dotype (t: typ) = 
++            match t with 
++              TComp (ci, a) when ci.cname = on -> TComp ( {ci with cname = nn}, a)
++            | TEnum (ei, a) when ei.ename = on -> TEnum ( {ei with ename = nn}, a)
++            | TNamed (ti, a) when ti.tname = on -> TNamed ( {ti with tname = nn} , a)
++            | _ -> t
++          in
++          let attrParamProcess' = attrParamProcess loc in
++          match at with 
++            AInt _ | AStr _ -> at
++          | ACons (s, al) -> ACons( (if (s=on) then nn else s), List.map attrParamProcess' al)
++          | ASizeOf t -> ASizeOf( dotype t )
++          | ASizeOfS _ -> at
++          | ASizeOfE e -> ASizeOfE( attrParamProcess' e )
++          | AAlignOf t -> AAlignOf( dotype t )
++          | AAlignOfS _ -> at
++          | AAlignOfE e -> AAlignOfE( attrParamProcess' e )
++          | AUnOp (uo, a) -> AUnOp(uo, attrParamProcess' a)
++          | ABinOp (bo, a1, a2) -> ABinOp(bo, attrParamProcess' a1, attrParamProcess' a2)
++          | AAddrOf a -> AAddrOf ( attrParamProcess' a )
++          | ADot (a, s) -> ADot (attrParamProcess' a, s)
++          | AIndex (a1, a2) -> AIndex ( attrParamProcess' a1, attrParamProcess' a2)
++          | AStar a -> AStar (attrParamProcess' a)
++          | AQuestion _ -> E.s (errorLoc loc "c?e1:e2 not allowed in #pragma css...")
++        in
++        let processPragma = function
++            (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc) -> (* TODO wait on *) (Attr("css", AStr("wait")::ACons("on", exps)::rest), loc)
++          | (Attr("css", ACons("start", exps)::rest), loc) ->
++              (Attr("css", ACons("start", List.map (attrParamProcess loc) exps)::rest), loc)
++          | (Attr("css", AStr("task")::rest), loc) -> (
++            let rec process = function
++                  AStr("highpriority")::rest -> AStr("highpriority")::(process rest)
++                | ACons(arg_typ, args)::rest -> ACons(arg_typ, List.map (attrParamProcess loc) args)::(process rest)
++                | [] -> []
++                | _ -> ignore(warnLoc loc "Syntax error in #pragma css task\n"); []
++            in
++            (Attr("css", AStr("task")::(process rest) ), loc)
++          )                                                                
++          | p -> p;
++        in
++        ChangeTo({s with pragmas = List.map processPragma s.pragmas})
++      ) else
++        DoChildren
++end
+ 
+ (** Uniquefy the variable names *)
+ let uniqueVarNames (f: file) : unit = 
+@@ -6246,6 +6304,11 @@ let uniqueVarNames (f: file) : unit = 
+             if false && newname <> v.vname then (* Disable this warning *)
+               ignore (warn "uniqueVarNames: Changing the name of local %s in %s to %s (due to duplicate at %a)"
+                         v.vname fdec.svar.vname newname d_loc oldloc);
++            if (newname <> v.vname) then (
++              (* ZAKKAK here apply the renaming to the #pragmas as well *)
++              let renameVisitor = new renameVisitorClass v.vname newname in
++              ignore(visitCilFunction renameVisitor fdec)
++            );
+             v.vname <- newname
+           in
+           (* Do the formals first *)
+diff -rupN cil-1.4.0/src/cil.mli cil-1.4.0_ours/src/cil.mli
+--- cil-1.4.0/src/cil.mli	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/cil.mli	2012-03-30 19:35:06.000000000 -0400
+@@ -891,6 +891,9 @@ default. Instead you must explicitly use
+ *)
+ (** Statements. *)
+ and stmt = {
++    mutable pragmas: (attribute * location) list;
++    (** Whether the statement is preceded by #pragma directives *)
++
+     mutable labels: label list;        
+     (** Whether the statement starts with some labels, case statements or 
+      * default statements. *)
+diff -rupN cil-1.4.0/src/ext/heap.ml cil-1.4.0_ours/src/ext/heap.ml
+--- cil-1.4.0/src/ext/heap.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/ext/heap.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -33,6 +33,8 @@ let insert heap prio elt = begin
+   heap.elements.(!i) <- (prio,Some(elt))
+   end
+ 
++let length h = h.size (* LOCKSMITH *)
++
+ let examine_max heap = 
+   if is_empty heap then begin
+     raise (Invalid_argument "Heap.examine_max")
+diff -rupN cil-1.4.0/src/frontc/cabs2cil.ml cil-1.4.0_ours/src/frontc/cabs2cil.ml
+--- cil-1.4.0/src/frontc/cabs2cil.ml	2012-03-29 11:36:11.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cabs2cil.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -59,7 +59,7 @@ let mydebugfunction () = 
+ 
+ let debugGlobal = false
+ 
+-let continueOnError = true
++let continueOnError = false
+ 
+ (** Turn on tranformation that forces correct parameter evaluation order *)
+ let forceRLArgEval = ref false
+@@ -82,7 +82,7 @@ let allowDuplication: bool ref = ref tru
+     This is false by default.  Set to true to replicate the behavior
+     of CIL 1.3.5 and earlier.
+ *)
+-let doCollapseCallCast: bool ref = ref false
++let doCollapseCallCast: bool ref = ref true (* LOCKSMITH *)
+ 
+ (** Disables caching of globals during parsing.  This is handy when we want
+   * to parse additional source files without hearing about confclits. *)
+@@ -111,11 +111,15 @@ let attrsForCombinedArg: ((string, strin
+                           attributes -> attributes) ref =
+   ref (fun _ t -> t)
+ 
++(* ZAKKAK: handle renamings *)
++(* keep a list with all the renamings *)
++let renamings: (string * (string * location)) list ref = ref []
++
+ (* ---------- source error message handling ------------- *)
+ let lu = locUnknown
+ let cabslu = {lineno = -10; 
+-	      filename = "cabs lu"; 
+-	      byteno = -10;
++              filename = "cabs lu";
++              byteno = -10;
+               ident = 0;}
+ 
+ 
+@@ -561,6 +565,8 @@ let alphaConvertVarAndAddToEnv (addtoenv
+ *)
+ (*  ignore (E.log "After adding %s alpha table is: %a\n"
+             newvi.vname docAlphaTable alphaTable); *)
++  (* ZAKKAK: push the new rename *)
++  renamings := (vi.vname, (newvi.vname, oldloc) )::!renamings;
+   newvi
+ 
+ 
+@@ -764,7 +770,7 @@ class canDropStmtClass pRes = object
+   inherit nopCilVisitor
+         
+   method vstmt s = 
+-    if s.labels != [] then 
++    if s.labels != [] || s.pragmas != [] then 
+       (pRes := false; SkipChildren)
+     else 
+       if !pRes then DoChildren else SkipChildren
+@@ -815,7 +821,7 @@ module BlockChunk = 
+       if c.postins = [] then c.stmts
+       else
+         let rec toLast = function
+-            [{skind=Instr il} as s] as stmts -> 
++            [{skind=Instr il} as s] as stmts when s.pragmas == [] -> 
+               s.skind <- Instr (il @ (List.rev c.postins));
+               stmts
+ 
+@@ -965,6 +971,76 @@ module BlockChunk = 
+       H.add labelStmt l labstmt;
+       if c.stmts == stmts' then c else {c with stmts = stmts'}
+ 
++    let consPragma (a: attribute) (c: chunk) (loc: location) : chunk =
++      (* ZAKKAK: rename the arguments in the attribute *)
++      let filter1 name (oname, _ ) = (name=oname) in
++      let rec doAparam = function
++        | AStr(s) -> 
++          let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
++          if (rl = []) then
++            AStr(s)
++          else (
++            let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
++            AStr(nn)
++          )
++        | ACons(s, apl) -> ACons(
++          ( if (s<>"in" && s<>"inout" && s<>"out" && s<>"input" && s<>"output") then (
++              let (_, rl) = List.split (List.filter (filter1 s) !renamings) in
++              if (rl = []) then
++                s
++              else (
++                let (nn, _) = List.hd (List.sort ( fun (name1, loc1) (name2, loc2) -> compareLoc loc1 loc2 ) rl) in
++                nn
++              )
++            ) else s),
++          List.map doAparam apl
++        )
++        | ASizeOfE(ap) -> ASizeOfE(doAparam ap)
++        | AAlignOfE(ap) -> AAlignOfE(doAparam ap)
++        | AUnOp(u, ap) -> AUnOp(u, doAparam ap)
++        | ABinOp(b, ap1, ap2) -> ABinOp(b, doAparam ap1, doAparam ap2)
++        | ADot(ap, s) -> ADot(doAparam ap, s)
++        | AStar(ap) -> AStar(doAparam ap)
++        | AAddrOf(ap) -> AAddrOf(doAparam ap)
++        | AIndex(ap1, ap2) -> AIndex(doAparam ap1, doAparam ap2)
++        | AQuestion(ap1, ap2, ap3) -> AQuestion(doAparam ap1, doAparam ap2, doAparam ap3)
++        | a -> a
++      in
++      let rec doTask = function
++        (* support safe(...) *)
++        | ACons("safe", args)::rest -> 
++          ACons("safe", List.map doAparam args)::(doTask rest)
++        (* support region r in(a,b,c) etc. *)
++        | AStr("region")::(region::(ACons(arg_typ, args)::rest)) ->
++          AStr("region")::(doAparam region)::(ACons(arg_typ, List.map doAparam args)::(doTask rest))
++        | ACons(arg_typ, args)::rest ->
++          ACons(arg_typ, List.map doAparam args)::(doTask rest)
++        | a -> a
++      in
++      let a = match a with
++        (* Support #pragma ... *)
++        Attr(str, rest) ->
++          Attr(str, 
++            (match rest with
++            (* Support #pragma css wait on(...) *)
++              [AStr("wait"); ACons("on", exps)] ->
++                [AStr("wait"); ACons("on", List.map doAparam exps)]
++            (* Support #pragma css start(...) *)
++            | [ACons("start", exps)] ->
++                [ACons("start", List.map doAparam exps)]
++            (* Support #pragma css task... *)
++            | AStr("task")::rest ->
++                AStr("task")::(doTask rest)
++            | _ -> rest
++          ))
++      in
++
++      let c = { c with stmts = pushPostIns c; postins = []; } in
++      let st, stmts' = getFirstInChunk c in
++      (* Add the pragma attr *)
++      st.pragmas <- (a, loc)::st.pragmas;
++      if c.stmts == stmts' then c else {c with stmts = stmts'}
++
+     let s2c (s:stmt) : chunk = 
+       { stmts = [ s ];
+         postins = [];
+@@ -5602,20 +5678,36 @@ and doDecl (isglobal: bool) : A.definiti
+       currentLoc := convLoc(loc);
+       cabsPushGlobal (GAsm (s, !currentLoc));
+       empty
+-        
++
+   | A.PRAGMA (a, loc) when isglobal -> begin
+       currentLoc := convLoc(loc);
+-      match doAttr ("dummy", [a]) with
+-        [Attr("dummy", [a'])] ->
+-          let a'' =
+-            match a' with
+-            | ACons (s, args) -> Attr (s, args)
+-            | _ -> E.s (error "Unexpected attribute in #pragma")
+-          in
+-          cabsPushGlobal (GPragma (a'', !currentLoc));
+-          empty
+-
+-      | _ -> E.s (error "Too many attributes in pragma")
++      match a with
++        COMMA(el) -> begin
++          match doAttr ("dummy", el) with
++            [Attr("dummy", el')] ->
++              let el'' =
++                match el' with
++                | AStr(s)::args -> Attr (s, args)
++                  (* Legacy support (#pragma tpc( arg(in, size), ...) *)
++                  | ACons(s, args)::[] -> Attr (s, args)
++                | _ -> E.s (error "Unexpected attribute in #pragma")
++              in
++              cabsPushGlobal (GPragma (el'', !currentLoc));
++              empty
++          | _ -> E.s (error "Too many attributes in pragma")
++        end
++        | _ -> begin
++          match doAttr ("dummy", [a]) with
++            [Attr("dummy", [a'])] ->
++              let a'' =
++                match a' with
++                | ACons (s, args) -> Attr (s, args)
++                | _ -> E.s (error "Unexpected attribute in #pragma")
++              in
++              cabsPushGlobal (GPragma (a'', !currentLoc));
++              empty
++          | _ -> E.s (error "Too many attributes in pragma")
++        end
+   end
+   | A.TRANSFORMER (_, _, _) -> E.s (E.bug "TRANSFORMER in cabs2cil input")
+   | A.EXPRTRANSFORMER (_, _, _) -> 
+@@ -6394,6 +6486,35 @@ and doStatement (s : A.statement) : chun
+         (* Lookup the label because it might have been locally defined *)
+         consLabel (lookupLabel l) (doStatement s) loc' true
+                      
++    | A.SPRAGMA (expr, s, loc) -> begin
++        currentLoc := convLoc(loc);
++        match expr with
++          COMMA(el) -> begin
++            match doAttr ("dummy", el) with
++              [Attr("dummy", el')] ->
++                let el'' =
++                  match el' with
++                  | AStr(s)::args -> Attr (s, args)
++                  (* Legacy support (#pragma tpc( arg(in, size), ...) *)
++                  | ACons(s, args)::[] -> Attr (s, args)
++                  | _ -> E.s (error "Unexpected attribute in #pragma")
++                in
++                consPragma el'' (doStatement s) !currentLoc
++            | _ -> E.s (error "Too many attributes in pragma")
++          end
++          | _ -> begin
++            match doAttr ("dummy", [expr]) with
++              [Attr("dummy", [a'])] ->
++                let a'' =
++                  match a' with
++                  | ACons (s, args) -> Attr (s, args)
++                  | _ -> E.s (error "Unexpected attribute in #pragma")
++                in
++                consPragma a'' (doStatement s) !currentLoc
++            | _ -> E.s (error "Too many attributes in pragma")
++          end
++      end
++
+     | A.GOTO (l, loc) -> 
+         let loc' = convLoc loc in
+         currentLoc := loc';
+diff -rupN cil-1.4.0/src/frontc/cabshelper.ml cil-1.4.0_ours/src/frontc/cabshelper.ml
+--- cil-1.4.0/src/frontc/cabshelper.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cabshelper.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -78,6 +78,7 @@ begin
+   | CASERANGE(_,_,_,loc) -> loc
+   | DEFAULT(_,loc) -> loc
+   | LABEL(_,_,loc) -> loc
++  | SPRAGMA (_,_,loc) -> loc
+   | GOTO(_,loc) -> loc
+   | COMPGOTO (_, loc) -> loc
+   | DEFINITION d -> get_definitionloc d
+diff -rupN cil-1.4.0/src/frontc/cabs.ml cil-1.4.0_ours/src/frontc/cabs.ml
+--- cil-1.4.0/src/frontc/cabs.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cabs.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -214,6 +214,7 @@ and statement =
+  | CASERANGE of expression * expression * statement * cabsloc
+  | DEFAULT of statement * cabsloc
+  | LABEL of string * statement * cabsloc
++ | SPRAGMA of expression * statement * cabsloc
+  | GOTO of string * cabsloc
+  | COMPGOTO of expression * cabsloc (* GCC's "goto *exp" *)
+  | DEFINITION of definition (*definition or declaration of a variable or type*)
+diff -rupN cil-1.4.0/src/frontc/cabsvisit.ml cil-1.4.0_ours/src/frontc/cabsvisit.ml
+--- cil-1.4.0/src/frontc/cabsvisit.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cabsvisit.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -426,6 +426,12 @@ and childrenStatement vis s = 
+   | LABEL (n, s1, l) ->
+       let s1' = vs l s1 in
+       if s1' != s1 then LABEL (n, s1', l) else s
++  | SPRAGMA (e, s1, l) ->
++      let e' = visitCabsExpression vis e in
++      let s1' = vs l s1 in
++      if s1' != s1 || e' != e then
++        SPRAGMA(e', s1', l)
++      else s
+   | COMPGOTO (e, l) -> 
+       let e' = ve e in
+       if e' != e then COMPGOTO (e', l) else s
+diff -rupN cil-1.4.0/src/frontc/cparser.mly cil-1.4.0_ours/src/frontc/cparser.mly
+--- cil-1.4.0/src/frontc/cparser.mly	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cparser.mly	2012-03-30 19:35:07.000000000 -0400
+@@ -416,7 +416,7 @@ global:
+                                         { LINKAGE (fst $2, (*handleLoc*) (snd $2), $4)  }
+ | ASM LPAREN string_constant RPAREN SEMICOLON
+                                         { GLOBASM (fst $3, (*handleLoc*) $1) }
+-| pragma                                { $1 }
++| pragma                                { PRAGMA(fst $1, snd $1) }
+ /* (* Old-style function prototype. This should be somewhere else, like in
+     * "declaration". For now we keep it at global scope only because in local
+     * scope it looks too much like a function call  *) */
+@@ -845,7 +845,6 @@ block_element_list:
+ /*(* GCC accepts a label at the end of a block *)*/
+ |   IDENT COLON	                         { [ LABEL (fst $1, NOP (snd $1), 
+                                                     snd $1)] }
+-|   pragma block_element_list            { $2 }
+ ;
+ 
+ local_labels:
+@@ -883,6 +882,7 @@ statement:
+                                      floor, since unused labels are usually
+                                      removed anyways by Rmtmps. *)
+                                   LABEL (fst $1, $4, (snd $1))}
++|   pragma statement       { SPRAGMA(fst $1, $2, snd $1) }
+ |   CASE expression COLON statement
+ 	                         {CASE (fst $2, $4, (*handleLoc*) $1)}
+ |   CASE expression ELLIPSIS expression COLON statement
+@@ -1343,12 +1343,22 @@ just_attributes:
+ |   just_attribute just_attributes      { $1 :: $2 }
+ ;
+ 
++pragma_arg:
++|   IDENT paren_attr_list_ne            { CALL(VARIABLE (fst $1), $2) }
++;
++
++pragma_arg_list:
++|   PRAGMA_EOL                          { [] }
++|   IDENT pragma_arg_list               { (CONSTANT (CONST_STRING (fst $1))) :: $2 }
++|   pragma_arg pragma_arg_list          { $1 :: $2 }
++;
++
+ /** (* PRAGMAS and ATTRIBUTES *) ***/
+ pragma: 
+-| PRAGMA attr PRAGMA_EOL		{ PRAGMA ($2, $1) }
+-| PRAGMA attr SEMICOLON PRAGMA_EOL	{ PRAGMA ($2, $1) }
+-| PRAGMA_LINE                           { PRAGMA (VARIABLE (fst $1), 
+-                                                  snd $1) }
++// | PRAGMA attr PRAGMA_EOL  { ($2, $1) }
++|   PRAGMA attr SEMICOLON PRAGMA_EOL    { ($2, $1) }
++|   PRAGMA pragma_arg_list              { ( COMMA($2) , $1) }
++|   PRAGMA_LINE                         { (VARIABLE (fst $1), snd $1) }
+ ;
+ 
+ /* (* We want to allow certain strange things that occur in pragmas, so we 
+diff -rupN cil-1.4.0/src/frontc/cprint.ml cil-1.4.0_ours/src/frontc/cprint.ml
+--- cil-1.4.0/src/frontc/cprint.ml	2011-11-04 14:20:53.000000000 -0400
++++ cil-1.4.0_ours/src/frontc/cprint.ml	2012-03-30 19:35:07.000000000 -0400
+@@ -106,7 +106,7 @@ let new_line () = ()
+ let space () = ()
+ let indent () = ()
+ let unindent () = ()
+-let force_new_line () = ()
++let force_new_line () = (print "\n")
+ let flush () = ()
+ let commit () = ()
+ 
+@@ -658,6 +658,17 @@ and print_statement stat =
+       printl [name;":"];
+       space ();
+       print_substatement stat
++  | SPRAGMA (expr, stat, loc) ->
++      setLoc(loc);
++      force_new_line ();
++      print "#pragma ";
++      let oldwidth = !width in
++      width := 1000000;  (* Do not wrap pragmas *)
++      print_expression expr;
++      width := oldwidth;
++      force_new_line ();
++      space ();
++      print_substatement stat
+   | GOTO (name, loc) ->
+       setLoc(loc);
+       printl ["goto";name;";"];
