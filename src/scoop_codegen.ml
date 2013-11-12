@@ -53,8 +53,8 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
     val mutable found_tasks = []
 
     (** Write the generated file to disk *)
-    method writeFile : unit =
-      SU.writeFile new_file;
+    method write_file : unit =
+      SU.write_file new_file;
 
     (** Creates a task table (a table with all tasks with the funcid as
      * index) and adds it to the file to be generated *)
@@ -70,7 +70,7 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
       Cil.iterGlobals new_file
                       (function
                         | GFun(fd,_) ->
-                          SU.currentFunction := fd;
+                          SU.current_function := fd;
                           ignore(visitCilFunction (self :> Cil.cilVisitor) fd);
                         | _ -> ()
                       );
@@ -79,8 +79,8 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
     method declareGlobals : unit = ();
 
     (** Preprocesses the runtime header file and merges it with new_file. *)
-    method preprocessAndMergeWithHeader flags : unit =
-      SU.preprocessAndMergeWithHeader_x86 new_file
+    method preprocess_and_merge_header flags : unit =
+      SU.preprocess_and_merge_header_x86 new_file
                                           (includePath)
                                           ((runtime)^".h")
                                           flags;
@@ -169,13 +169,13 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
               let funname = vi.vname in
               (* process the pragma ... task*)
               let args    = self#process_task_pragma loc rest in
-              SU.dbg_print debug ("Found task \""^funname^"\"");
+              SU.debug_print debug ("Found task \""^funname^"\"");
 
               (* check whether all argument annotations correlate to an actual argument *)
               let check arg =
-                if ( not ((SU.isRegion arg) || L.exists (fun e -> ((SU.getNameOfExp e)=arg.SU.aname)) oargs) )then (
+                if ( not ((SU.is_region arg) || L.exists (fun e -> ((SU.get_name_of_exp e)=arg.SU.aname)) oargs) )then (
                   let args_err = ref "(" in
-                  List.iter (fun e -> args_err := ((!args_err)^" "^(SU.getNameOfExp e)^",") ) oargs;
+                  List.iter (fun e -> args_err := ((!args_err)^" "^(SU.get_name_of_exp e)^",") ) oargs;
                   args_err := ((!args_err)^")");
                   E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.SU.aname !args_err);
                 ) in
@@ -202,12 +202,12 @@ class virtual codegen (cgraph : Callgraph.callgraph) file pragma includePath =
 
             )
             | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
-            | _ -> SU.dbg_print debug "Ignoring pragma"; DoChildren
+            | _ -> SU.debug_print debug "Ignoring pragma"; DoChildren
           )
           (* warn about ignored #pragma ... ... directives *)
           | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
         )
-        | (_, loc) -> SU.dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
+        | (_, loc) -> SU.debug_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
       ) else
         DoChildren
 

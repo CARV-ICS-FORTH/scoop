@@ -41,7 +41,7 @@ class virtual codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
       ( string * (Cil.fundec * Cil.varinfo * ( int * Scoop_util.arg_descr ) list )) list
 
     (** Write the generated file to disk *)
-    method writeFile : unit
+    method write_file : unit
     (** Creates a task table (a tale with all tasks with the funcid as
      * index) and adds it to the file to be generated *)
     method makeTaskTable : unit
@@ -50,7 +50,7 @@ class virtual codegen : Callgraph.callgraph -> Cil.file -> string -> string ->
     (** Declare any globals needed by the code generator *)
     method declareGlobals : unit
     (** Preprocesses the runtime header file and merges it with new_file. *)
-    method preprocessAndMergeWithHeader : string -> unit
+    method preprocess_and_merge_header : string -> unit
     (** Generates the code to spawn a task *)
     method virtual make_task_spawn : Cil.location -> Cil.varinfo -> Cil.exp list
                                      -> Scoop_util.arg_descr list

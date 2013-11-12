@@ -89,7 +89,7 @@ module LP     = Loopa
 let string_of_doc d = Pretty.sprint 800 d
 let string_of_exp e = string_of_doc (d_exp () e)
 
-let currentFunction = ref dummyFunDec
+let current_function = ref dummyFunDec
 let currSid = ref (-1)
 
 (* wrappers *)
@@ -2210,10 +2210,10 @@ and type_offcinit (c: cinfo)
 (*          Sdam.addArg (varname, arg_typ, !Sdam.currTask_descr));*)
 (*        | ACons(varname, ACons(arg_typ, [])::ACons(varsize, [])::ACons(elsize, [])::ACons(elnum, [])::[]) ->*)
 (*          (* give all the arguments to Dtdepa don't care for strided  *)*)
-(*           Sdam.addArg (varname, arg_typ, !currentFunction);*)
+(*           Sdam.addArg (varname, arg_typ, !current_function);*)
 (*        | _ -> ignore(E.warn "SDAM:%a:Task annotation error!\n" d_loc loc);*)
 (*        ) args);*)
-(*      ignore(Sdam.addTask vi.vname !currentFunction loc');*)
+(*      ignore(Sdam.addTask vi.vname !current_function loc');*)
 (*      | _ -> ignore(E.warn "SDAM:%a:Cannot use task annotation here!\n" d_loc loc);*)
 (*end*)
 
@@ -2241,11 +2241,11 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
     match arg with
     (* handle strided... *)
     | AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, _, _)) ->
-      let attrParamToExp' =
-        attrParamToExp !program_file loc ~currFunction:!currentFunction
+      let attrparam_to_exp' =
+        attrparam_to_exp !program_file loc ~currFunction:!current_function
       in
-      let tmp_size = attrParamToExp' varsize in
-      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let tmp_size = attrparam_to_exp' varsize in
+      let var_i = find_scoped_var loc !current_function !program_file varname in
       let array_d = LP.getArrayDescr var_i loc !currSid in
       let arg_d =
         Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
@@ -2253,11 +2253,11 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
       (iotyp, loc, arg_d::args_l, loop_d)
     (* Brand new stride syntax... *)
     | AIndex(AIndex(ACons(varname, []), ABinOp( BOr, _, bs_c)), _) ->
-      let attrParamToExp' =
-        attrParamToExp !program_file loc ~currFunction:!currentFunction
+      let attrparam_to_exp' =
+        attrparam_to_exp !program_file loc ~currFunction:!current_function
       in
-      let tmp_size = attrParamToExp' bs_c in
-      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let tmp_size = attrparam_to_exp' bs_c in
+      let var_i = find_scoped_var loc !current_function !program_file varname in
       let array_d = LP.getArrayDescr var_i loc !currSid in
       let arg_d =
         Sdam.make_arg_descr varname loc iotyp true var_i tmp_size loop_d array_d
@@ -2265,10 +2265,10 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
       (iotyp, loc, arg_d::args_l, loop_d)
     (* variable with its size *)
     | AIndex(ACons(varname, []), varsize) ->
-      let var_i = find_scoped_var loc !currentFunction !program_file varname in
+      let var_i = find_scoped_var loc !current_function !program_file varname in
       let tmp_size =
-        let size = SizeOf( getBType var_i.vtype varname ) in
-        let n = attrParamToExp !program_file loc ~currFunction:!currentFunction varsize in
+        let size = SizeOf( get_basetype var_i.vtype varname ) in
+        let n = attrparam_to_exp !program_file loc ~currFunction:!current_function varsize in
           (* argument size = n * sizeof(type) *)
         BinOp(Mult, n, size, intType)
       in
@@ -2279,8 +2279,8 @@ let css_arg_process ((iotyp: string), (loc: location), (args_l: Sdam.arg_descr l
       (iotyp, loc, arg_d::args_l, loop_d)
     (* support optional sizes example int_a would have size of sizeof(int_a) *)
     | ACons(varname, []) ->
-      let var_i = find_scoped_var loc !currentFunction !program_file varname in
-      let tmp_size = SizeOf( getBType var_i.vtype varname ) in
+      let var_i = find_scoped_var loc !current_function !program_file varname in
+      let tmp_size = SizeOf( get_basetype var_i.vtype varname ) in
       let array_d = LP.getArrayDescr var_i loc !currSid in
       let arg_d =
         Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
@@ -2332,7 +2332,7 @@ let css_task_process (loc, loop_d) args =
       | AStr(region_name)::region_type -> (
                 match region_type with
         | ACons(iotyp, args')::rest ->
-            let var_i = find_scoped_var loc !currentFunction !program_file region_name in
+            let var_i = find_scoped_var loc !current_function !program_file region_name in
             let tmp_size = SizeOfE (Lval (var var_i)) in
                 let array_d = LP.getArrayDescr var_i loc !currSid in
             let arg_d =
@@ -2349,7 +2349,7 @@ let css_task_process (loc, loop_d) args =
       | ACons(iotyp, args)::rest ->
         let process_reg = function
           | ACons(varname, []) ->
-              let var_i = find_scoped_var loc !currentFunction !program_file varname in
+              let var_i = find_scoped_var loc !current_function !program_file varname in
             let tmp_size = SizeOfE (Lval (var var_i)) in
             let array_d = LP.getArrayDescr var_i loc !currSid in
             Sdam.make_arg_descr varname loc iotyp false var_i tmp_size loop_d array_d
@@ -2407,7 +2407,7 @@ let handle_css_task il env args loc loop_d : task_descr =  begin
                                 raise Ignore_pragma
                             )
                 ) in
-                let task_d = Sdam.make_task_descr vi.vname loc !currentFunction fd env args_l actuals in
+                let task_d = Sdam.make_task_descr vi.vname loc !current_function fd env args_l actuals in
                 Sdam.addTask task_d;
                 task_d
             ) with Not_found -> (
@@ -3781,7 +3781,7 @@ class constraintVisitor = object
     | GFun(fd, loc) ->
         begin
           currentLoc := loc;
-          currentFunction := fd;
+          current_function := fd;
           if (Strset.mem fd.svar.vname !undef_functions) then
             undef_functions := Strset.remove fd.svar.vname !undef_functions;
           if (Strset.mem fd.svar.vname !def_functions) then (
