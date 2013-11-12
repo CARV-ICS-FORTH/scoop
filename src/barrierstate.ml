@@ -144,7 +144,7 @@ module BS = MakeForwardsAnalysis(BarrierStateTransfer)
 			@param task the task which we want to know if it's in a loop
 			@return true if task is in loop
 *)
-let isInLoop (task: task_descr) : bool =
+let is_inLoop (task: task_descr) : bool =
 	let match_task task p = (
 		let k = get_phi_kind p in
 		match k with

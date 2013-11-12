@@ -73,7 +73,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     let num_args = L.length exps in
     let scoop2179_args =
       try
-        let args = SU.__find_local_var !SU.currentFunction "scoop2179_wo_args" in
+        let args = SU.__find_local_var !SU.current_function "scoop2179_wo_args" in
         (* Check if the array is large enough for this wait on *)
         ( match args.vtype with
             TArray(_, Some(Const(CInt64(size, _, _))), _) ->
@@ -83,9 +83,9 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
         );
         args
       with Not_found ->
-        makeLocalVar !SU.currentFunction "scoop2179_wo_args" (TArray(voidPtrType, Some(integer num_args), []))
+        makeLocalVar !SU.current_function "scoop2179_wo_args" (TArray(voidPtrType, Some(integer num_args), []))
     in
-    let args = L.rev_map (SU.attrParamToExp new_file loc) exps in
+    let args = L.rev_map (SU.attrparam_to_exp new_file loc) exps in
     let i = ref num_args in
     let mkSet = mkSet (var scoop2179_args) in
     let init_args = L.rev_map (fun a -> decr i; mkSet !i a) args in
@@ -94,7 +94,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     let s' = {s with pragmas = List.tl s.pragmas} in
     ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmt (Instr(init_args)); mkStmtOneInstr instr; s' ]))), fun x -> x)
 
-  method preprocessAndMergeWithHeader flags : unit = ();
+  method preprocess_and_merge_header flags : unit = ();
 
   (** Creates two arrays, one containing the arguments' addresses and another
    * containing the arguments' types the invokes _sys_spawn with those as args
@@ -116,7 +116,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     (* Try to find locally an array with the argument descriptors *)
     let scoop2179_args =
       try
-        let args = SU.__find_local_var !SU.currentFunction "scoop2179_s_args" in
+        let args = SU.__find_local_var !SU.current_function "scoop2179_s_args" in
         (* Check if the array is large enough for this spawn *)
         ( match args.vtype with
           | TArray(t, Some(Const(CInt64(size, _, _))), _) ->
@@ -126,12 +126,12 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
         );
         var args
       with Not_found ->
-        var (makeLocalVar !SU.currentFunction "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), [])))
+        var (makeLocalVar !SU.current_function "scoop2179_s_args" (TArray(voidPtrType, Some(args_num_i), [])))
     in
 
     let scoop2179_typs =
       try
-        let typs = SU.__find_local_var !SU.currentFunction "scoop2179_t_args" in
+        let typs = SU.__find_local_var !SU.current_function "scoop2179_t_args" in
         (* Check if the array is large enough for this spawn *)
         ( match typs.vtype with
             TArray(t, Some(Const(CInt64(size, _, _))), _) ->
@@ -141,7 +141,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
         );
         var typs
       with Not_found ->
-        var (makeLocalVar !SU.currentFunction "scoop2179_t_args" (TArray(uintType, Some(args_num_i), [])))
+        var (makeLocalVar !SU.current_function "scoop2179_t_args" (TArray(uintType, Some(args_num_i), [])))
     in
 
     let args_n, instrs =
@@ -191,10 +191,10 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     let arg_type = arg_desc.SU.atype in
     let arg_name = arg_desc.SU.aname in
 
-    let arg_type_tmp = SU.arg_type2int arg_type in
+    let arg_type_tmp = SU.int_of_arg_type arg_type in
     let arg_type_tmp =
       (* TPC_BYVALUE_ARG; *)
-      if (SU.isScalar arg_desc) then (
+      if (SU.is_scalar arg_desc) then (
         0x9
       (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
       (* arg_flag|TPC_SAFE_ARG; *)
@@ -206,9 +206,9 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     in
     let arg_type_tmp =
       (* arg_flag|TPC_REGION_ARG; *)
-      if (SU.isRegion arg_desc) then (
+      if (SU.is_region arg_desc) then (
         arg_type_tmp lor 0x10
-      ) else if (SU.isNTRegion arg_desc) then (
+      ) else if (SU.is_NT_region arg_desc) then (
         arg_type_tmp lor 0x14
       ) else
         arg_type_tmp
@@ -225,10 +225,10 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
       process_task_pragma rest
     (* support notransfer in/out/inout(a,b,c) etc. *)
     | AStr("notransfer")::(ACons(arg_typ, args)::rest) ->
-      let arg_f = SU.str2arg_flow arg_typ loc in
+      let arg_f = SU.arg_flow_of_string arg_typ loc in
       let process_regs = function
         | ACons(varname, []) ->
-          let vi = SU.find_scoped_var loc !SU.currentFunction file varname in
+          let vi = SU.find_scoped_var loc !SU.current_function file varname in
           let tmp_addr = Lval(var vi) in
           let tmp_t = SU.NTRegion(arg_f, [varname]) in
           { SU.aname=varname; SU.address=tmp_addr; SU.atype=tmp_t;}
@@ -238,10 +238,10 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
       (L.map process_regs args)@lst
     (* support region in/out/inout(a,b,c) *)
     | AStr("region")::(ACons(arg_typ, args)::rest) ->
-      let arg_f = SU.str2arg_flow arg_typ loc in
+      let arg_f = SU.arg_flow_of_string arg_typ loc in
       let process_regs = function
         | ACons(varname, []) ->
-          let vi = SU.find_scoped_var loc !SU.currentFunction file varname in
+          let vi = SU.find_scoped_var loc !SU.current_function file varname in
           let tmp_addr = Lval(var vi) in
           let tmp_t = SU.Region(arg_f, [varname]) in
           { SU.aname=varname; SU.address=tmp_addr; SU.atype=tmp_t;}
@@ -273,13 +273,13 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
             let funname = vi.vname in
             (* process the pragma ... task*)
             let args    = self#process_task_pragma loc rest in
-            SU.dbg_print debug ("Found task \""^funname^"\"");
+            SU.debug_print debug ("Found task \""^funname^"\"");
 
             (* check whether all argument annotations correlate to an actual argument *)
             let check arg =
-              if ( not ((SU.isRegion arg) || (L.exists (fun e -> ((SU.getNameOfExp e)=arg.SU.aname)) oargs)) )then (
+              if ( not ((SU.is_region arg) || (L.exists (fun e -> ((SU.get_name_of_exp e)=arg.SU.aname)) oargs)) )then (
                 let args_err = ref "(" in
-                List.iter (fun e -> args_err := ((!args_err)^" "^(SU.getNameOfExp e)^",") ) oargs;
+                List.iter (fun e -> args_err := ((!args_err)^" "^(SU.get_name_of_exp e)^",") ) oargs;
                 args_err := ((!args_err)^")");
                 E.s (errorLoc loc "#1 Argument \"%s\" in the pragma directive not found in %s" arg.SU.aname !args_err);
               ) in
@@ -306,12 +306,12 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
 
           )
           | Block(b) -> ignore(unimp "Ignoring block pragma"); DoChildren
-          | _ -> SU.dbg_print debug "Ignoring pragma"; DoChildren
+          | _ -> SU.debug_print debug "Ignoring pragma"; DoChildren
         )
         (* warn about ignored #pragma ... ... directives *)
         | _ -> ignore(warnLoc loc "Ignoring #pragma %a\n" d_attr (Attr(pragma_str, rest))); DoChildren
       )
-      | (_, loc) -> SU.dbg_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
+      | (_, loc) -> SU.debug_print debug (loc.file^":"^(string_of_int loc.line)^" Ignoring #pragma directive"); DoChildren
     ) else
       DoChildren
 

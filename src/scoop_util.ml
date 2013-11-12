@@ -26,11 +26,11 @@
 (** Includes all the generic functions (utilities) *)
 
 open Cil
-module E = Errormsg
-module H = Hashtbl
-module L = List
+module E  = Errormsg
+module H  = Hashtbl
+module L  = List
 module CG = Callgraph
-
+module S  = Stack
 
 (******************************************************************************)
 (*                          Types                                             *)
@@ -87,23 +87,8 @@ and arg_flow =
 (** define the ppu_vector *)
 let ppu_vector = Attr("altivec", [ACons("vector__", [])])
 
-(** define void *)
-let voidType = TVoid([])
-(** define int *)
-let intType = TInt(IInt,[])
-(** define uint *)
-let uintType = TInt(IUInt,[])
-(** define long *)
-let longType = TInt(ILong,[])
-(** define ulong *)
-let ulongType = TInt(IULong,[])
-(** define char *)
-let charType = TInt(IChar, [])
-(** define bool *)
-let boolType = TInt(IBool, [])
-
 (** keeps the function we are in at the current point (scoping) *)
-let currentFunction = ref dummyFunDec
+let current_function = ref dummyFunDec
 
 (** keeps whether stats are enabled or not *)
 let stats = ref true
@@ -130,7 +115,7 @@ let uses_index (e: exp) : bool =
     @param arg the arguments' descriptor
     @return true or false
 *)
-let isStrided (arg: arg_descr) : bool =
+let is_strided (arg: arg_descr) : bool =
    match arg.atype with
     | Stride(_) -> true
     | _ -> false
@@ -139,7 +124,7 @@ let isStrided (arg: arg_descr) : bool =
     @param arg the argument's type
     @return true or false
 *)
-let isScalar (arg: arg_descr) : bool =
+let is_scalar (arg: arg_descr) : bool =
    match arg.atype with
       Scalar(_) -> true
     | _ -> false
@@ -148,7 +133,7 @@ let isScalar (arg: arg_descr) : bool =
     @param arg the argument's type
     @return true or false
 *)
-let isRegion (arg: arg_descr) : bool =
+let is_region (arg: arg_descr) : bool =
    match arg.atype with
       Region(_) -> true
     | _ -> false
@@ -157,7 +142,7 @@ let isRegion (arg: arg_descr) : bool =
     @param arg the argument's type
     @return true or false
 *)
-let isNTRegion (arg: arg_descr) : bool =
+let is_NT_region (arg: arg_descr) : bool =
    match arg.atype with
       NTRegion(_) -> true
     | _ -> false
@@ -166,7 +151,7 @@ let isNTRegion (arg: arg_descr) : bool =
     @param arg the argument's type
     @return true or false
 *)
-let isOut (arg: arg_descr) : bool =
+let is_out (arg: arg_descr) : bool =
    match arg.atype with
       Scalar(OUT, _)
     | Stride(OUT, _, _, _)
@@ -179,7 +164,7 @@ let isOut (arg: arg_descr) : bool =
     @param arg the argument's type
     @return true or false
 *)
-let isIn (arg: arg_descr) : bool =
+let is_in (arg: arg_descr) : bool =
    match arg.atype with
       Scalar(IN, _)
     | Stride(IN, _, _, _)
@@ -209,7 +194,7 @@ let tpc_call_with_arrray (st: stmt) : bool =
     @param g the global to check
     @return true or false
 *)
-let isNotMain (g: global) : bool = match g with
+let is_not_main (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "main") -> false
   | _ -> true
 
@@ -217,7 +202,7 @@ let isNotMain (g: global) : bool = match g with
     @param g the global to check
     @return true or false
 *)
-let isNotSkeleton (g: global) : bool = match g with
+let is_not_skeleton (g: global) : bool = match g with
     GFun({svar = vi}, _) when (vi.vname = "tpc_call_tpcAD65") -> false
   | _ -> true
 
@@ -245,7 +230,7 @@ let isCompType = function
     @param t the type [Cil.typ]
     @return true or false
 *)
-let isScalar_t =  function
+let is_scalar_t =  function
   | TVoid _
   | TPtr _
   | TArray _
@@ -256,7 +241,7 @@ let isScalar_t =  function
     @param vi the variable's [Cil.varinfo]
     @return true or false
 *)
-let isScalar_v (vi: varinfo) =  isScalar_t vi.vtype
+let is_scalar_v (vi: varinfo) =  is_scalar_t vi.vtype
 
 
 (******************************************************************************)
@@ -518,7 +503,7 @@ let find_enum (f: file) (name: string) : enuminfo =
     @param e the expression to get the address of
     @return the new expression (& old_expression)
  *)
-let rec expScalarToPointer (loc: location) (e: exp) : exp =
+let rec scalar_exp_to_pointer (loc: location) (e: exp) : exp =
   match e with
   | AddrOf _
   | StartOf _ -> e
@@ -536,12 +521,12 @@ let rec expScalarToPointer (loc: location) (e: exp) : exp =
     | TPtr _
     | TArray _
     | TFun _ -> e
-    | _ -> CastE(TPtr(t, []), expScalarToPointer loc e')
+    | _ -> CastE(TPtr(t, []), scalar_exp_to_pointer loc e')
   )
   | Lval (lh, off) -> (
     match lh with
       Var vi -> (
-        if (isScalar_v vi) then
+        if (is_scalar_v vi) then
           mkAddrOrStartOf (lh, off)
         else
           e
@@ -553,7 +538,7 @@ let rec expScalarToPointer (loc: location) (e: exp) : exp =
 (** Takes a function declaration and changes the types of its scalar formals to pointers
     @param f the function declaration to change
  *)
-let formalScalarsToPointers (loc: location) (f: fundec) : unit =
+let formals_to_pointers (loc: location) (f: fundec) : unit =
   match f.svar.vtype with
     TFun (rt, Some args, va, a) ->
       if (va) then
@@ -561,7 +546,7 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
 
       let scalarToPointer arg =
         let (name, t, a) = arg in
-        if (isScalar_t t) then
+        if (is_scalar_t t) then
           (name, TPtr(t, []), a)
         else
           arg
@@ -572,7 +557,7 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
       f.svar.vtype <- TFun (rt, Some args, false, a);
 
       let scalarToPointer arg =
-        if (isScalar_t arg.vtype) then
+        if (is_scalar_t arg.vtype) then
           arg.vtype <- TPtr(arg.vtype, [])
         else
           ()
@@ -585,7 +570,7 @@ let formalScalarsToPointers (loc: location) (f: fundec) : unit =
     @param arg the string (in/out/inout/input/output) describing the type of the argument
     @return the corresponding arg_flow
  *)
-let str2arg_flow (arg: string) (loc: location): arg_flow =
+let arg_flow_of_string (arg: string) (loc: location): arg_flow =
   match arg with
     | "in" (* legacy *)
     | "input" -> IN
@@ -596,7 +581,7 @@ let str2arg_flow (arg: string) (loc: location): arg_flow =
 
 (** Maps the argument type to a number as defined by the TPC headers
     @return the corrensponding number *)
-let arg_type2int (arg_t: arg_type) : int =
+let int_of_arg_type (arg_t: arg_type) : int =
   let flow2int = function
       IN -> 1
     | OUT -> 2
@@ -612,7 +597,7 @@ let arg_type2int (arg_t: arg_type) : int =
 
 (** Returns a string discribing the argument as IN/OUT/INOUT
     @return the corrensponding string *)
-let arg_type2string (arg_t: arg_type) : string =
+let string_of_arg_type (arg_t: arg_type) : string =
   let flow2str = function
       IN -> "IN"
     | OUT -> "OUT"
@@ -632,11 +617,11 @@ let arg_type2string (arg_t: arg_type) : string =
 let is_dataflow_tag (typ: string): bool =
   match typ with
   | "safe" -> false
-  | _ -> true
+  | _      -> true
 
 (** Maps the arg_t to ints as defined by the TPC headers
     @return the corrensponding int *)
-let arg_type2integer t = integer (arg_type2int t)
+let integer_exp_of_arg_type t = integer (int_of_arg_type t)
 
 
 (******************************************************************************)
@@ -686,7 +671,7 @@ let rec deep_copy_function (func: string) (callgraph: CG.callgraph)
     @param f the function declaration of the function to change
     @param t the new type for the function to return
  *)
-let setFunctionReturnType (f: fundec) (t: typ) : unit = begin
+let set_function_return_type (f: fundec) (t: typ) : unit = begin
   match unrollType f.svar.vtype with
     TFun (_, Some args, va, a) ->
       f.svar.vtype <- TFun(t, Some args, va, a);
@@ -713,13 +698,13 @@ let getCompinfo = function
 (** get the name of the variable if any
     @raise Invalid_argument if the given expression doesn't include a single variable
     @return the name of the variable included in the given Cil.exp *)
-let rec getNameOfExp = function
+let rec get_name_of_exp = function
       Lval ((Var(vi),_))
     | AddrOf ((Var(vi),_))
     | StartOf ((Var(vi),_)) -> vi.vname
     | CastE (_, ex)
     | AlignOfE ex
-    | SizeOfE ex -> getNameOfExp ex
+    | SizeOfE ex -> get_name_of_exp ex
     (* The following are not supported yet *)
     | Const _ -> raise (Invalid_argument "Const");
     | SizeOf _ -> raise (Invalid_argument "Sizeof");
@@ -734,7 +719,7 @@ let rec getNameOfExp = function
     @param the variables name (for error printing)
     @return the basetype of {e t}
  *)
-let getBType (t: typ) (name: string) : typ =
+let get_basetype (t: typ) (name: string) : typ =
   match t with
     TVoid _ -> ignore(error "Found void expression as task argument \"%s\"\n" name); t
   | TInt _
@@ -754,7 +739,7 @@ let getBType (t: typ) (name: string) : typ =
     @param arg the arguments' description
     @return the argument flow type
 *)
-let getFlowOfArg (arg: arg_descr) : arg_flow =
+let get_arg_flow (arg: arg_descr) : arg_flow =
    match arg.atype with
       Scalar(flow, _)
     | Stride(flow, _, _, _)
@@ -767,7 +752,7 @@ let getFlowOfArg (arg: arg_descr) : arg_flow =
     @param arg the arguments' description
     @return the expression with the args' size
 *)
-let getSizeOfArg (arg: arg_descr) : exp =
+let get_arg_size (arg: arg_descr) : exp =
    match arg.atype with
       Scalar(_, size)
     | Stride(_, size, _, _)
@@ -844,10 +829,10 @@ let get_loop_successor (s: stmt) : exp =
     @param fname  the name of the file on the disk
     @param globals  the globals of the file to be written
 *)
-let writeNewFile f fname globals = begin
+let write_new_file f fname globals = begin
   let file = { f with
     fileName = fname;
-    globals = globals;
+    globals  = globals;
   } in
   let oc = open_out fname in
   Rmtmps.removeUnusedTemps file;
@@ -858,7 +843,7 @@ end
 (** writes out file {e f}
     @param f the file to be written
 *)
-let writeFile f = begin
+let write_file f = begin
   let oc = open_out f.fileName in
   Rmtmps.removeUnusedTemps f;
   dumpFile defaultCilPrinter oc f.fileName f;
@@ -876,9 +861,9 @@ class changeStmtVisitor (s: stmt) (name: string) (stl: stmt list) : cilVisitor =
       (*Instr(Call(_, Lval((Var(vi), _)), _, _)::res) when vi.vname = name ->
         ChangeTo (mkStmt (Block (mkBlock (stl@[mkStmt (Instr(res))]))))*)
       Instr(instrs) ->
-        let first = ref [] in
-        let second = ref [] in
-        let found = ref false in
+        let first    = ref [] in
+        let second   = ref [] in
+        let found    = ref false in
         let iter_fun = (
           fun i -> match i with
             Call(_, Lval((Var(vi), _)), _, _) when vi.vname = name -> found := true;
@@ -915,28 +900,26 @@ let comparator (a: (int * exp)) (b: (int * exp)) : int =
     input @ inout @ output *)
 let sort_args (a: arg_descr) (b: arg_descr) : int =
   (* if they are equal *)
-  if ((getFlowOfArg a) = (getFlowOfArg b)) then 0
+  if ((get_arg_flow a) = (get_arg_flow b)) then 0
   (* if a is Out *)
-  else if (isOut a) then 1
+  else if (is_out a) then 1
   (* if b is Out *)
-  else if (isOut b) then (-1)
+  else if (is_out b) then (-1)
   (* if neither are Out and a is In *)
-  else if (isIn a) then (-1)
+  else if (is_in a) then (-1)
   else 1
 
-(** Comparator for use with [List.sort],
-    takes an (int*arg_descr) list and sorts it according to the int of the elements
-    (descending) *)
+(** Comparator for use with [List.sort], takes an (int*arg_descr) list
+    and sorts it according to the int of the elements (descending) *)
 let sort_args_n ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
-    if (an = bn) then 0
-    else if (an < bn) then 1
-    else -1
+  if (an = bn) then 0
+  else if (an < bn) then 1
+  else -1
 
-(** Comparator for use with [List.sort],
-    takes an (int*arg_descr) list and sorts it according to the int of the elements
-    (ascending) *)
+(** Comparator for use with [List.sort], takes an (int*arg_descr) list
+    and sorts it according to the int of the elements (ascending) *)
 let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
-    - sort_args_n (an, a) (bn, b)
+  sort_args_n (bn, b) (an, a)
 
 (** assigns to each argument description its place in the original argument list
     @param args the arguments extracted from the annotation
@@ -945,28 +928,51 @@ let sort_args_n_inv ((an, a): (int*arg_descr)) ((bn,b): (int*arg_descr)) : int =
     argument list for the argument described in the arg_descr
  *)
 let number_args (args: arg_descr list) (oargs: exp list) : (int*arg_descr) list =
-  L.map (fun arg ->
-      let i = ref 0 in
-      ignore(L.exists (fun e ->
-        let ename=getNameOfExp e in
-        if (ename=arg.aname) then
-          true
-        else (
+  (* go through the list and for each argument keep the positions it
+     appears in, these can be more than one i.e. Foo(a, b, a) *)
+  let argstbl = H.create 16 in
+  (* todo replace me with iteri in OCaml 4.0 *)
+  let i = ref 0 in
+  L.iter (fun expr ->
+          let name = get_name_of_exp expr in
+          let stack =
+            try
+              H.find argstbl name
+            with Not_found -> (
+              let stack = S.create () in
+              H.add argstbl name stack;
+              stack
+            ) in
+          S.push !i stack;
           incr i;
-          false
-        )
-      ) oargs);
-      (!i, arg)
-  ) args
+         ) oargs;
+  (* Now for each argument in the pragma directive get it's position
+     in the original function call *)
+  L.map (fun arg ->
+         let name = arg.aname in
+         let i =
+           try
+             let stack = H.find argstbl name in
+             S.pop stack
+           with
+           | S.Empty
+           | Not_found -> (
+               assert false
+           )
+         in
+         (i, arg)
+        ) args
 
-(* Preprocess the header file <header> and merges it with f.  The
- * given header should be in the gcc include path.  Modifies f
+(** Preprocesses a header file and merges it with a file.
+    @param f the file to merge the header with
+    @param include_dir the directory containing the header file
+    @param header the header file name to merge
+    @param args arguments to be passed to the preprocessor
  *) (* the original can be found in lockpick.ml *)
-(*FIXME*)
-let preprocessAndMergeWithHeader_x86 (f: file) (include_dir: string) (header: string) (def: string)
-    : unit = (
+let preprocess_and_merge_header_x86 (f: file) (include_dir: string)
+                                     (header: string) (args: string) : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
-  ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^def^" -I"^include_dir^" "^include_dir^"/"^header^" - >/tmp/_cil_rewritten_tmp.h"));
+  ignore (Sys.command ("echo | gcc -E -D_GNU_SOURCE "^args^" -I"^include_dir^" "^include_dir^"/"^header^" - >/tmp/_cil_rewritten_tmp.h"));
   let add_h = Frontc.parse "/tmp/_cil_rewritten_tmp.h" () in
   let f' = Mergecil.merge [add_h; f] "stdout" in
   f.globals <- f'.globals;
@@ -978,7 +984,7 @@ let preprocessAndMergeWithHeader_x86 (f: file) (include_dir: string) (header: st
     @param def defines to be passed to the preprocessor
     @param incPath the include path to give to the preprocessor
  *) (* the original can be found in lockpick.ml *)
-let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
+let preprocess_and_merge_header_cell (f: file) (header: string) (def: string)
     (incPath: string) : unit = (
   (* //Defining _GNU_SOURCE to fix "undefined reference to `__isoc99_sscanf'" *)
   ignore (Sys.command ("echo | ppu32-gcc -E "^def^" -I"^incPath^"/ppu -I"^incPath^"/spu "^header^" - >/tmp/_cil_rewritten_tmp.h"));
@@ -991,7 +997,7 @@ let preprocessAndMergeWithHeader_cell (f: file) (header: string) (def: string)
   @param flag the debug flag
   @param msg the message to be printed
 *)
-let dbg_print (flag: bool ref) (msg: string): unit = (
+let debug_print (flag: bool ref) (msg: string): unit = (
   if !flag then
     ignore(E.log "%s\n" msg);
 )
@@ -1026,7 +1032,7 @@ let add_at_top (f: file) (globals: global list) : unit =
 (******************************************************************************)
 
 (** takes an lvalue and a fieldname and returns lvalue.fieldname *)
-let mkFieldAccess lv fieldname =
+let make_field_access lv fieldname =
   let lvt = Cil.typeOfLval lv in
   (* get the type *)
   let (lvtf, isptr) = match lvt with
@@ -1046,8 +1052,8 @@ let mkFieldAccess lv fieldname =
 let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
-  let vi = makeGlobalVar name type' in
-  let n = L.length tasks in
+  let vi    = makeGlobalVar name type' in
+  let n     = L.length tasks in
   let init' =
       let rec loopElems acc i =
         if i < 0 then acc
@@ -1069,8 +1075,8 @@ let make_task_table (name: string) (tasks : (fundec * varinfo * (int * arg_descr
 let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) list) : global = (
   let etype = TPtr( TFun(TVoid([]), None, false, []), []) in
   let type' = TArray (etype, None, []) in
-  let vi = makeGlobalVar "Task_table" type' in
-  let n = L.length tasks in
+  let vi    = makeGlobalVar "Task_table" type' in
+  let n     = L.length tasks in
   let init' =
       let rec loopElems acc i =
         if i < 0 then acc
@@ -1089,7 +1095,7 @@ let make_null_task_table (tasks : (fundec * varinfo * (int * arg_descr) list) li
     @param file    The file in which the new variable will be defined
     @return the new variable as a Cil.varinfo
 *)
-let makeGlobalVar name initial typ file=
+let make_global_var name initial typ file=
   let v = makeGlobalVar name typ in
   let glob = GVar(v, {init = initial;}, locUnknown) in
   add_at_top file [glob];
@@ -1106,23 +1112,23 @@ let rec unrollSigtype (f:file) (ts: typsig) : typ =
   let unrollSigtype' = unrollSigtype f in
   match ts with
     TSArray (ts, Some i, attrs) -> TArray( unrollSigtype' ts, Some(kinteger64 IInt i), attrs )
-  | TSArray (ts, None, attrs) -> TArray( unrollSigtype' ts, None, attrs )
-  | TSPtr (ts, attrs) -> TPtr( unrollSigtype' ts, attrs )
-  | TSComp (_, n, _ ) -> find_tcomp f n
+  | TSArray (ts, None, attrs)   -> TArray( unrollSigtype' ts, None, attrs )
+  | TSPtr (ts, attrs)  -> TPtr( unrollSigtype' ts, attrs )
+  | TSComp (_, n, _ )  -> find_tcomp f n
   | TSFun (_, _, _, _) -> TVoid([]) (* Not sure about this :D *)
-  | TSEnum (n, attrs) -> TEnum(find_enum f n, attrs)
+  | TSEnum (n, attrs)  -> TEnum(find_enum f n, attrs)
   | TSBase (t) -> t
 
 (** exception returning the attribute that failed to convert into an expression *)
 exception NotAnExpression of attrparam
 (** Converts an attribute into an expression.
   @param  a the attrparam to convert
-  @param  currentFunction the function we are currently processing
+  @param  current_function the function we are currently processing
   @param  ppc_file  the ppc file
   @raise NotAnExpression when it fails
   @return the converted Cil.attrparam as a Cil.exp
  *)
-let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !currentFunction) (a: attrparam) : exp=
+let attrparam_to_exp (ppc_file: file) (loc: location) ?(currFunction: fundec = !current_function) (a: attrparam) : exp=
   assert (currFunction.svar.vname <> "@dummy");
   let rec subAttr2Exp (a: attrparam) : exp= (
     match a with
@@ -1133,19 +1139,19 @@ let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !cu
       (* We don't support function calls as argument size *)
       | ACons(name, args) ->                 (** A function call *)
           E.s (errorLoc loc "Function calls (you are calling \"%s\") are not supported as argument size in #pragma css task..." name)
-      | ASizeOf(t) -> SizeOf t                  (** A way to talk about types *)
-      | ASizeOfE(a) -> SizeOfE (subAttr2Exp a)
-      | ASizeOfS(ts) -> SizeOf (unrollSigtype ppc_file ts)
-      | AAlignOf(t) -> AlignOf t
-      | AAlignOfE(a) -> AlignOfE (subAttr2Exp a)
-      | AAlignOfS(ts) -> AlignOf (unrollSigtype ppc_file ts)
-      | AUnOp(op, a) -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
+      | ASizeOf(t)       -> SizeOf t                  (** A way to talk about types *)
+      | ASizeOfE(a)      -> SizeOfE (subAttr2Exp a)
+      | ASizeOfS(ts)     -> SizeOf (unrollSigtype ppc_file ts)
+      | AAlignOf(t)      -> AlignOf t
+      | AAlignOfE(a)     -> AlignOfE (subAttr2Exp a)
+      | AAlignOfS(ts)    -> AlignOf (unrollSigtype ppc_file ts)
+      | AUnOp(op, a)     -> UnOp(op, subAttr2Exp a, intType) (* how would i know what type to put? *)
       | ABinOp(op, a, b) -> BinOp(op, subAttr2Exp a,
                                     subAttr2Exp b, intType) (* same as above *)
       | ADot(a, s) -> begin                    (** a.foo **)
         let predot = subAttr2Exp a in
         match predot with Lval(v) ->
-            Lval (mkFieldAccess v s)
+            Lval (make_field_access v s)
           | _ -> raise (NotAnExpression a)
       end
       | AStar(a) -> Lval(mkMem (subAttr2Exp a) NoOffset) (** * a *)
@@ -1175,13 +1181,13 @@ let attrParamToExp (ppc_file: file) (loc: location) ?(currFunction: fundec = !cu
 let make_func_call (f: file) (loc : location) (s: stmt) (exps: attrparam list)
                    (func: string): stmt visitAction =
   (* find wait_on functions declaration *)
-  let func = find_function_sign f func in
+  let func  = find_function_sign f func in
   (* prepare the arguments *)
-  let args = L.map (attrParamToExp f loc) exps in
+  let args  = L.map (attrparam_to_exp f loc) exps in
   (* create the call *)
   let instr = Call (None, Lval (var func), args, locUnknown) in
   (* pop out the processed pragma *)
-  let s' = {s with pragmas = List.tl s.pragmas} in
+  let s'    = {s with pragmas = List.tl s.pragmas} in
   (* push the generated code *)
   ChangeDoChildrenPost ((mkStmt (Block (mkBlock [ mkStmtOneInstr instr; s' ]))), fun x -> x)
 
@@ -1193,8 +1199,8 @@ let make_func_call (f: file) (loc : location) (s: stmt) (exps: attrparam list)
 (** processes recursively the arguments' info found in in() out() and
     inout() directives *)
 let rec scoop_process_args size_in_bytes ppc_file typ loc args : arg_descr list =
-  let attrParamToExp' = attrParamToExp ppc_file loc in
-  let arg_f = str2arg_flow typ loc in
+  let attrparam_to_exp'  = attrparam_to_exp ppc_file loc in
+  let arg_f              = arg_flow_of_string typ loc in
   let scoop_process_args = scoop_process_args size_in_bytes ppc_file typ loc in
   match args with
   (* Brand new stride syntax... *)
@@ -1205,43 +1211,43 @@ let rec scoop_process_args size_in_bytes ppc_file typ loc args : arg_descr list 
       | ABinOp( BOr, _, orig_c) -> orig_c
       | _ -> orig
     in
-    let vi = find_scoped_var loc !currentFunction ppc_file varname in
-    let tmp_addr = Lval(var vi) in
-    let size = SizeOf( getBType vi.vtype vi.vname ) in
-    let tmp_bs_c = attrParamToExp' bs_c in
+    let vi         = find_scoped_var loc !current_function ppc_file varname in
+    let tmp_addr   = Lval(var vi) in
+    let size       = SizeOf( get_basetype vi.vtype vi.vname ) in
+    let tmp_bs_c   = attrparam_to_exp' bs_c in
     (* block's row size = bs_c * sizeof(type) *)
-    let tmp_bs_c = BinOp(Mult, tmp_bs_c, size, intType) in
-    let tmp_bs_r = attrParamToExp' bs_r in
-    let tmp_orig_c = attrParamToExp' orig_c in
+    let tmp_bs_c   = BinOp(Mult, tmp_bs_c, size, intType) in
+    let tmp_bs_r   = attrparam_to_exp' bs_r in
+    let tmp_orig_c = attrparam_to_exp' orig_c in
     (* original array row size = orig_c * sizeof(type) *)
     let tmp_orig_c = BinOp(Mult, tmp_orig_c, size, intType) in
-    let tmp_t = Stride(arg_f, tmp_orig_c, tmp_bs_r, tmp_bs_c) in
+    let tmp_t      = Stride(arg_f, tmp_orig_c, tmp_bs_r, tmp_bs_c) in
     { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
   (* handle strided (legacy) ... *) (* Check documentation for the syntax *)
   | (AIndex(AIndex(ACons(varname, []), varsize), ABinOp( BOr, var_els, var_elsz))::rest) ->
-    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let vi       = find_scoped_var loc !current_function ppc_file varname in
     let tmp_addr = Lval(var vi) in
-    let tmp_size = attrParamToExp' varsize in
-    let tmp_els = attrParamToExp' var_els in
-    let tmp_elsz = attrParamToExp' var_elsz in
-    let tmp_t = Stride(arg_f, tmp_size, tmp_els, tmp_elsz) in
+    let tmp_size = attrparam_to_exp' varsize in
+    let tmp_els  = attrparam_to_exp' var_els in
+    let tmp_elsz = attrparam_to_exp' var_elsz in
+    let tmp_t    = Stride(arg_f, tmp_size, tmp_els, tmp_elsz) in
     { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
   (* variable with its size *)
   | (AIndex(ACons(varname, []), varsize)::rest) ->
-    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let vi       = find_scoped_var loc !current_function ppc_file varname in
     let tmp_addr = Lval(var vi) in
     let tmp_size =
       if (size_in_bytes) then
-        attrParamToExp ppc_file loc varsize
+        attrparam_to_exp ppc_file loc varsize
       else (
-        let size = SizeOf( getBType vi.vtype vi.vname ) in
-        let n = attrParamToExp ppc_file loc varsize in
+        let size = SizeOf( get_basetype vi.vtype vi.vname ) in
+        let n    = attrparam_to_exp ppc_file loc varsize in
         (* argument size = n * sizeof(type) *)
         BinOp(Mult, n, size, intType)
       )
     in
     let tmp_t =
-      if (isScalar_v vi) then
+      if (is_scalar_v vi) then
         Scalar(arg_f, tmp_size)
       else
         Normal(arg_f, tmp_size)
@@ -1249,11 +1255,11 @@ let rec scoop_process_args size_in_bytes ppc_file typ loc args : arg_descr list 
     { aname=varname; address=tmp_addr; atype=tmp_t;}::(scoop_process_args rest)
   (* support optional sizes example int_a would have size of sizeof(int_a) *)
   | (ACons(varname, [])::rest) ->
-    let vi = find_scoped_var loc !currentFunction ppc_file varname in
+    let vi       = find_scoped_var loc !current_function ppc_file varname in
     let tmp_addr = Lval(var vi) in
-    let tmp_size = SizeOf( getBType vi.vtype vi.vname ) in
-    let tmp_t =
-      if (isScalar_v vi) then
+    let tmp_size = SizeOf( get_basetype vi.vtype vi.vname ) in
+    let tmp_t    =
+      if (is_scalar_v vi) then
         Scalar(arg_f, tmp_size)
       else
         Normal(arg_f, tmp_size)

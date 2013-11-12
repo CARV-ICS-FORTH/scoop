@@ -236,12 +236,12 @@ let solve_arg_dependencies ((task1: task_descr), (tasks: task_descr list)) (arg:
         taskScope1 := task1.scope;
         taskScope2 := task2.scope;
         (* do not check with self  if task is not in a loop *)
-        if (not (BS.isInLoop task1) && task1.taskid == task2.taskid) then (
+        if (not (BS.is_inLoop task1) && task1.taskid == task2.taskid) then (
           if !debug then ignore(E.log "not in loop\n");
           arg.safe <- true;
         )
         else (
-          (if((BS.isInLoop task1) && arg.aid == arg'.aid) then (
+          (if((BS.is_inLoop task1) && arg.aid == arg'.aid) then (
             let res = not (alias arg arg') || LP.array_bounds_safe arg in
             if(arg.force_safe && not res) then (
               ignore(E.log "Warning:Argument \"%s\" has manually been marked as safe but the analysis found dependencies!\n" arg.argname);
@@ -295,7 +295,7 @@ let solve_task_dependencies (tasks_l: task_descr list) : unit =
     if !debug then
       List.iter (fun task -> ignore(E.log "TaskSet:%a\n" d_task task); ) tasks;
     (* 1. check if tasks exists in the set, then maintain self loops, else remove them *)
-    if (not (BS.isInLoop task)) then (
+    if (not (BS.is_inLoop task)) then (
       if !debug then ignore(E.log "Not self dependent\n");
       List.iter (fun a -> a.safe <- true;) task.arguments
     );

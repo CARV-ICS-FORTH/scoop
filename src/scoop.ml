@@ -151,7 +151,7 @@ let feature : featureDescr =
       in
 
       (* Include the runtime's header file  *)
-      codeGenerator#preprocessAndMergeWithHeader !cflags;
+      codeGenerator#preprocess_and_merge_header !cflags;
 
       (* Declare some globals *)
       codeGenerator#declareGlobals;
@@ -169,7 +169,7 @@ let feature : featureDescr =
       Deadcodeelim.dce !spu_file;*)
 
       (* Scoop_rmtmps.removeUnused !gen_file; *)
-      codeGenerator#writeFile;
+      codeGenerator#write_file;
     );
     fd_post_check = true;
   }

@@ -79,14 +79,7 @@ and arg_flow =
 
 (* define the ppu_vector *)
 val ppu_vector : Cil.attribute
-val voidType : Cil.typ
-val intType : Cil.typ
-val uintType : Cil.typ
-val longType : Cil.typ
-val ulongType : Cil.typ
-val charType : Cil.typ
-val boolType : Cil.typ
-val currentFunction : Cil.fundec ref
+val current_function : Cil.fundec ref
 val stats : bool ref
 val unaligned_args : bool ref
 
@@ -99,40 +92,40 @@ val unaligned_args : bool ref
 val uses_index : Cil.exp -> bool
 
 (* Check if an arguments type is stride *)
-val isStrided : arg_descr -> bool
+val is_strided : arg_descr -> bool
 
 (* Check if an arguments type is scalar *)
-val isScalar : arg_descr -> bool
+val is_scalar : arg_descr -> bool
 
 (* Check if an argument is region *)
-val isRegion : arg_descr -> bool
+val is_region : arg_descr -> bool
 
 (* Check if an argument is a no transfer region *)
-val isNTRegion : arg_descr -> bool
+val is_NT_region : arg_descr -> bool
 
 (* Check if an arguments type is out *)
-val isOut : arg_descr -> bool
+val is_out : arg_descr -> bool
 
 (* Check if an arguments type is in *)
-val isIn : arg_descr -> bool
+val is_in : arg_descr -> bool
 
 (* Function that checks if a stmt is tagged with a #pragma tpc... *)
 val tpc_call_with_arrray : Cil.stmt -> bool
 
 (* Check if <g> is *not* the function declaration of "main"  *)
-val isNotMain : Cil.global -> bool
+val is_not_main : Cil.global -> bool
 
 (* Check if <g> is *not* the function declaration of "tpc_call_tpcAD65"  *)
-val isNotSkeleton : Cil.global -> bool
+val is_not_skeleton : Cil.global -> bool
 
 (* Check if <g> is a typedef, enum, struct or union *)
 val is_typedef : Cil.global -> bool
 
 (* Check if <t> is a scalar *)
-val isScalar_t : Cil.typ -> bool
+val is_scalar_t : Cil.typ -> bool
 
 (* Check if <vi> is a scalar *)
-val isScalar_v : Cil.varinfo -> bool
+val is_scalar_v : Cil.varinfo -> bool
 
 
 (******************************************************************************)
@@ -190,22 +183,22 @@ val find_enum : Cil.file -> string -> Cil.enuminfo
     @param e the expression to get the address of
     @return the new expression (& old_expression)
  *)
-val expScalarToPointer : Cil.location -> Cil.exp -> Cil.exp
+val scalar_exp_to_pointer : Cil.location -> Cil.exp -> Cil.exp
 
 (** Takes a function declaration and changes the types of its scalar formals to
     pointers
     @param f the function declaration to change
  *)
-val formalScalarsToPointers : Cil.location -> Cil.fundec -> unit
+val formals_to_pointers : Cil.location -> Cil.fundec -> unit
 
 (* Converts the strings describing the argument type to arg_flow *)
-val str2arg_flow : string -> Cil.location -> arg_flow
+val arg_flow_of_string : string -> Cil.location -> arg_flow
 
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h) int *)
-val arg_type2int : arg_type -> int
+val int_of_arg_type : arg_type -> int
 
 (* Converts the arg_t to the corresponding string IN/OUT/INOUT *)
-val arg_type2string : arg_type -> string
+val string_of_arg_type : arg_type -> string
 
 (* Checks if tag is data annotation *)
 val is_dataflow_tag : string -> bool
@@ -213,7 +206,7 @@ val is_dataflow_tag : string -> bool
 (* Converts the arg_t to the corresponding (as defined in tpc_common.h)
  * integer expretion
  *)
-val arg_type2integer : arg_type -> Cil.exp
+val integer_exp_of_arg_type : arg_type -> Cil.exp
 
 (******************************************************************************)
 (*                         Copy Function                                      *)
@@ -236,30 +229,30 @@ val make_func_call : Cil.file -> Cil.location -> Cil.stmt -> Cil.attrparam list
 
 (* Convert an attribute into an expression, if possible. Otherwise raise
  * NotAnExpression *)
-val attrParamToExp : Cil.file -> Cil.location -> ?currFunction:Cil.fundec ->
-                     Cil.attrparam -> Cil.exp
+val attrparam_to_exp : Cil.file -> Cil.location -> ?currFunction:Cil.fundec ->
+                       Cil.attrparam -> Cil.exp
 
 (******************************************************************************)
 (*                               GETTERS                                      *)
 (******************************************************************************)
 
 (* change the return type of a function *)
-val setFunctionReturnType : Cil.fundec -> Cil.typ -> unit
+val set_function_return_type : Cil.fundec -> Cil.typ -> unit
 
 (*(* returns the compiler added variables of the function *)
 val get_tpc_added_formals : Cil.fundec -> Cil.fundec -> Cil.varinfo list*)
 
 (* returns the name of the variable in the expration *)
-val getNameOfExp : Cil.exp -> string
+val get_name_of_exp : Cil.exp -> string
 
 (* gets the basetype of a type *)
-val getBType : Cil.typ -> string -> Cil.typ
+val get_basetype : Cil.typ -> string -> Cil.typ
 
 (* returns the arg_flow of {e arg} *)
-val getFlowOfArg : arg_descr -> arg_flow
+val get_arg_flow : arg_descr -> arg_flow
 
 (* returns the expression with the size of of {e arg} *)
-val getSizeOfArg : arg_descr -> Cil.exp
+val get_arg_size : arg_descr -> Cil.exp
 
 (******************************************************************************)
 (*                                   LOOP                                     *)
@@ -284,17 +277,17 @@ val get_loop_successor : Cil.stmt -> Cil.exp
 (******************************************************************************)
 
 (* write an AST (list of globals) into a file *)
-val writeNewFile : Cil.file -> string -> Cil.global list -> unit
+val write_new_file : Cil.file -> string -> Cil.global list -> unit
 
 (* write out file <f> *)
-val writeFile : Cil.file -> unit
+val write_file : Cil.file -> unit
 
 (******************************************************************************)
 (*                          Constructors                                      *)
 (******************************************************************************)
 
 (* for a struct instance creates the struct.field *)
-val mkFieldAccess : Cil.lval -> string -> Cil.lval
+val make_field_access : Cil.lval -> string -> Cil.lval
 
 (* Defines the Task_table for the spu file *)
 val make_task_table : string ->
@@ -304,7 +297,7 @@ val make_task_table : string ->
 val make_null_task_table :
     (Cil.fundec * Cil.varinfo * (int * arg_descr) list) list -> Cil.global
 
-val makeGlobalVar : string -> Cil.init option -> Cil.typ -> Cil.file -> Cil.varinfo
+val make_global_var : string -> Cil.init option -> Cil.typ -> Cil.file -> Cil.varinfo
 
 (******************************************************************************)
 (*                                 MISC                                       *)
@@ -327,15 +320,15 @@ val sort_args_n_inv : (int*arg_descr) -> (int*arg_descr) -> int
 val number_args : arg_descr list -> Cil.exp list -> (int * arg_descr) list
 
 (** Preprocesses a header file and merges it with a file (x86). *)
-val preprocessAndMergeWithHeader_x86 : Cil.file -> string -> string -> string
+val preprocess_and_merge_header_x86 : Cil.file -> string -> string -> string
      -> unit
 
 (** Preprocesses a header file and merges it with a file (cell). *)
-val preprocessAndMergeWithHeader_cell : Cil.file -> string -> string ->
+val preprocess_and_merge_header_cell : Cil.file -> string -> string ->
     string -> unit
 
 (** Prints {e msg} if {e flag} is true *)
-val dbg_print : bool ref -> string -> unit
+val debug_print : bool ref -> string -> unit
 
 (** Adds a list of globals right BEFORE the first function definition *)
 val add_at_top : Cil.file -> Cil.global list -> unit

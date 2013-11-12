@@ -58,7 +58,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
   (* a unique id for unique variable naming *)
   val un_id               = ref 0
   (* this is needed for SDAM *)
-  val query_id           = ref 0
+  val query_id            = ref 0
   (* keeps the current funcid for the new tpc_function *)
   val func_id             = ref 0
 
@@ -81,24 +81,24 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
   method declareGlobals : unit =
     let globals = ref [] in
     let uint64_t = (SU.find_type new_file "uint64_t") in
-    let makeGlobalVar ini n t =
+    let make_global_var ini n t =
       globals := GVar(makeGlobalVar n t, {init = ini;}, locUnknown)::!globals;
     in
-    makeGlobalVar None "_time1_SCOOP__" uint64_t;
-    makeGlobalVar None "_time2_SCOOP__" uint64_t;
+    make_global_var None "_time1_SCOOP__" uint64_t;
+    make_global_var None "_time2_SCOOP__" uint64_t;
     SU.add_at_top new_file !globals;
 
   (** Preprocesses the runtime header file and merges it with new_file. *)
-  method preprocessAndMergeWithHeader flags : unit =
-    SU.preprocessAndMergeWithHeader_x86 new_file
+  method preprocess_and_merge_header flags : unit =
+    SU.preprocess_and_merge_header_x86 new_file
                                         (includePath)
                                         ((runtime)^".h")
                                         flags;
-    SU.preprocessAndMergeWithHeader_x86 new_file
+    SU.preprocess_and_merge_header_x86 new_file
                                         (includePath)
                                         ("lib.h")
                                         flags;
-    SU.preprocessAndMergeWithHeader_x86 new_file
+    SU.preprocess_and_merge_header_x86 new_file
                                         (includePath)
                                         ("main.h")
                                         flags;
@@ -123,7 +123,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
 
     (* Create an array with the argument descriptors *)
     let scoop2179_args =
-        var (makeLocalVar !SU.currentFunction ("scoop_args"^(string_of_int !un_id))
+        var (makeLocalVar !SU.current_function ("scoop_args"^(string_of_int !un_id))
                           (TArray(voidPtrType, Some(args_num_i), [])))
     in
 
@@ -164,7 +164,7 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
     let arg_type = arg_desc.SU.atype in
     let arg_name = arg_desc.SU.aname in
 
-    if (SU.isScalar arg_desc) then (
+    if (SU.is_scalar arg_desc) then (
       (* do something for scalars *)
     (* invoke isSafeArg from PtDepa to check whether this argument is a no dep *)
     ) else if (Sdam.isSafeArg orig_tname tid arg_name) then (
