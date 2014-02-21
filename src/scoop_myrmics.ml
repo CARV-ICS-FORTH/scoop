@@ -160,8 +160,8 @@ object (self) inherit Scoop_codegen.codegen cgraph file pragma includePath as su
       ) else ([], [])
     in
 
-    (* spawn(taskd); *)
-    let tpc_call_f = SU.find_function_sign new_file "spawn" in
+    (* _sys_spawn(taskd); *)
+    let tpc_call_f = SU.find_function_sign new_file "_sys_spawn" in
 
     let filename = mkString loc.file in
     (* the funcid is +1 in order to skip the main function which is pushed in the task table at the end *)
